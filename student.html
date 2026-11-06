@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>ELT Live — Estudiante</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background-color: #020617;
+    }
+  </style>
+</head>
+<body class="font-sans flex flex-col h-screen w-screen bg-slate-950">
+
+  <!-- Pantalla 1: Formulario de Ingreso -->
+  <div id="joinScreen" class="m-auto w-full max-w-sm bg-white p-6 rounded-2xl shadow-2xl border border-slate-200">
+    <div class="text-center mb-6">
+      <span class="bg-indigo-600 text-white text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wide">ELT Live</span>
+      <h1 class="text-xl font-bold text-slate-800 mt-3">Unirse a la Clase</h1>
+      <p class="text-xs text-slate-500 mt-1">Ingresa tu nombre y el PIN proyectado por el profesor</p>
+    </div>
+
+    <div class="space-y-4">
+      <div>
+        <label class="block text-xs font-bold text-slate-700 mb-1">Tu Nombre:</label>
+        <input id="studentNameInput" type="text" placeholder="Ej: Andrea Gómez" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-indigo-600 text-slate-800">
+      </div>
+      <div>
+        <label class="block text-xs font-bold text-slate-700 mb-1">PIN de la Sala:</label>
+        <input id="roomPinInput" type="text" maxlength="4" placeholder="Ej: 4821" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-center font-mono text-2xl tracking-widest font-bold text-indigo-600 focus:outline-indigo-600">
+      </div>
+      <button id="joinBtn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl text-sm transition shadow-sm">
+        Entrar a la Clase
+      </button>
+    </div>
+  </div>
+
+  <!-- Pantalla 2: Vista del Estudiante Maximizada -->
+  <div id="liveScreen" class="hidden flex-1 flex flex-col h-full w-full bg-white relative overflow-hidden">
+    
+    <header class="bg-slate-900 text-white px-3 py-1.5 flex items-center justify-between text-[11px] border-b border-slate-800 flex-shrink-0 z-20">
+      <div class="flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        <span id="displayStudentName" class="font-bold">Alumno</span>
+      </div>
+      <span id="studentSlideBadge" class="text-emerald-400 font-mono text-[11px] font-bold">● Sincronizado</span>
+    </header>
+
+    <main id="studentFrameContainer" class="flex-1 w-full h-full relative overflow-hidden bg-white">
+      <iframe id="studentFrame" class="w-full h-full border-0 bg-white"></iframe>
+      
+      <div id="waitingCover" class="absolute inset-0 bg-slate-950 flex flex-col items-center justify-center p-6 text-center text-white z-10">
+        <div class="w-9 h-9 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p class="font-bold text-sm">Esperando que el profesor cargue la lección...</p>
+        <p class="text-xs text-slate-400 mt-1">Tu pantalla se actualizará automáticamente</p>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const SUPABASE_URL = "https://pctvqffjpyiamlfprome.supabase.co";
+    const SUPABASE_ANON_KEY = "sb_publishable_vhkbA_a6QYKRnpHCGxYiGA_JJSvorDJ";
+    const sbClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    let myChannel = null;
+    let myName = "";
+    let currentLoadedLessonId = null;
+    let assignedSlide = 1;
+    let analyticsInterval = null;
+    let studentFrame = document.getElementById('studentFrame');
+    const studentFrameContainer = document.getElementById('studentFrameContainer');
+    const waitingCover = document.getElementById('waitingCover');
+    const studentSlideBadge = document.getElementById('studentSlideBadge');
+
+    function optimizeStudentLayout(doc) {
+      if (!doc || !doc.body) return;
+
+      const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, null, false);
+      const toClean = [];
+      let node;
+      while ((node = walker.nextNode())) {
+        if (node.nodeValue && node.nodeValue.trim() === '\\n') {
+          toClean.push(node);
+        } else if (node.nodeValue && node.nodeValue.includes('\\n')) {
+          node.nodeValue = node.nodeValue.replace(/\\n/g, '');
+        }
+      }
+      toClean.forEach(n => n.parentNode && n.parentNode.removeChild(n));
+
+      const linksAndBtns = doc.querySelectorAll('a, button');
+      for (let i = 0; i < linksAndBtns.length; i++) {
+        const t = (linksAndBtns[i].textContent || '').trim();
+        if (t.includes('Menú') || t.includes('Menu')) {
+          linksAndBtns[i].removeAttribute('href');
+          linksAndBtns[i].onclick = (e) => { e.preventDefault(); return false; };
+          linksAndBtns[i].style.display = 'none';
+        }
+      }
+
+      if (!doc.getElementById('elt-student-clean-style')) {
+        const style = doc.createElement('style');
+        style.id = 'elt-student-clean-style';
+        style.textContent = `
+          header, footer, nav {
+            height: 0px !important;
+            min-height: 0px !important;
+            overflow: hidden !important;
+            opacity: 0 !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            border: none !important;
+            pointer-events: none !important;
+          }
+          main, .main-container, #slide-container {
+            padding: 0 !important;
+            margin: 0 !important;
+            height: 100vh !important;
+            max-width: 100vw !important;
+          }
+          iframe {
+            height: calc(100vh - 36px) !important;
+            width: 100% !important;
+            border-radius: 0 !important;
+          }
+        `;
+        doc.head.appendChild(style);
+      }
+    }
+
+    function getStudentSlideNumber() {
+      try {
+        const doc = studentFrame.contentDocument || studentFrame.contentWindow.document;
+        if (!doc || !doc.body) return null;
+
+        const elements = doc.querySelectorAll('span, div, p, b, strong');
+        for (let i = 0; i < elements.length; i++) {
+          const el = elements[i];
+          if (el.children.length <= 2) {
+            const txt = (el.textContent || '').trim();
+            if (txt.length <= 12) {
+              const match = txt.match(/^(\d+)\s*\/\s*(\d+)$/);
+              if (match) return parseInt(match[1], 10);
+            }
+          }
+        }
+      } catch (e) {}
+      return null;
+    }
+
+    function clickButtonInStudent(type) {
+      try {
+        const doc = studentFrame.contentDocument || studentFrame.contentWindow.document;
+        const win = studentFrame.contentWindow;
+        if (!doc) return;
+
+        if (type === 'NEXT') {
+          if (typeof win.nextSlide === 'function') { win.nextSlide(); return; }
+          const direct = doc.querySelector('#nextBtn, #btnNext, .next-btn, [data-action="next"]');
+          if (direct) { direct.click(); return; }
+
+          const buttons = doc.querySelectorAll('button');
+          for (let i = 0; i < buttons.length; i++) {
+            const txt = (buttons[i].textContent || '').trim();
+            if (txt.includes('Next')) { buttons[i].click(); return; }
+          }
+        } else if (type === 'PREV') {
+          if (typeof win.prevSlide === 'function') { win.prevSlide(); return; }
+          const direct = doc.querySelector('#prevBtn, #btnPrev, .prev-btn, [data-action="prev"]');
+          if (direct) { direct.click(); return; }
+
+          const buttons = doc.querySelectorAll('button');
+          for (let i = 0; i < buttons.length; i++) {
+            const txt = (buttons[i].textContent || '').trim();
+            if (txt.includes('Prev') && !txt.includes('Menú') && !txt.includes('Menu')) {
+              buttons[i].click();
+              return;
+            }
+          }
+        }
+      } catch (e) {}
+    }
+
+    let latestPostMessageAnswers = [];
+
+    // Script que se inyecta directamente dentro del srcdoc de cada diapositiva/ejercicio
+    function innerSlideBridgeFn() {
+      if (window.__eltInnerBridgeActive) return;
+      window.__eltInnerBridgeActive = true;
+      window.__eltHasChecked = false;
+      window.__eltOfficialScore = null;
+
+      function cleanStrayNewlines() {
+        try {
+          if (!document.body) return;
+          const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
+          const toRemove = [];
+          let n;
+          while ((n = walker.nextNode())) {
+            if (n.parentElement && (n.parentElement.tagName === 'SCRIPT' || n.parentElement.tagName === 'STYLE')) continue;
+            if (n.nodeValue && n.nodeValue.trim() === '\\n') {
+              toRemove.push(n);
+            } else if (n.nodeValue && n.nodeValue.includes('\\n')) {
+              n.nodeValue = n.nodeValue.replace(/\\n/g, '');
+            }
+          }
+          toRemove.forEach(node => node.parentNode && node.parentNode.removeChild(node));
+        } catch (e) {}
+      }
+
+      function isSlideChecked() {
+        if (window.__eltHasChecked) return true;
+        try {
+          const banner = document.getElementById('feedback-banner');
+          if (banner && !banner.classList.contains('translate-y-full') && !banner.classList.contains('hidden')) {
+            return true;
+          }
+          const visibleFeedback = document.querySelectorAll('.feedback-text:not(.hidden), .feedback-icon');
+          for (let i = 0; i < visibleFeedback.length; i++) {
+            if ((visibleFeedback[i].textContent || '').trim().length > 0) return true;
+          }
+          const hasEmerald = document.querySelector('[class*="emerald-500"], [class*="emerald-600"], [class*="green-500"], [class*="green-600"], .is-correct');
+          if (hasEmerald) return true;
+        } catch (e) {}
+        return false;
+      }
+
+      function scrapeThisSlide() {
+        const answers = [];
+        const checked = isSlideChecked();
+        let indexCount = 1;
+
+        try {
+          // 1. Inputs, textareas y selects estándar
+          const inputs = document.querySelectorAll('input, textarea, select');
+          for (let i = 0; i < inputs.length; i++) {
+            const el = inputs[i];
+            const type = (el.type || '').toLowerCase();
+            if (type === 'hidden' || type === 'submit' || type === 'button' || type === 'reset' || type === 'checkbox' || type === 'radio') continue;
+
+            // Ignorar inputs de ejemplo deshabilitados de fábrica
+            const elClasses = (el.className || '').toLowerCase();
+            const rowText = (el.parentElement && el.parentElement.parentElement && el.parentElement.parentElement.textContent) || '';
+            if (el.disabled && (elClasses.includes('cursor-not-allowed') || rowText.includes('Example'))) continue;
+
+            let val = '';
+            if (el.tagName.toLowerCase() === 'select') {
+              if (!el.value || el.selectedIndex < 0) {
+                val = '';
+              } else {
+                val = (el.options[el.selectedIndex]?.text || el.value || '').trim();
+                if (val.includes('--') || /^select\b/i.test(val) || /^choose\b/i.test(val)) val = '';
+              }
+            } else {
+              val = (el.value || '').trim();
+            }
+
+            let status = 'pending';
+            if (checked) {
+              const parentClasses = (el.parentElement && el.parentElement.className) ? el.parentElement.className.toLowerCase() : '';
+              const cardEl = el.closest ? el.closest('[data-item], .question-card') : null;
+              const cardClasses = (cardEl && cardEl.className) ? cardEl.className.toLowerCase() : '';
+              const combined = `${elClasses} ${parentClasses} ${cardClasses}`;
+
+              if (
+                combined.includes('emerald') ||
+                combined.includes('green') ||
+                combined.includes('is-correct') ||
+                /\bcorrect\b/.test(combined)
+              ) {
+                status = 'correct';
+              } else if (
+                combined.includes('rose') ||
+                combined.includes('red') ||
+                combined.includes('amber') ||
+                combined.includes('incorrect') ||
+                combined.includes('is-wrong') ||
+                combined.includes('wrong') ||
+                combined.includes('error')
+              ) {
+                status = 'incorrect';
+              }
+            }
+
+            answers.push({ index: indexCount, value: val, status: status });
+            indexCount++;
+          }
+
+          // 2. Tarjetas de opción múltiple con botones (.question-card / .option-btn)
+          if (answers.length === 0) {
+            const cards = document.querySelectorAll('.question-card');
+            for (let c = 0; c < cards.length; c++) {
+              const card = cards[c];
+              const btns = card.querySelectorAll('.option-btn');
+              const picked = [];
+              for (let b = 0; b < btns.length; b++) {
+                const btn = btns[b];
+                const bCls = (btn.className || '').toLowerCase();
+                if (btn.getAttribute('data-elt-picked') === '1' || bCls.includes('bg-indigo-600') || bCls.includes('bg-rose-600')) {
+                  picked.push((btn.textContent || '').trim());
+                }
+              }
+
+              let status = 'pending';
+              if (checked) {
+                const fb = card.querySelector('.feedback-icon');
+                const fbText = (fb ? fb.textContent : '').toLowerCase();
+                const cardCls = (card.className || '').toLowerCase();
+                if (fbText.includes('incorrect') || cardCls.includes('rose') || cardCls.includes('red')) {
+                  status = 'incorrect';
+                } else if (fbText.includes('correct') || cardCls.includes('emerald') || cardCls.includes('green')) {
+                  status = 'correct';
+                }
+              }
+
+              answers.push({ index: indexCount, value: picked.join(', '), status: status });
+              indexCount++;
+            }
+          }
+
+          // 3. Sopa de letras / lista de palabras (#word-list)
+          if (answers.length === 0) {
+            const wordItems = document.querySelectorAll('#word-list > div');
+            for (let w = 0; w < wordItems.length; w++) {
+              const wEl = wordItems[w];
+              const wCls = (wEl.className || '').toLowerCase();
+              const rawTxt = (wEl.textContent || '').replace('✓', '').trim();
+              const isFound = wCls.includes('emerald') || wCls.includes('line-through') || (wEl.textContent || '').includes('✓');
+              answers.push({
+                index: indexCount,
+                value: isFound ? rawTxt : '',
+                status: isFound ? 'correct' : (checked ? 'incorrect' : 'pending')
+              });
+              indexCount++;
+            }
+          }
+        } catch (e) {}
+
+        return answers;
+      }
+
+      function sendReport(isCheckTrigger) {
+        if (isCheckTrigger) window.__eltHasChecked = true;
+        cleanStrayNewlines();
+        const answers = scrapeThisSlide();
+        const payload = {
+          type: 'ELT_SLIDE_REPORT',
+          answers: answers,
+          isChecked: isSlideChecked(),
+          officialScore: window.__eltOfficialScore
+        };
+        try {
+          if (window.top && window.top !== window) {
+            window.top.postMessage(payload, '*');
+          }
+          if (window.parent && window.parent !== window && window.parent !== window.top) {
+            window.parent.postMessage(payload, '*');
+          }
+        } catch (e) {}
+      }
+
+      window.__eltScrapeThisSlide = scrapeThisSlide;
+
+      // Interceptar postMessage hacia window.parent cuando el ejercicio envía ACTIVITY_SCORE
+      try {
+        if (window.parent && window.parent !== window) {
+          const origPost = window.parent.postMessage.bind(window.parent);
+          window.parent.postMessage = function(msg, targetOrigin, transfer) {
+            try {
+              if (msg && msg.type === 'ACTIVITY_SCORE') {
+                window.__eltHasChecked = true;
+                window.__eltOfficialScore = { score: msg.score, total: msg.total };
+                setTimeout(() => sendReport(true), 10);
+                setTimeout(() => sendReport(true), 120);
+              }
+            } catch (err) {}
+            return origPost(msg, targetOrigin, transfer);
+          };
+        }
+      } catch (e) {}
+
+      document.addEventListener('DOMContentLoaded', () => {
+        cleanStrayNewlines();
+        setTimeout(() => sendReport(false), 150);
+      });
+      window.addEventListener('load', () => {
+        cleanStrayNewlines();
+        setTimeout(() => sendReport(false), 200);
+      });
+
+      document.addEventListener('keyup', () => setTimeout(() => sendReport(false), 80), true);
+      document.addEventListener('input', () => setTimeout(() => sendReport(false), 80), true);
+      document.addEventListener('change', () => setTimeout(() => sendReport(false), 80), true);
+
+      document.addEventListener('click', (e) => {
+        try {
+          const target = e.target;
+          const optBtn = (target && typeof target.closest === 'function') ? target.closest('.option-btn') : null;
+          if (optBtn && !optBtn.disabled) {
+            const cur = optBtn.getAttribute('data-elt-picked') === '1';
+            optBtn.setAttribute('data-elt-picked', cur ? '0' : '1');
+          }
+
+          const clickable = (target && typeof target.closest === 'function')
+            ? (target.closest('button, a, [role="button"], input[type="button"], input[type="submit"]') || target)
+            : target;
+          const rawText = (
+            (clickable && (clickable.textContent || clickable.value || clickable.id || clickable.getAttribute?.('onclick') || clickable.title)) ||
+            (target && (target.textContent || target.value)) ||
+            ''
+          ).trim().toLowerCase();
+
+          if (rawText.includes('reset') || rawText.includes('reiniciar')) {
+            window.__eltHasChecked = false;
+            window.__eltOfficialScore = null;
+            document.querySelectorAll('.option-btn').forEach(b => b.removeAttribute('data-elt-picked'));
+            setTimeout(() => sendReport(false), 60);
+            setTimeout(() => sendReport(false), 200);
+            return;
+          }
+
+          if (rawText.includes('check') || rawText.includes('comprobar') || rawText.includes('verify') || rawText.includes('verificar')) {
+            window.__eltHasChecked = true;
+            setTimeout(() => sendReport(true), 30);
+            setTimeout(() => sendReport(true), 120);
+            setTimeout(() => sendReport(true), 300);
+            return;
+          }
+        } catch (err) {}
+
+        setTimeout(() => sendReport(false), 150);
+      }, true);
+
+      setTimeout(() => {
+        cleanStrayNewlines();
+        sendReport(false);
+      }, 100);
+    }
+
+    // Transforma el srcdoc de cualquier sub-iframe para inyectar el puente de analíticas
+    window.__eltTransformSrcdoc = function(rawSlideHtml) {
+      if (!rawSlideHtml || typeof rawSlideHtml !== 'string') return rawSlideHtml;
+      const bridgeTag = `<script>(${innerSlideBridgeFn.toString()})();<\/script>`;
+      if (rawSlideHtml.includes('</body>')) {
+        return rawSlideHtml.replace('</body>', `${bridgeTag}</body>`);
+      }
+      return rawSlideHtml + bridgeTag;
+    };
+
+    // Escuchar reportes provenientes del sub-iframe de la diapositiva
+    window.addEventListener('message', (event) => {
+      const data = event.data;
+      if (!data) return;
+
+      if (data.type === 'ELT_SLIDE_REPORT' && Array.isArray(data.answers)) {
+        latestPostMessageAnswers = data.answers;
+        const curSlideNum = getStudentSlideNumber() || assignedSlide;
+        if (myChannel) {
+          myChannel.send({
+            type: 'broadcast',
+            event: 'STUDENT_LIVE_ANSWERS',
+            payload: {
+              studentName: myName,
+              slideNumber: curSlideNum,
+              answers: data.answers,
+              isChecked: Boolean(data.isChecked),
+              officialScore: data.officialScore || null
+            }
+          });
+        }
+      } else if (data.type === 'ACTIVITY_SCORE') {
+        setTimeout(() => scrapeStudentAnswersAndReport(true), 50);
+      }
+    });
+
+    function syncStudentToSlide(target) {
+      if (!target) return;
+      if (assignedSlide !== target) {
+        latestPostMessageAnswers = [];
+      }
+      assignedSlide = target;
+      let attempts = 0;
+
+      function step() {
+        if (attempts >= 15) return;
+        attempts++;
+
+        const doc = studentFrame.contentDocument || studentFrame.contentWindow.document;
+        const win = studentFrame.contentWindow;
+        optimizeStudentLayout(doc);
+
+        // Si la lección expone show(idx) (0-indexed), saltar directamente a la diapositiva
+        if (attempts === 1 && win && typeof win.show === 'function') {
+          try {
+            win.show(target - 1);
+          } catch (e) {}
+        }
+
+        const cur = getStudentSlideNumber();
+        if (!cur) return;
+
+        if (cur === target) {
+          studentSlideBadge.textContent = `● Diapositiva ${cur}`;
+          injectLiveAnalytics(doc);
+          setTimeout(() => scrapeStudentAnswersAndReport(false), 120);
+          return;
+        }
+
+        if (cur < target) {
+          clickButtonInStudent('NEXT');
+          setTimeout(step, 70);
+        } else if (cur > target) {
+          clickButtonInStudent('PREV');
+          setTimeout(step, 70);
+        }
+      }
+      step();
+    }
+
+    // Obtiene el documento principal del iframe y cualquier sub-iframe interno accesible
+    function getAccessibleLessonDocs() {
+      const docs = [];
+      try {
+        const rootDoc = studentFrame.contentDocument || studentFrame.contentWindow.document;
+        if (!rootDoc) return docs;
+        docs.push(rootDoc);
+
+        const nestedFrames = rootDoc.querySelectorAll('iframe');
+        for (let i = 0; i < nestedFrames.length; i++) {
+          try {
+            const subDoc = nestedFrames[i].contentDocument || (nestedFrames[i].contentWindow && nestedFrames[i].contentWindow.document);
+            if (subDoc && subDoc.body) docs.push(subDoc);
+          } catch (err) {}
+        }
+      } catch (e) {}
+      return docs;
+    }
+
+    // Escáner robusto de respuestas (documento principal + sub-iframes + puente postMessage)
+    function scrapeAnswersNow() {
+      try {
+        const rootDoc = studentFrame.contentDocument || studentFrame.contentWindow.document;
+        if (rootDoc) {
+          const nestedFrames = rootDoc.querySelectorAll('iframe');
+          for (let i = 0; i < nestedFrames.length; i++) {
+            try {
+              const subWin = nestedFrames[i].contentWindow;
+              if (subWin && typeof subWin.__eltScrapeThisSlide === 'function') {
+                const res = subWin.__eltScrapeThisSlide();
+                if (Array.isArray(res) && res.length > 0) {
+                  latestPostMessageAnswers = res;
+                  return res;
+                }
+              }
+            } catch (err) {}
+          }
+        }
+
+        const docs = getAccessibleLessonDocs();
+        const answers = [];
+        let indexCount = 1;
+
+        for (let d = 0; d < docs.length; d++) {
+          const doc = docs[d];
+          const inputs = doc.querySelectorAll('input, textarea, select');
+
+          for (let i = 0; i < inputs.length; i++) {
+            const el = inputs[i];
+            const type = el.type ? el.type.toLowerCase() : '';
+            if (type === 'hidden' || type === 'submit' || type === 'button' || type === 'reset' || type === 'checkbox' || type === 'radio') continue;
+
+            const elClasses = (el.className || '').toLowerCase();
+            const rowText = (el.parentElement && el.parentElement.parentElement && el.parentElement.parentElement.textContent) || '';
+            if (el.disabled && (elClasses.includes('cursor-not-allowed') || rowText.includes('Example'))) continue;
+
+            let val = '';
+            if (el.tagName.toLowerCase() === 'select') {
+              if (!el.value || el.selectedIndex < 0) {
+                val = '';
+              } else {
+                val = (el.options[el.selectedIndex]?.text || el.value || '').trim();
+                if (val.includes('--') || /^select\b/i.test(val) || /^choose\b/i.test(val)) val = '';
+              }
+            } else {
+              val = (el.value || '').trim();
+            }
+
+            let status = 'pending';
+            const parentClasses = (el.parentElement && el.parentElement.className) ? el.parentElement.className.toLowerCase() : '';
+            const grandParentClasses = (el.parentElement && el.parentElement.parentElement && el.parentElement.parentElement.className)
+              ? el.parentElement.parentElement.className.toLowerCase()
+              : '';
+            const combinedClasses = `${elClasses} ${parentClasses} ${grandParentClasses}`;
+
+            if (
+              combinedClasses.includes('emerald') ||
+              combinedClasses.includes('green') ||
+              /\bcorrect\b/.test(combinedClasses) ||
+              combinedClasses.includes('right')
+            ) {
+              status = 'correct';
+            } else if (
+              combinedClasses.includes('red') ||
+              combinedClasses.includes('rose') ||
+              combinedClasses.includes('amber') ||
+              combinedClasses.includes('incorrect') ||
+              combinedClasses.includes('wrong') ||
+              combinedClasses.includes('error')
+            ) {
+              status = 'incorrect';
+            }
+
+            answers.push({ index: indexCount, value: val, status: status });
+            indexCount++;
+          }
+        }
+
+        if (answers.length > 0) {
+          latestPostMessageAnswers = answers;
+          return answers;
+        }
+        return latestPostMessageAnswers;
+      } catch (e) {
+        return latestPostMessageAnswers || [];
+      }
+    }
+
+    function scrapeStudentAnswersAndReport(isCheckAction = false) {
+      try {
+        const curSlideNum = getStudentSlideNumber() || assignedSlide;
+        const answers = scrapeAnswersNow();
+
+        if (myChannel) {
+          myChannel.send({
+            type: 'broadcast',
+            event: 'STUDENT_LIVE_ANSWERS',
+            payload: {
+              studentName: myName,
+              slideNumber: curSlideNum,
+              answers: answers,
+              isChecked: Boolean(isCheckAction)
+            }
+          });
+        }
+      } catch (e) {}
+    }
+
+    function bindAnalyticsToSingleDoc(targetDoc) {
+      if (!targetDoc || targetDoc.analyticsInjected) return;
+      targetDoc.analyticsInjected = true;
+
+      try {
+        const win = targetDoc.defaultView;
+        if (win && win !== window) {
+          innerSlideBridgeFn.call(win);
+        }
+      } catch (e) {}
+
+      targetDoc.addEventListener('keyup', () => setTimeout(() => scrapeStudentAnswersAndReport(false), 100), true);
+      targetDoc.addEventListener('input', () => setTimeout(() => scrapeStudentAnswersAndReport(false), 100), true);
+      targetDoc.addEventListener('change', () => setTimeout(() => scrapeStudentAnswersAndReport(false), 100), true);
+
+      targetDoc.addEventListener('click', (e) => {
+        try {
+          const target = e.target;
+          const clickable = (target && typeof target.closest === 'function')
+            ? (target.closest('button, a, [role="button"], input[type="button"], input[type="submit"]') || target)
+            : target;
+          const rawText = (clickable && (clickable.textContent || clickable.value)) || (target && (target.textContent || target.value)) || '';
+          const txt = rawText.trim().toLowerCase();
+
+          if (txt.includes('check') || txt.includes('comprobar') || txt.includes('verify') || txt.includes('verificar')) {
+            scrapeStudentAnswersAndReport(true);
+            setTimeout(() => scrapeStudentAnswersAndReport(true), 80);
+            setTimeout(() => scrapeStudentAnswersAndReport(true), 300);
+            return;
+          }
+        } catch (err) {}
+
+        setTimeout(() => scrapeStudentAnswersAndReport(false), 300);
+      }, true);
+    }
+
+    function injectLiveAnalytics(doc) {
+      const docs = getAccessibleLessonDocs();
+      if (doc && !docs.includes(doc)) docs.unshift(doc);
+
+      docs.forEach(d => bindAnalyticsToSingleDoc(d));
+
+      try {
+        const rootDoc = doc || (studentFrame.contentDocument || studentFrame.contentWindow.document);
+        if (rootDoc) {
+          const nestedFrames = rootDoc.querySelectorAll('iframe');
+          for (let i = 0; i < nestedFrames.length; i++) {
+            const frameEl = nestedFrames[i];
+            frameEl.removeAttribute('sandbox');
+            if (!frameEl.analyticsLoadBound) {
+              frameEl.analyticsLoadBound = true;
+              frameEl.addEventListener('load', () => {
+                try {
+                  const subDoc = frameEl.contentDocument || (frameEl.contentWindow && frameEl.contentWindow.document);
+                  bindAnalyticsToSingleDoc(subDoc);
+                  setTimeout(() => scrapeStudentAnswersAndReport(false), 150);
+                } catch (err) {}
+              });
+            }
+          }
+        }
+      } catch (e) {}
+    }
+
+    function prepareStudentHTMLContent(rawHtml) {
+      if (!rawHtml) return '';
+      // Eliminar atributo sandbox de los iframes internos para permitir acceso al DOM y ejecución limpia
+      let prepared = rawHtml.replace(/\ssandbox\s*=\s*(?:"[^"]*"|'[^']*')/gi, '');
+
+      // Interceptor de srcdoc para inyectar automáticamente el puente en cada diapositiva cargada
+      const srcdocInterceptor = `
+        <script>
+          (function() {
+            try {
+              const desc = Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype, 'srcdoc');
+              if (desc && desc.set) {
+                Object.defineProperty(HTMLIFrameElement.prototype, 'srcdoc', {
+                  set: function(val) {
+                    this.removeAttribute('sandbox');
+                    const transformed = (window.parent && typeof window.parent.__eltTransformSrcdoc === 'function')
+                      ? window.parent.__eltTransformSrcdoc(val)
+                      : val;
+                    return desc.set.call(this, transformed);
+                  },
+                  get: function() { return desc.get.call(this); },
+                  configurable: true
+                });
+              }
+            } catch (e) {}
+          })();
+        <\/script>
+      `;
+
+      if (prepared.includes('<head>')) {
+        prepared = prepared.replace('<head>', '<head>' + srcdocInterceptor);
+      } else {
+        prepared = srcdocInterceptor + prepared;
+      }
+      return prepared;
+    }
+
+    function loadLessonIntoStudent(lessonId, htmlContent, targetSlide) {
+      if (lessonId && currentLoadedLessonId === lessonId) {
+        syncStudentToSlide(targetSlide || 1);
+        return;
+      }
+
+      currentLoadedLessonId = lessonId || Date.now().toString();
+      latestPostMessageAnswers = [];
+      waitingCover.classList.add('hidden');
+
+      if (studentFrame) studentFrame.remove();
+      studentFrame = document.createElement('iframe');
+      studentFrame.id = 'studentFrame';
+      studentFrame.className = 'w-full h-full border-0 bg-white';
+      studentFrameContainer.insertBefore(studentFrame, waitingCover);
+
+      const preparedHTML = prepareStudentHTMLContent(htmlContent);
+      const doc = studentFrame.contentWindow.document;
+      doc.open();
+      doc.write(preparedHTML);
+      doc.close();
+
+      setTimeout(() => {
+        const innerDoc = studentFrame.contentDocument || studentFrame.contentWindow.document;
+        optimizeStudentLayout(innerDoc);
+        injectLiveAnalytics(innerDoc);
+        syncStudentToSlide(targetSlide || 1);
+
+        if (analyticsInterval) clearInterval(analyticsInterval);
+        analyticsInterval = setInterval(() => {
+          injectLiveAnalytics(studentFrame.contentDocument || studentFrame.contentWindow.document);
+          scrapeStudentAnswersAndReport(false);
+        }, 1000);
+
+      }, 350);
+    }
+
+    document.getElementById('joinBtn').addEventListener('click', () => {
+      myName = document.getElementById('studentNameInput').value.trim();
+      const pin = document.getElementById('roomPinInput').value.trim();
+
+      if (!myName || pin.length !== 4) {
+        alert("Ingresa tu nombre y el PIN de 4 dígitos.");
+        return;
+      }
+
+      document.getElementById('displayStudentName').textContent = myName;
+
+      myChannel = sbClient.channel(`room_${pin}`, {
+        config: { presence: { key: myName } }
+      });
+
+      myChannel.on('broadcast', { event: 'LOAD_LESSON' }, ({ payload }) => {
+        loadLessonIntoStudent(payload.lessonId, payload.html, payload.targetSlide);
+      });
+
+      myChannel.on('broadcast', { event: 'SYNC_SLIDE_NUMBER' }, ({ payload }) => {
+        syncStudentToSlide(payload.targetSlide);
+      });
+
+      myChannel.subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await myChannel.track({ name: myName, joinedAt: new Date().toISOString() });
+          document.getElementById('joinScreen').classList.add('hidden');
+          document.getElementById('liveScreen').classList.remove('hidden');
+
+          myChannel.send({
+            type: 'broadcast',
+            event: 'REQUEST_LESSON',
+            payload: { studentName: myName }
+          });
+        }
+      });
+    });
+  </script>
+</body>
+</html>

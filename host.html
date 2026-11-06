@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ELT Live — Centro de Mando (Profesor)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-slate-900 font-sans h-screen w-screen overflow-hidden flex flex-col text-slate-100">
+
+  <!-- Barra Superior Compacta -->
+  <header class="bg-slate-950 px-4 py-2 flex items-center justify-between border-b border-slate-800 flex-shrink-0">
+    <div class="flex items-center gap-3">
+      <span class="bg-indigo-600 text-white text-[11px] font-black px-2 py-0.5 rounded tracking-wider">HOST</span>
+      <h1 class="text-sm font-bold text-white">ELT Live — Centro de Mando</h1>
+      <span id="slideStatusBadge" class="text-xs font-semibold px-2.5 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 hidden">
+        ● Transmitiendo diapositiva <span id="currentSlideLabel" class="font-bold">1</span>
+      </span>
+    </div>
+    
+    <div class="flex items-center gap-2.5">
+      <label class="cursor-pointer bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold px-3 py-1.5 rounded-lg border border-slate-700 flex items-center gap-1.5 transition">
+        <span>📁 Cargar Lección (.html)</span>
+        <input type="file" id="lessonFileInput" accept=".html,.htm" class="hidden">
+      </label>
+
+      <div class="bg-slate-900 px-3 py-1 rounded-lg border border-slate-700 flex items-center gap-2">
+        <span class="text-xs text-slate-400">PIN:</span>
+        <span id="roomPinDisplay" class="font-mono text-base font-bold text-amber-400">----</span>
+      </div>
+
+      <button id="createRoomBtn" class="bg-indigo-600 hover:bg-indigo-700 text-xs font-bold px-3.5 py-1.5 rounded-lg transition shadow-sm">
+        Iniciar Sala
+      </button>
+    </div>
+  </header>
+
+  <!-- Contenedor Principal -->
+  <main class="flex-1 grid grid-cols-1 lg:grid-cols-5 overflow-hidden bg-slate-950">
+
+    <!-- Visor de la Diapositiva del Profesor -->
+    <div id="hostFrameContainer" class="lg:col-span-3 xl:col-span-4 bg-white flex flex-col relative overflow-hidden h-full">
+      <iframe id="hostFrame" class="w-full h-full border-0 bg-white"></iframe>
+      
+      <div id="emptyNotice" class="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-slate-900 z-10 text-slate-200">
+        <p class="font-bold mb-1 text-base">Carga tu lección exportada (.html) para comenzar</p>
+        <p class="text-xs text-slate-400">Puedes cargar el archivo antes o después de iniciar la sala.</p>
+      </div>
+    </div>
+
+    <!-- Monitor Analítico de Alumnos Lateral -->
+    <aside class="bg-slate-950 border-l border-slate-800 flex flex-col overflow-hidden h-full lg:col-span-2 xl:col-span-1 min-w-[320px]">
+      <div class="p-3 border-b border-slate-800 flex items-center justify-between flex-shrink-0 bg-slate-900">
+        <h3 class="text-xs font-bold text-slate-200 flex items-center gap-2">
+          <span>📊 Panel de Resultados</span>
+          <span id="studentCount" class="bg-indigo-600 text-white text-[10px] px-2 py-0.5 rounded-full font-bold">0 Alumnos</span>
+        </h3>
+      </div>
+
+      <div id="studentsGrid" class="flex-1 overflow-y-auto space-y-2 p-3 scroll-smooth">
+        <p class="text-xs text-slate-500 text-center py-8">Inicia la sala para monitorear a los alumnos en vivo...</p>
+      </div>
+    </aside>
+  </main>
+
+  <script>
+    const SUPABASE_URL = "https://pctvqffjpyiamlfprome.supabase.co";
+    const SUPABASE_ANON_KEY = "sb_publishable_vhkbA_a6QYKRnpHCGxYiGA_JJSvorDJ";
+    const sbClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    let rawLessonHTML = "";
+    let lessonId = "";
+    let currentSlide = 1;
+    let roomChannel = null;
+    let roomPin = "";
+    let monitorInterval = null;
+    const studentsState = {};
+    let expandedStudent = null;
+
+    let hostFrame = document.getElementById('hostFrame');
+    const hostFrameContainer = document.getElementById('hostFrameContainer');
+    const emptyNotice = document.getElementById('emptyNotice');
+    const statusBadge = document.getElementById('slideStatusBadge');
+    const currentSlideLabel = document.getElementById('currentSlideLabel');
+
+    function cleanStrayNewlines(targetDoc) {
+      if (!targetDoc || !targetDoc.body) return;
+      const walker = targetDoc.createTreeWalker(targetDoc.body, NodeFilter.SHOW_TEXT, null, false);
+      const toClean = [];
+      let node;
+      while ((node = walker.nextNode())) {
+        if (node.nodeValue && node.nodeValue.trim() === '\\n') {
+          toClean.push(node);
+        } else if (node.nodeValue && node.nodeValue.includes('\\n')) {
+          node.nodeValue = node.nodeValue.replace(/\\n/g, '');
+        }
+      }
+      toClean.forEach(n => n.parentNode && n.parentNode.removeChild(n));
+    }
+
+    function optimizeLessonLayout(doc) {
+      if (!doc || !doc.body) return;
+
+      cleanStrayNewlines(doc);
+
+      try {
+        const nestedFrames = doc.querySelectorAll('iframe');
+        for (let i = 0; i < nestedFrames.length; i++) {
+          if (nestedFrames[i].hasAttribute('sandbox')) {
+            nestedFrames[i].removeAttribute('sandbox');
+          }
+          const nestedDoc = nestedFrames[i].contentDocument || (nestedFrames[i].contentWindow && nestedFrames[i].contentWindow.document);
+          if (nestedDoc && nestedDoc.body) {
+            cleanStrayNewlines(nestedDoc);
+          }
+        }
+      } catch (e) {}
+
+      const linksAndBtns = doc.querySelectorAll('a, button');
+      for (let i = 0; i < linksAndBtns.length; i++) {
+        const t = (linksAndBtns[i].textContent || '').trim();
+        if (t.includes('Menú') || t.includes('Menu')) {
+          linksAndBtns[i].style.display = 'none';
+        }
+      }
+
+      if (!doc.getElementById('elt-live-compact-style')) {
+        const style = doc.createElement('style');
+        style.id = 'elt-live-compact-style';
+        style.textContent = `
+          main, .main-container, #slide-container, #app > div { padding: 4px !important; }
+          iframe { height: calc(100vh - 95px) !important; max-height: none !important; }
+        `;
+        doc.head.appendChild(style);
+      }
+    }
+
+    function readHostSlideNumber() {
+      try {
+        const doc = hostFrame.contentDocument || hostFrame.contentWindow.document;
+        if (!doc || !doc.body) return null;
+
+        optimizeLessonLayout(doc);
+        const elements = doc.querySelectorAll('span, div, p, b, strong');
+        for (let i = 0; i < elements.length; i++) {
+          const el = elements[i];
+          if (el.children.length <= 2) {
+            const txt = (el.textContent || '').trim();
+            if (txt.length <= 12) {
+              const match = txt.match(/^(\d+)\s*\/\s*(\d+)$/);
+              if (match) return parseInt(match[1], 10);
+            }
+          }
+        }
+      } catch (err) {}
+      return null;
+    }
+
+    function checkHostSlideChange() {
+      const detected = readHostSlideNumber();
+      if (detected && detected !== currentSlide) {
+        currentSlide = detected;
+        currentSlideLabel.textContent = currentSlide;
+        broadcastTargetSlide(currentSlide);
+      }
+    }
+
+    function injectIntoHost(html) {
+      if (hostFrame) hostFrame.remove();
+      hostFrame = document.createElement('iframe');
+      hostFrame.id = 'hostFrame';
+      hostFrame.className = 'w-full h-full border-0 bg-white';
+      hostFrameContainer.insertBefore(hostFrame, emptyNotice);
+
+      const safeHtml = (html || '').replace(/(<iframe\b[^>]*?)\s+sandbox\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '$1');
+
+      const doc = hostFrame.contentWindow.document;
+      doc.open();
+      doc.write(safeHtml);
+      doc.close();
+
+      statusBadge.classList.remove('hidden');
+
+      setTimeout(() => {
+        try {
+          const innerDoc = hostFrame.contentDocument || hostFrame.contentWindow.document;
+          optimizeLessonLayout(innerDoc);
+          innerDoc.addEventListener('click', () => {
+            setTimeout(checkHostSlideChange, 40);
+            setTimeout(checkHostSlideChange, 150);
+          });
+          innerDoc.addEventListener('keydown', () => {
+            setTimeout(checkHostSlideChange, 40);
+            setTimeout(checkHostSlideChange, 150);
+          });
+        } catch (e) {}
+      }, 300);
+
+      if (monitorInterval) clearInterval(monitorInterval);
+      monitorInterval = setInterval(checkHostSlideChange, 250);
+    }
+
+    document.getElementById('lessonFileInput').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      emptyNotice.classList.add('hidden');
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        rawLessonHTML = evt.target.result;
+        lessonId = file.name + "_" + file.size + "_" + Date.now();
+        currentSlide = 1;
+        currentSlideLabel.textContent = "1";
+        Object.keys(studentsState).forEach(name => {
+          studentsState[name].slideHistory = {};
+          studentsState[name].officialScoreHistory = {};
+          studentsState[name].answers = [];
+        });
+        injectIntoHost(rawLessonHTML);
+        broadcastDeckToStudents();
+        renderStudentsDashboard();
+      };
+      reader.readAsText(file);
+    });
+
+    function broadcastTargetSlide(num) {
+      if (!roomChannel) return;
+      roomChannel.send({
+        type: 'broadcast',
+        event: 'SYNC_SLIDE_NUMBER',
+        payload: { targetSlide: num }
+      });
+      renderStudentsDashboard();
+    }
+
+    function broadcastDeckToStudents() {
+      if (!roomChannel || !rawLessonHTML) return;
+      roomChannel.send({
+        type: 'broadcast',
+        event: 'LOAD_LESSON',
+        payload: { lessonId: lessonId, html: rawLessonHTML, targetSlide: currentSlide }
+      });
+    }
+
+    window.toggleStudentView = function(studentName) {
+      if (expandedStudent === studentName) expandedStudent = null;
+      else expandedStudent = studentName;
+      renderStudentsDashboard();
+    };
+
+    function getActiveSlideAnswers(st) {
+      if (!st) return [];
+      if (st.slideHistory && Array.isArray(st.slideHistory[currentSlide])) {
+        return st.slideHistory[currentSlide];
+      }
+      if (st.slide === currentSlide && Array.isArray(st.answers)) {
+        return st.answers;
+      }
+      return [];
+    }
+
+    function generateStudentInputsHTML(st) {
+      const activeAnswers = getActiveSlideAnswers(st);
+      if (!activeAnswers || activeAnswers.length === 0) {
+        return '<p class="text-[10px] text-slate-500 italic mt-1.5">No hay respuestas enviadas aún en esta diapositiva.</p>';
+      }
+      
+      let html = '<div class="mt-2 space-y-1.5 bg-slate-900 border border-slate-700 p-2 rounded-lg max-h-48 overflow-y-auto">';
+      activeAnswers.forEach((ans) => {
+        let valColor = "text-slate-300";
+        let checkIcon = "";
+        
+        if (ans.status === 'correct') { valColor = "text-emerald-400"; checkIcon = "✓"; }
+        else if (ans.status === 'incorrect') { valColor = "text-rose-400"; checkIcon = "✗"; }
+        
+        const safeVal = ans.value ? ans.value.replace(/</g, "&lt;") : "<vacío>";
+        html += `
+          <div class="flex items-start justify-between gap-1.5 text-[10px] border-b border-slate-800/60 pb-1 last:border-b-0 last:pb-0">
+            <div class="flex items-start gap-1.5 min-w-0">
+              <span class="text-slate-500 font-mono mt-0.5">[${ans.index}]</span>
+              <span class="font-semibold ${valColor} break-all">${safeVal}</span>
+            </div>
+            ${checkIcon ? `<span class="font-bold ${valColor} flex-shrink-0">${checkIcon}</span>` : ''}
+          </div>
+        `;
+      });
+      html += '</div>';
+      return html;
+    }
+
+    function renderStudentsDashboard() {
+      const container = document.getElementById('studentsGrid');
+      const countBadge = document.getElementById('studentCount');
+      const names = Object.keys(studentsState);
+      countBadge.textContent = names.length + " Alumnos";
+
+      if (names.length === 0) {
+        container.innerHTML = '<p class="text-xs text-slate-500 text-center py-8">Esperando que los alumnos ingresen con el PIN...</p>';
+        return;
+      }
+
+      container.innerHTML = names.map(name => {
+        const st = studentsState[name];
+        const isCurrentSlide = (st.slide === currentSlide);
+        const slideBadge = isCurrentSlide 
+          ? `<span class="bg-emerald-950 text-emerald-400 border border-emerald-800 text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">Diapositiva ${st.slide}</span>`
+          : `<span class="bg-amber-950 text-amber-400 border border-amber-800 text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">Diapositiva ${st.slide || '?'}</span>`;
+        
+        let activityStatus = `<p class="text-[10px] text-slate-400 mt-0.5 truncate">Estado: Conectado</p>`;
+        if (st.lastActivityTime) {
+           const secondsAgo = Math.floor((Date.now() - st.lastActivityTime) / 1000);
+           if (secondsAgo < 6) activityStatus = `<p class="text-[10px] text-indigo-400 mt-0.5 font-medium truncate">Actualizando ahora...</p>`;
+           else activityStatus = `<p class="text-[10px] text-slate-400 mt-0.5 truncate">Última acción hace ${secondsAgo}s</p>`;
+        }
+
+        const isExpanded = expandedStudent === name;
+        const toggleIcon = isExpanded ? '▲' : '▼';
+        const detailsHTML = isExpanded ? generateStudentInputsHTML(st) : '';
+        
+        const activeAnswers = getActiveSlideAnswers(st);
+        const officialScore = (st.officialScoreHistory && st.officialScoreHistory[currentSlide]) || null;
+        const totalAnswers = (officialScore && officialScore.total > 0) ? officialScore.total : activeAnswers.length;
+        const filledAnswers = activeAnswers.filter(a => a.value !== '' && !a.value.includes('--')).length;
+        const scrapedCorrect = activeAnswers.filter(a => a.status === 'correct').length;
+        const scrapedIncorrect = activeAnswers.filter(a => a.status === 'incorrect').length;
+        const gradedCount = officialScore ? officialScore.total : (scrapedCorrect + scrapedIncorrect);
+        const correctCount = officialScore ? officialScore.score : scrapedCorrect;
+        const incorrectCount = officialScore ? Math.max(0, officialScore.total - officialScore.score) : scrapedIncorrect;
+
+        let scoreSummaryHTML = '';
+        if (totalAnswers > 0) {
+          if (gradedCount > 0) {
+            const isPassing = correctCount >= incorrectCount && correctCount > 0;
+            const dotColor = isPassing ? 'bg-emerald-400' : 'bg-rose-500';
+            const badgeStyle = isPassing
+              ? 'bg-emerald-950/80 text-emerald-300 border-emerald-800'
+              : 'bg-rose-950/80 text-rose-300 border-rose-800';
+
+            scoreSummaryHTML = `
+              <div class="mt-2 flex items-center justify-between">
+                <span class="inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-md border ${badgeStyle}">
+                  <span class="w-2 h-2 rounded-full ${dotColor}"></span>
+                  ${correctCount} / ${totalAnswers} correctas
+                </span>
+                <span class="text-[9px] text-slate-400">${isExpanded ? 'Ocultar detalle' : 'Clic para ver'}</span>
+              </div>
+            `;
+          } else {
+            scoreSummaryHTML = `
+              <p class="text-[9px] text-slate-400 mt-1.5">
+                ${filledAnswers}/${totalAnswers} respuestas en progreso. ${isExpanded ? 'Ocultar detalle' : 'Clic para ver.'}
+              </p>
+            `;
+          }
+        }
+
+        return `
+          <div class="rounded-xl border ${isExpanded ? 'border-indigo-600/50 bg-slate-800' : 'border-slate-800 bg-slate-900'} p-3 shadow-sm transition-colors cursor-pointer hover:bg-slate-800" onclick="toggleStudentView('${name}')">
+            <div class="flex items-start justify-between">
+              <div class="w-full">
+                <div class="flex items-center justify-between mb-1">
+                  <div class="flex items-center gap-2">
+                    <p class="text-xs font-bold text-white">${name}</p>
+                    <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                  </div>
+                  <span class="text-slate-500 text-[10px]">${toggleIcon}</span>
+                </div>
+                <div class="flex items-center justify-between">
+                   ${activityStatus}
+                   ${slideBadge}
+                </div>
+                ${scoreSummaryHTML}
+              </div>
+            </div>
+            ${detailsHTML}
+          </div>
+        `;
+      }).join('');
+    }
+
+    setInterval(renderStudentsDashboard, 1000);
+
+    document.getElementById('createRoomBtn').addEventListener('click', () => {
+      roomPin = Math.floor(1000 + Math.random() * 9000).toString();
+      document.getElementById('roomPinDisplay').textContent = roomPin;
+
+      if (roomChannel) roomChannel.unsubscribe();
+
+      roomChannel = sbClient.channel(`room_${roomPin}`, {
+        config: { presence: { key: 'host' } }
+      });
+
+      roomChannel.on('presence', { event: 'sync' }, () => {
+        const state = roomChannel.presenceState();
+        Object.keys(state).forEach(key => {
+          if (key !== 'host') {
+            state[key].forEach(user => {
+              if (!studentsState[user.name]) {
+                studentsState[user.name] = { joined: true, slide: currentSlide, answers: [], slideHistory: {} };
+              } else if (!studentsState[user.name].slideHistory) {
+                studentsState[user.name].slideHistory = {};
+              }
+            });
+          }
+        });
+        renderStudentsDashboard();
+      });
+
+      roomChannel.on('broadcast', { event: 'REQUEST_LESSON' }, () => {
+        if (rawLessonHTML) broadcastDeckToStudents();
+      });
+
+      roomChannel.on('broadcast', { event: 'STUDENT_LIVE_ANSWERS' }, ({ payload }) => {
+        if (payload && payload.studentName) {
+          const stName = payload.studentName;
+          const slideNum = payload.slideNumber || currentSlide || 1;
+          const incomingAnswers = Array.isArray(payload.answers) ? payload.answers : [];
+
+          if (!studentsState[stName]) {
+            studentsState[stName] = { joined: true, slide: slideNum, answers: [], slideHistory: {}, officialScoreHistory: {} };
+          }
+          if (!studentsState[stName].slideHistory) {
+            studentsState[stName].slideHistory = {};
+          }
+          if (!studentsState[stName].officialScoreHistory) {
+            studentsState[stName].officialScoreHistory = {};
+          }
+
+          studentsState[stName].slide = slideNum;
+
+          if (payload.officialScore && typeof payload.officialScore.score === 'number') {
+            studentsState[stName].officialScoreHistory[slideNum] = payload.officialScore;
+          }
+
+          // Conservar el historial por diapositiva sin sobrescribir datos previos con arreglos vacíos accidentales
+          const existingForSlide = studentsState[stName].slideHistory[slideNum];
+          if (incomingAnswers.length > 0 || !existingForSlide) {
+            studentsState[stName].slideHistory[slideNum] = incomingAnswers;
+          }
+
+          studentsState[stName].answers = studentsState[stName].slideHistory[slideNum] || incomingAnswers;
+          studentsState[stName].lastActivityTime = Date.now();
+          renderStudentsDashboard();
+        }
+      });
+
+      roomChannel.subscribe((status) => {
+        if (status === 'SUBSCRIBED' && rawLessonHTML) {
+          broadcastDeckToStudents();
+        }
+      });
+    });
+  </script>
+</body>
+</html>

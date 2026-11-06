@@ -6,6 +6,38 @@
   <title>ELT Live — Centro de Mando (Profesor)</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <style>
+    .wb-dot-grid {
+      background-color: #f5f6f8;
+      background-image: radial-gradient(#cbd5e1 1.35px, transparent 1.35px);
+      background-size: 24px 24px;
+    }
+    .wb-tool-btn {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #d1d5db;
+      transition: all 0.15s ease;
+      position: relative;
+    }
+    .wb-tool-btn:hover {
+      background-color: rgba(255, 255, 255, 0.1);
+      color: #ffffff;
+    }
+    .wb-tool-btn.active {
+      background-color: #0e72ed;
+      color: #ffffff;
+      box-shadow: 0 0 0 2px rgba(14, 114, 237, 0.35);
+    }
+    .wb-item-selected {
+      outline: 2px solid #0e72ed !important;
+      outline-offset: 3px;
+    }
+  </style>
 </head>
 <body class="bg-slate-900 font-sans h-screen w-screen overflow-hidden flex flex-col text-slate-100">
 
@@ -20,6 +52,10 @@
     </div>
     
     <div class="flex items-center gap-2.5">
+      <button id="toggleWhiteboardBtn" class="bg-[#0e72ed] hover:bg-[#0b5ed7] text-white text-xs font-bold px-3 py-1.5 rounded-lg border border-blue-400/30 flex items-center gap-1.5 transition shadow-sm">
+        <span>🎨 Pizarra Colaborativa</span>
+      </button>
+
       <label class="cursor-pointer bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold px-3 py-1.5 rounded-lg border border-slate-700 flex items-center gap-1.5 transition">
         <span>📁 Cargar Lección (.html)</span>
         <input type="file" id="lessonFileInput" accept=".html,.htm" class="hidden">
@@ -39,14 +75,254 @@
   <!-- Contenedor Principal -->
   <main class="flex-1 grid grid-cols-1 lg:grid-cols-5 overflow-hidden bg-slate-950">
 
-    <!-- Visor de la Diapositiva del Profesor -->
+    <!-- Visor de la Diapositiva / Pizarra del Profesor -->
     <div id="hostFrameContainer" class="lg:col-span-3 xl:col-span-4 bg-white flex flex-col relative overflow-hidden h-full">
       <iframe id="hostFrame" class="w-full h-full border-0 bg-white"></iframe>
       
       <div id="emptyNotice" class="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-slate-900 z-10 text-slate-200">
-        <p class="font-bold mb-1 text-base">Carga tu lección exportada (.html) para comenzar</p>
-        <p class="text-xs text-slate-400">Puedes cargar el archivo antes o después de iniciar la sala.</p>
+        <p class="font-bold mb-1 text-base">Carga tu lección exportada (.html) o abre la Pizarra Colaborativa</p>
+        <p class="text-xs text-slate-400 mb-4">Puedes cargar el archivo o usar la pizarra estilo Zoom en vivo con tus alumnos.</p>
+        <button onclick="document.getElementById('toggleWhiteboardBtn').click()" class="bg-[#0e72ed] hover:bg-[#0b5ed7] text-white text-xs font-bold px-4 py-2 rounded-xl shadow-lg transition flex items-center gap-2">
+          <span>🎨 Abrir Pizarra Colaborativa en Vivo</span>
+        </button>
       </div>
+
+      <!-- ==================== PIZARRA COLABORATIVA ZOOM STYLE ==================== -->
+      <div id="whiteboardView" class="hidden absolute inset-0 z-30 bg-[#eef0f4] overflow-hidden select-none border-2 border-[#0d6e7a]">
+        
+        <!-- Lienzo Mundial 4000x4000 -->
+        <div id="wbViewport" class="w-full h-full relative overflow-hidden cursor-crosshair">
+          <div id="wbWorld" class="wb-dot-grid absolute top-0 left-0 w-[4000px] h-[4000px] shadow-2xl border border-slate-300" style="transform-origin: 0 0;">
+            <canvas id="wbCanvas" width="4000" height="4000" class="absolute inset-0 pointer-events-none"></canvas>
+            <div id="wbObjectsLayer" class="absolute inset-0 pointer-events-none"></div>
+            <div id="wbCursorsLayer" class="absolute inset-0 pointer-events-none"></div>
+          </div>
+        </div>
+
+        <!-- Banner Central Superior (Estilo Zoom) -->
+        <div class="absolute top-0 left-1/2 -translate-x-1/2 z-40 bg-[#0d6e7a] text-white px-4 py-1.5 rounded-b-xl shadow-lg flex items-center gap-3 text-xs font-medium border-x border-b border-cyan-500/30">
+          <span class="flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-emerald-300 animate-ping"></span>
+            <span id="wbSyncBannerText">Pizarra Colaborativa en Vivo</span>
+          </span>
+          <button id="wbBannerStopBtn" class="bg-[#084c54] hover:bg-[#05353b] text-white px-2.5 py-0.5 rounded-full text-[11px] font-semibold transition">
+            Stop
+          </button>
+        </div>
+
+        <!-- Barra Superior Izquierda (Zoom Dark Pill) -->
+        <div class="absolute top-3 left-3 z-40 bg-[#1e2124] text-white px-4 py-2 rounded-full shadow-xl flex items-center gap-3.5 border border-white/10">
+          <input id="wbTitleInput" type="text" value="ELT Live Session..." class="bg-transparent text-xs font-semibold text-white focus:outline-none w-36 truncate" title="Título de la sesión">
+          <!-- Icono Cloud Sync -->
+          <span id="wbCloudIcon" class="text-emerald-400 flex items-center" title="Sincronizado en tiempo real">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M5.5 16a3.5 3.5 0 01-.369-6.98 4 4 0 117.753-1.977A4.5 4.5 0 1113.5 16h-8z"/></svg>
+          </span>
+          <!-- Icono Globo Colaborativo -->
+          <span class="text-slate-300 flex items-center" title="Edición universal activa (Profesor y Alumnos)">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3.6 9h16.8M3.6 15h16.8M12 3a15 15 0 010 18M12 3a15 15 0 000 18"/></svg>
+          </span>
+          <!-- Botón Centrar Vista -->
+          <button id="wbCenterBoardBtn" class="text-slate-300 hover:text-white transition" title="Ir al centro del lienzo">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><circle cx="12" cy="12" r="2"/></svg>
+          </button>
+          <!-- Botón Limpiar Todo -->
+          <button id="wbClearAllBtn" class="text-slate-300 hover:text-rose-400 transition" title="Limpiar toda la pizarra">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+          </button>
+        </div>
+
+        <!-- Barra Superior Derecha (Paleta + Export PDF + Cerrar) -->
+        <div class="absolute top-3 right-3 z-40 flex items-center gap-2">
+          <div class="bg-[#1e2124] text-white px-3 py-1.5 rounded-full shadow-xl flex items-center gap-2 border border-white/10">
+            <!-- Paleta de Colores Limpia -->
+            <div id="wbColorPalette" class="flex items-center gap-1.5 pr-2 border-r border-white/15">
+              <button data-color="#111827" class="wb-color-swatch w-4 h-4 rounded-full bg-[#111827] ring-2 ring-white scale-110 transition"></button>
+              <button data-color="#ef4444" class="wb-color-swatch w-4 h-4 rounded-full bg-[#ef4444] hover:scale-110 transition"></button>
+              <button data-color="#0e72ed" class="wb-color-swatch w-4 h-4 rounded-full bg-[#0e72ed] hover:scale-110 transition"></button>
+              <button data-color="#10b981" class="wb-color-swatch w-4 h-4 rounded-full bg-[#10b981] hover:scale-110 transition"></button>
+              <button data-color="#f59e0b" class="wb-color-swatch w-4 h-4 rounded-full bg-[#f59e0b] hover:scale-110 transition"></button>
+              <button data-color="#8b5cf6" class="wb-color-swatch w-4 h-4 rounded-full bg-[#8b5cf6] hover:scale-110 transition"></button>
+              <input id="wbCustomColor" type="color" value="#111827" class="w-4 h-4 rounded cursor-pointer bg-transparent border-0 p-0" title="Color personalizado">
+            </div>
+
+            <!-- Grosor / Tamaño -->
+            <div class="flex items-center gap-1 pr-2 border-r border-white/15">
+              <button data-size="3" class="wb-size-btn text-[10px] font-bold px-1.5 py-0.5 rounded bg-white/15 text-white">S</button>
+              <button data-size="6" class="wb-size-btn text-[10px] font-bold px-1.5 py-0.5 rounded hover:bg-white/10 text-slate-300">M</button>
+              <button data-size="12" class="wb-size-btn text-[10px] font-bold px-1.5 py-0.5 rounded hover:bg-white/10 text-slate-300">L</button>
+            </div>
+
+            <!-- Exportar a PDF Limpio -->
+            <button id="wbExportPdfBtn" class="bg-[#0e72ed] hover:bg-[#0b5ed7] text-white text-xs font-semibold px-3 py-1 rounded-full flex items-center gap-1.5 transition shadow-sm" title="Exportar pizarra a PDF limpio">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+              <span>PDF</span>
+            </button>
+
+            <!-- Botón Cerrar Pizarra (Estilo Zoom Rosa/Rojo) -->
+            <button id="wbCloseBtn" class="bg-[#f43f5e] hover:bg-[#e11d48] w-7 h-7 rounded-full flex items-center justify-center text-white transition shadow-sm" title="Volver a la lección">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Barra de Herramientas Vertical Flotante Izquierda (Zoom Style) -->
+        <div class="absolute left-3 top-1/2 -translate-y-1/2 z-40 flex flex-col items-center gap-2.5">
+          <!-- Botón Azul Circular (+) -->
+          <button id="wbQuickPlusBtn" class="w-11 h-11 rounded-full bg-[#0e72ed] hover:bg-[#0b5ed7] text-white shadow-xl flex items-center justify-center transition transform active:scale-95" title="Añadir Emoji / Sticker o Imagen">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14m-7-7h14"/></svg>
+          </button>
+
+          <!-- Píldora Vertical Oscura de Herramientas -->
+          <div class="bg-[#1e2124] py-2.5 px-1.5 rounded-[24px] shadow-2xl flex flex-col items-center gap-1.5 border border-white/10">
+            <!-- 1. Puntero / Selección -->
+            <button data-tool="select" class="wb-tool-btn active" title="Puntero / Selección (Mover, editar o redimensionar cualquier elemento)">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/></svg>
+            </button>
+
+            <!-- 2. Mano / Paneo (También con Clic Derecho) -->
+            <button data-tool="pan" class="wb-tool-btn" title="Desplazar lienzo (o mantén presionado el CLIC DERECHO y arrastra)">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7 11.5V14m0-2.5v-6a1.5 1.5 0 113 0m-3 6a1.5 1.5 0 00-3 0v2a7.5 7.5 0 0015 0v-5a1.5 1.5 0 00-3 0m-6-3V11m0-5.5v-1a1.5 1.5 0 013 0v1m0 0V11m0-5.5a1.5 1.5 0 013 0v3m0 0V11"/></svg>
+            </button>
+
+            <!-- 3. Lápiz -->
+            <button data-tool="pen" class="wb-tool-btn" title="Lápiz">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+            </button>
+
+            <!-- 4. Marcador / Resaltador -->
+            <button data-tool="highlighter" class="wb-tool-btn" title="Marcador resaltador">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+            </button>
+
+            <!-- 5. Cuadro de Texto (T) -->
+            <button data-tool="text" class="wb-tool-btn font-serif text-base font-bold" title="Cuadro de Texto (Haz clic en el punto exacto del lienzo para escribir)">
+              T
+            </button>
+
+            <!-- 6. Borrador Estilo Zoom -->
+            <button data-tool="eraser" class="wb-tool-btn group" title="Borrador (Haz clic o arrastra sobre cualquier trazo, texto, imagen o emoji)">
+              <div class="w-7 h-4 rounded-sm flex overflow-hidden border border-white/20 shadow-sm">
+                <span class="w-3 bg-amber-200"></span>
+                <span class="w-1.5 bg-amber-600"></span>
+                <span class="flex-1 bg-rose-400"></span>
+              </div>
+            </button>
+
+            <!-- 7. Subida de Imágenes -->
+            <button data-tool="image" id="wbImageToolBtn" class="wb-tool-btn" title="Subir e insertar imagen en el lienzo">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path stroke-linecap="round" stroke-linejoin="round" d="M21 15l-5-5L5 21"/></svg>
+            </button>
+            <input type="file" id="wbImageInput" accept="image/*" class="hidden">
+
+            <!-- 8. Selector de Emojis / Stickers -->
+            <button data-tool="emoji" id="wbEmojiToolBtn" class="wb-tool-btn" title="Selector de Emojis y Stickers">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" d="M8 14s1.5 2 4 2 4-2 4-2"/><circle cx="9" cy="9.5" r="1" fill="currentColor"/><circle cx="15" cy="9.5" r="1" fill="currentColor"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Popover Flotante de Emojis / Stickers -->
+        <div id="wbEmojiPopover" class="hidden absolute left-20 top-1/2 -translate-y-1/2 z-50 bg-[#1e2124] border border-white/15 rounded-2xl shadow-2xl p-3 w-56 text-white">
+          <div class="flex items-center justify-between mb-2 pb-1.5 border-b border-white/10">
+            <span class="text-[11px] font-bold text-slate-300">Stickers / Emojis</span>
+            <span id="wbActiveEmojiPreview" class="text-lg">⭐</span>
+          </div>
+          <p class="text-[10px] text-slate-400 mb-2">Elige uno y haz clic en el punto exacto del lienzo:</p>
+          <div id="wbEmojiGrid" class="grid grid-cols-4 gap-1.5 text-xl">
+            <button type="button" data-emoji="⭐" class="wb-emoji-opt p-1.5 rounded-lg hover:bg-white/15 bg-white/10 transition">⭐</button>
+            <button type="button" data-emoji="✅" class="wb-emoji-opt p-1.5 rounded-lg hover:bg-white/15 transition">✅</button>
+            <button type="button" data-emoji="🎉" class="wb-emoji-opt p-1.5 rounded-lg hover:bg-white/15 transition">🎉</button>
+            <button type="button" data-emoji="👍" class="wb-emoji-opt p-1.5 rounded-lg hover:bg-white/15 transition">👍</button>
+            <button type="button" data-emoji="❤️" class="wb-emoji-opt p-1.5 rounded-lg hover:bg-white/15 transition">❤️</button>
+            <button type="button" data-emoji="🔥" class="wb-emoji-opt p-1.5 rounded-lg hover:bg-white/15 transition">🔥</button>
+            <button type="button" data-emoji="💡" class="wb-emoji-opt p-1.5 rounded-lg hover:bg-white/15 transition">💡</button>
+            <button type="button" data-emoji="❓" class="wb-emoji-opt p-1.5 rounded-lg hover:bg-white/15 transition">❓</button>
+            <button type="button" data-emoji="🏆" class="wb-emoji-opt p-1.5 rounded-lg hover:bg-white/15 transition">🏆</button>
+            <button type="button" data-emoji="👏" class="wb-emoji-opt p-1.5 rounded-lg hover:bg-white/15 transition">👏</button>
+            <button type="button" data-emoji="🚀" class="wb-emoji-opt p-1.5 rounded-lg hover:bg-white/15 transition">🚀</button>
+            <button type="button" data-emoji="🎯" class="wb-emoji-opt p-1.5 rounded-lg hover:bg-white/15 transition">🎯</button>
+            <button type="button" data-emoji="📌" class="wb-emoji-opt p-1.5 rounded-lg hover:bg-white/15 transition">📌</button>
+            <button type="button" data-emoji="💬" class="wb-emoji-opt p-1.5 rounded-lg hover:bg-white/15 transition">💬</button>
+            <button type="button" data-emoji="💯" class="wb-emoji-opt p-1.5 rounded-lg hover:bg-white/15 transition">💯</button>
+            <button type="button" data-emoji="👀" class="wb-emoji-opt p-1.5 rounded-lg hover:bg-white/15 transition">👀</button>
+          </div>
+        </div>
+
+        <!-- Minimapa Táctico Flotante (Esquina Inferior Izquierda) -->
+        <div id="wbMinimapCard" class="hidden absolute bottom-16 left-3 z-40 bg-[#1e2124] border border-white/15 rounded-2xl p-2.5 shadow-2xl">
+          <div class="flex items-center justify-between text-[10px] text-slate-300 font-bold mb-1.5 px-0.5">
+            <span>Minimapa Táctico (4000×4000)</span>
+            <button id="wbCloseMinimapBtn" class="text-slate-400 hover:text-white">✕</button>
+          </div>
+          <div id="wbMinimapContainer" class="relative w-[160px] h-[160px] bg-[#f5f6f8] rounded-lg overflow-hidden border border-slate-600 cursor-pointer">
+            <canvas id="wbMinimapCanvas" width="160" height="160" class="w-full h-full block"></canvas>
+            <div id="wbMinimapViewport" class="absolute border-2 border-[#0e72ed] bg-[#0e72ed]/15 pointer-events-none rounded-sm"></div>
+          </div>
+        </div>
+
+        <!-- Controles Inferiores Izquierdos: Undo, Redo y Minimapa (Zoom Dark Pill) -->
+        <div class="absolute bottom-3 left-3 z-40 bg-[#1e2124] text-slate-200 px-3 py-1.5 rounded-2xl shadow-xl flex items-center gap-2 border border-white/10">
+          <button id="wbUndoBtn" class="p-1.5 hover:bg-white/10 rounded-lg transition text-slate-200 disabled:opacity-40" title="Deshacer (Undo)">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h10a5 5 0 015 5v2M3 10l4-4M3 10l4 4"/></svg>
+          </button>
+          <button id="wbRedoBtn" class="p-1.5 hover:bg-white/10 rounded-lg transition text-slate-200 disabled:opacity-40" title="Rehacer (Redo)">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 10H11a5 5 0 00-5 5v2m15-7l-4-4m4 4l-4 4"/></svg>
+          </button>
+          <div class="h-4 w-[1px] bg-white/15 mx-0.5"></div>
+          <button id="wbMinimapToggleBtn" class="p-1.5 hover:bg-white/10 rounded-lg transition text-slate-200" title="Mostrar / Ocultar Minimapa Táctico">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><rect x="13" y="11" width="5" height="5" rx="0.5" fill="currentColor"/></svg>
+          </button>
+        </div>
+
+        <!-- Menú Flotante de Zoom (Opciones Exactas de Zoom) -->
+        <div id="wbZoomMenu" class="hidden absolute bottom-16 right-12 z-50 bg-[#1e2124] border border-white/15 rounded-2xl shadow-2xl py-1.5 w-36 text-xs text-slate-200 overflow-hidden">
+          <button data-zoom-preset="fit" class="wb-zoom-option w-full text-left px-3.5 py-2 hover:bg-[#0e72ed] hover:text-white transition flex items-center justify-between">
+            <span>Fit to screen</span>
+          </button>
+          <div class="h-[1px] bg-white/10 my-1"></div>
+          <button data-zoom-preset="2" class="wb-zoom-option w-full text-left px-3.5 py-1.5 hover:bg-[#0e72ed] hover:text-white transition flex items-center justify-between">
+            <span>200%</span>
+          </button>
+          <button data-zoom-preset="1" class="wb-zoom-option w-full text-left px-3.5 py-1.5 hover:bg-[#0e72ed] hover:text-white transition flex items-center justify-between font-bold text-[#3b82f6]">
+            <span>100%</span>
+          </button>
+          <button data-zoom-preset="0.75" class="wb-zoom-option w-full text-left px-3.5 py-1.5 hover:bg-[#0e72ed] hover:text-white transition flex items-center justify-between">
+            <span>75%</span>
+          </button>
+          <button data-zoom-preset="0.5" class="wb-zoom-option w-full text-left px-3.5 py-1.5 hover:bg-[#0e72ed] hover:text-white transition flex items-center justify-between">
+            <span>50%</span>
+          </button>
+        </div>
+
+        <!-- Popover de Ayuda Rápida (?) -->
+        <div id="wbHelpPopover" class="hidden absolute bottom-16 right-3 z-50 bg-[#1e2124] border border-white/15 rounded-2xl shadow-2xl p-3.5 w-64 text-[11px] text-slate-300 space-y-1.5">
+          <p class="font-bold text-white text-xs mb-1">Atajos de la Pizarra Zoom</p>
+          <p>🖱️ <b>Clic derecho + arrastrar:</b> Desplazar (Pan) el lienzo gigante</p>
+          <p>🔍 <b>Rueda del mouse:</b> Zoom In / Out</p>
+          <p>↖️ <b>Puntero:</b> Arrastrar, redimensionar o editar cualquier texto, imagen, emoji o trazo</p>
+          <p>✏️ <b>Doble clic en texto:</b> Editar texto en vivo</p>
+          <p>⌫ <b>Tecla Supr / Backspace:</b> Eliminar elemento seleccionado</p>
+        </div>
+
+        <!-- Controles Inferiores Derechos: Zoom (- 100% + ?) (Zoom Dark Pill) -->
+        <div class="absolute bottom-3 right-3 z-40 bg-[#1e2124] text-slate-200 px-3 py-1.5 rounded-2xl shadow-xl flex items-center gap-2 border border-white/10">
+          <button id="wbZoomOutBtn" class="p-1 hover:bg-white/10 rounded-lg transition text-slate-200 font-bold text-base leading-none" title="Alejar (-)">
+            −
+          </button>
+          <button id="wbZoomPercentBtn" class="bg-[#172554] hover:bg-[#1e3a8a] text-[#60a5fa] font-bold text-xs px-2.5 py-1 rounded-lg transition min-w-[52px] text-center" title="Clic para abrir menú de Zoom">
+            100%
+          </button>
+          <button id="wbZoomInBtn" class="p-1 hover:bg-white/10 rounded-lg transition text-slate-200 font-bold text-base leading-none" title="Acercar (+)">
+            +
+          </button>
+          <div class="h-4 w-[1px] bg-white/15 mx-0.5"></div>
+          <button id="wbHelpBtn" class="p-1 hover:bg-white/10 rounded-lg transition text-slate-300 font-bold text-xs w-6 h-6 flex items-center justify-center" title="Atajos y ayuda">
+            ?
+          </button>
+        </div>
+
+      </div>
+      <!-- ==================== FIN PIZARRA COLABORATIVA ==================== -->
     </div>
 
     <!-- Monitor Analítico de Alumnos Lateral -->
@@ -409,7 +685,15 @@
 
       roomChannel.on('broadcast', { event: 'REQUEST_LESSON' }, () => {
         if (rawLessonHTML) broadcastDeckToStudents();
+        if (wbIsOpen) {
+          roomChannel.send({ type: 'broadcast', event: 'WB_TOGGLE', payload: { active: true } });
+        }
+        if (wbItems.length > 0) {
+          broadcastWbFullState();
+        }
       });
+
+      setupWhiteboardChannelListeners(roomChannel);
 
       roomChannel.on('broadcast', { event: 'STUDENT_LIVE_ANSWERS' }, ({ payload }) => {
         if (payload && payload.studentName) {
@@ -450,6 +734,1082 @@
           broadcastDeckToStudents();
         }
       });
+    });
+
+    // ==================== MOTOR DE PIZARRA COLABORATIVA ZOOM STYLE ====================
+    const WB_WORLD_SIZE = 4000;
+    const wbClientId = 'host_' + Math.random().toString(36).slice(2, 9);
+    let wbIsOpen = false;
+    let wbTool = 'select';
+    let wbColor = '#111827';
+    let wbSize = 3;
+    let wbSelectedEmoji = '⭐';
+    let wbZoom = 1;
+    let wbPanX = 0;
+    let wbPanY = 0;
+
+    let wbItems = [];
+    let wbHistory = [];
+    let wbRedoStack = [];
+    let wbSelectedId = null;
+    let wbEditingTextId = null;
+
+    let wbIsPanning = false;
+    let wbPanStartX = 0;
+    let wbPanStartY = 0;
+    let wbIsDrawing = false;
+    let wbCurrentStroke = null;
+    let wbIsDraggingItem = false;
+    let wbDragItem = null;
+    let wbDragStartWorld = { x: 0, y: 0 };
+    let wbDragOrigState = null;
+    let wbIsResizingItem = false;
+    let wbIsErasing = false;
+    let wbPendingImageDataUrl = null;
+    let wbImageCache = {};
+
+    const whiteboardView = document.getElementById('whiteboardView');
+    const wbViewport = document.getElementById('wbViewport');
+    const wbWorld = document.getElementById('wbWorld');
+    const wbCanvas = document.getElementById('wbCanvas');
+    const wbCtx = wbCanvas.getContext('2d');
+    const wbObjectsLayer = document.getElementById('wbObjectsLayer');
+    const wbCursorsLayer = document.getElementById('wbCursorsLayer');
+    const wbMinimapCard = document.getElementById('wbMinimapCard');
+    const wbMinimapCanvas = document.getElementById('wbMinimapCanvas');
+    const wbMinimapCtx = wbMinimapCanvas.getContext('2d');
+    const wbMinimapViewport = document.getElementById('wbMinimapViewport');
+    const wbZoomPercentBtn = document.getElementById('wbZoomPercentBtn');
+    const wbZoomMenu = document.getElementById('wbZoomMenu');
+    const wbEmojiPopover = document.getElementById('wbEmojiPopover');
+    const wbHelpPopover = document.getElementById('wbHelpPopover');
+    const wbTitleInput = document.getElementById('wbTitleInput');
+
+    function pushWbHistory() {
+      wbHistory.push(JSON.stringify(wbItems));
+      if (wbHistory.length > 60) wbHistory.shift();
+      wbRedoStack = [];
+      updateUndoRedoButtons();
+    }
+
+    function updateUndoRedoButtons() {
+      document.getElementById('wbUndoBtn').disabled = wbHistory.length === 0;
+      document.getElementById('wbRedoBtn').disabled = wbRedoStack.length === 0;
+    }
+
+    function screenToWorld(clientX, clientY) {
+      const rect = wbViewport.getBoundingClientRect();
+      return {
+        x: (clientX - rect.left - wbPanX) / wbZoom,
+        y: (clientY - rect.top - wbPanY) / wbZoom
+      };
+    }
+
+    function updateWbTransform() {
+      wbWorld.style.transform = `translate(${wbPanX}px, ${wbPanY}px) scale(${wbZoom})`;
+      wbZoomPercentBtn.textContent = `${Math.round(wbZoom * 100)}%`;
+      renderWbMinimap();
+    }
+
+    function centerWhiteboardView(targetZoom = 1) {
+      const rect = wbViewport.getBoundingClientRect();
+      const vw = rect.width || 900;
+      const vh = rect.height || 600;
+      wbZoom = targetZoom;
+      wbPanX = Math.round((vw / 2) - (WB_WORLD_SIZE / 2) * wbZoom);
+      wbPanY = Math.round((vh / 2) - (WB_WORLD_SIZE / 2) * wbZoom);
+      updateWbTransform();
+    }
+
+    function setWbZoomAtPoint(newZoom, pivotClientX, pivotClientY) {
+      const clamped = Math.max(0.15, Math.min(3, newZoom));
+      const rect = wbViewport.getBoundingClientRect();
+      const cx = pivotClientX !== undefined ? (pivotClientX - rect.left) : (rect.width / 2);
+      const cy = pivotClientY !== undefined ? (pivotClientY - rect.top) : (rect.height / 2);
+      const worldX = (cx - wbPanX) / wbZoom;
+      const worldY = (cy - wbPanY) / wbZoom;
+      wbZoom = clamped;
+      wbPanX = cx - worldX * wbZoom;
+      wbPanY = cy - worldY * wbZoom;
+      updateWbTransform();
+    }
+
+    function fitWhiteboardToScreen() {
+      const rect = wbViewport.getBoundingClientRect();
+      const vw = rect.width || 900;
+      const vh = rect.height || 600;
+      const fitScale = Math.min(vw / WB_WORLD_SIZE, vh / WB_WORLD_SIZE) * 0.94;
+      wbZoom = Math.max(0.15, Math.min(1, fitScale));
+      wbPanX = Math.round((vw - WB_WORLD_SIZE * wbZoom) / 2);
+      wbPanY = Math.round((vh - WB_WORLD_SIZE * wbZoom) / 2);
+      updateWbTransform();
+    }
+
+    function setActiveWbTool(tool) {
+      wbTool = tool;
+      document.querySelectorAll('.wb-tool-btn[data-tool]').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.tool === tool);
+      });
+      if (tool !== 'emoji') wbEmojiPopover.classList.add('hidden');
+      if (tool !== 'select') {
+        wbSelectedId = null;
+        wbEditingTextId = null;
+        renderWhiteboardAll();
+      }
+      if (tool === 'pan') wbViewport.style.cursor = 'grab';
+      else if (tool === 'text') wbViewport.style.cursor = 'text';
+      else if (tool === 'select') wbViewport.style.cursor = 'default';
+      else wbViewport.style.cursor = 'crosshair';
+    }
+
+    function getStrokeBounds(item) {
+      if (!item.points || item.points.length === 0) return { x: 0, y: 0, w: 0, h: 0 };
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (let i = 0; i < item.points.length; i++) {
+        const p = item.points[i];
+        if (p.x < minX) minX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y > maxY) maxY = p.y;
+      }
+      const pad = (item.size || 4) + 6;
+      return { x: minX - pad, y: minY - pad, w: (maxX - minX) + pad * 2, h: (maxY - minY) + pad * 2 };
+    }
+
+    function isPointNearStroke(item, wx, wy, tolerance = 12) {
+      if (!item.points || item.points.length === 0) return false;
+      const hitRadius = Math.max(tolerance, (item.size || 4) * 1.5);
+      for (let i = 0; i < item.points.length; i++) {
+        const p = item.points[i];
+        const dx = p.x - wx;
+        const dy = p.y - wy;
+        if (dx * dx + dy * dy <= hitRadius * hitRadius) return true;
+        if (i > 0) {
+          const prev = item.points[i - 1];
+          const segLenSq = (p.x - prev.x) ** 2 + (p.y - prev.y) ** 2;
+          if (segLenSq > 0) {
+            let t = ((wx - prev.x) * (p.x - prev.x) + (wy - prev.y) * (p.y - prev.y)) / segLenSq;
+            t = Math.max(0, Math.min(1, t));
+            const projX = prev.x + t * (p.x - prev.x);
+            const projY = prev.y + t * (p.y - prev.y);
+            if ((wx - projX) ** 2 + (wy - projY) ** 2 <= hitRadius * hitRadius) return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    function renderWbCanvas() {
+      wbCtx.clearRect(0, 0, WB_WORLD_SIZE, WB_WORLD_SIZE);
+      for (let i = 0; i < wbItems.length; i++) {
+        const item = wbItems[i];
+        if (item.type !== 'stroke' || !item.points || item.points.length === 0) continue;
+        wbCtx.save();
+        wbCtx.lineCap = 'round';
+        wbCtx.lineJoin = 'round';
+        wbCtx.strokeStyle = item.color || '#111827';
+        wbCtx.lineWidth = item.size || 3;
+        wbCtx.globalAlpha = item.isHighlighter ? 0.36 : 1;
+        wbCtx.beginPath();
+        wbCtx.moveTo(item.points[0].x, item.points[0].y);
+        for (let p = 1; p < item.points.length; p++) {
+          wbCtx.lineTo(item.points[p].x, item.points[p].y);
+        }
+        if (item.points.length === 1) {
+          wbCtx.lineTo(item.points[0].x + 0.5, item.points[0].y + 0.5);
+        }
+        wbCtx.stroke();
+
+        if (wbSelectedId === item.id) {
+          const b = getStrokeBounds(item);
+          wbCtx.globalAlpha = 1;
+          wbCtx.strokeStyle = '#0e72ed';
+          wbCtx.lineWidth = 1.5;
+          wbCtx.setLineDash([5, 4]);
+          wbCtx.strokeRect(b.x, b.y, b.w, b.h);
+        }
+        wbCtx.restore();
+      }
+    }
+
+    function renderWbObjects() {
+      const activeTextEl = wbEditingTextId ? wbObjectsLayer.querySelector(`[data-wb-id="${wbEditingTextId}"] .wb-text-content`) : null;
+      const activeTextVal = activeTextEl ? activeTextEl.innerText : null;
+
+      wbObjectsLayer.innerHTML = '';
+
+      for (let i = 0; i < wbItems.length; i++) {
+        const item = wbItems[i];
+        if (item.type === 'stroke') continue;
+
+        const isSelected = wbSelectedId === item.id;
+        const isEditing = wbEditingTextId === item.id;
+
+        const wrapper = document.createElement('div');
+        wrapper.dataset.wbId = item.id;
+        wrapper.style.position = 'absolute';
+        wrapper.style.left = `${item.x}px`;
+        wrapper.style.top = `${item.y}px`;
+        wrapper.style.pointerEvents = 'auto';
+        wrapper.style.userSelect = isEditing ? 'text' : 'none';
+        wrapper.className = `group transition-shadow ${isSelected ? 'wb-item-selected rounded-lg bg-blue-500/5' : 'hover:outline hover:outline-1 hover:outline-blue-400/60 rounded-lg'}`;
+
+        if (item.type === 'text') {
+          const textDiv = document.createElement('div');
+          textDiv.className = 'wb-text-content outline-none whitespace-pre-wrap break-words px-1 py-0.5 min-w-[60px] min-h-[28px]';
+          textDiv.style.color = item.color || '#111827';
+          textDiv.style.fontSize = `${item.fontSize || 22}px`;
+          textDiv.style.fontWeight = '600';
+          textDiv.style.lineHeight = '1.25';
+          textDiv.style.cursor = isEditing ? 'text' : 'move';
+          textDiv.contentEditable = isEditing ? 'true' : 'false';
+          textDiv.innerText = (isEditing && activeTextVal !== null) ? activeTextVal : (item.text || '');
+          if (!item.text && !isEditing) {
+            textDiv.setAttribute(' data-placeholder', 'Escribe aquí...');
+          }
+
+          textDiv.addEventListener('dblclick', (e) => {
+            e.stopPropagation();
+            pushWbHistory();
+            wbSelectedId = item.id;
+            wbEditingTextId = item.id;
+            renderWhiteboardAll();
+            setTimeout(() => {
+              const el = wbObjectsLayer.querySelector(`[data-wb-id="${item.id}"] .wb-text-content`);
+              if (el) el.focus();
+            }, 10);
+          });
+
+          textDiv.addEventListener('input', () => {
+            item.text = textDiv.innerText;
+            broadcastWbItemUpsert(item);
+            renderWbMinimap();
+          });
+
+          textDiv.addEventListener('blur', () => {
+            item.text = textDiv.innerText;
+            if (wbEditingTextId === item.id) wbEditingTextId = null;
+            broadcastWbItemUpsert(item);
+          });
+
+          wrapper.appendChild(textDiv);
+        } else if (item.type === 'emoji') {
+          const emojiDiv = document.createElement('div');
+          emojiDiv.style.fontSize = `${item.fontSize || 48}px`;
+          emojiDiv.style.lineHeight = '1';
+          emojiDiv.style.cursor = 'move';
+          emojiDiv.className = 'p-1 select-none';
+          emojiDiv.textContent = item.text || '⭐';
+          wrapper.appendChild(emojiDiv);
+        } else if (item.type === 'image') {
+          const img = document.createElement('img');
+          img.src = item.src;
+          img.style.width = `${item.width || 240}px`;
+          img.style.height = `${item.height || 180}px`;
+          img.style.objectFit = 'contain';
+          img.style.cursor = 'move';
+          img.draggable = false;
+          img.className = 'rounded-md block select-none pointer-events-none';
+          wrapper.appendChild(img);
+        }
+
+        // Eventos sobre el elemento DOM para edición universal
+        wrapper.addEventListener('mousedown', (e) => {
+          if (e.button === 2) return; // Permitir clic derecho para paneo global
+          e.stopPropagation();
+
+          if (wbTool === 'eraser') {
+            pushWbHistory();
+            deleteWbItemById(item.id, true);
+            return;
+          }
+
+          if (wbEditingTextId === item.id) return;
+
+          if (wbSelectedId !== item.id) {
+            wbSelectedId = item.id;
+            wbEditingTextId = null;
+            renderWhiteboardAll();
+          }
+
+          pushWbHistory();
+          wbIsDraggingItem = true;
+          wbDragItem = item;
+          wbDragStartWorld = screenToWorld(e.clientX, e.clientY);
+          wbDragOrigState = { x: item.x, y: item.y };
+        });
+
+        wrapper.addEventListener('mouseenter', (e) => {
+          if (wbIsErasing && wbTool === 'eraser') {
+            deleteWbItemById(item.id, true);
+          }
+        });
+
+        // Controles de selección universal (Borrar y Redimensionar)
+        if (isSelected) {
+          const delBtn = document.createElement('button');
+          delBtn.type = 'button';
+          delBtn.innerHTML = '✕';
+          delBtn.title = 'Eliminar elemento';
+          delBtn.className = 'absolute -top-3 -right-3 w-5 h-5 rounded-full bg-rose-500 hover:bg-rose-600 text-white text-[10px] font-bold flex items-center justify-center shadow-md z-20';
+          delBtn.addEventListener('mousedown', (e) => {
+            e.stopPropagation();
+            pushWbHistory();
+            deleteWbItemById(item.id, true);
+          });
+          wrapper.appendChild(delBtn);
+
+          const resizeHandle = document.createElement('div');
+          resizeHandle.title = 'Arrastrar para redimensionar';
+          resizeHandle.className = 'absolute -bottom-2.5 -right-2.5 w-4 h-4 rounded-full bg-[#0e72ed] border-2 border-white cursor-nwse-resize shadow-md z-20';
+          resizeHandle.addEventListener('mousedown', (e) => {
+            e.stopPropagation();
+            pushWbHistory();
+            wbIsResizingItem = true;
+            wbDragItem = item;
+            wbDragStartWorld = screenToWorld(e.clientX, e.clientY);
+            wbDragOrigState = {
+              width: item.width || 240,
+              height: item.height || 180,
+              fontSize: item.fontSize || (item.type === 'emoji' ? 48 : 22)
+            };
+          });
+          wrapper.appendChild(resizeHandle);
+        }
+
+        wbObjectsLayer.appendChild(wrapper);
+      }
+
+      if (wbEditingTextId) {
+        const el = wbObjectsLayer.querySelector(`[data-wb-id="${wbEditingTextId}"] .wb-text-content`);
+        if (el) el.focus();
+      }
+    }
+
+    function renderWbMinimap() {
+      if (wbMinimapCard.classList.contains('hidden')) return;
+      const scale = 160 / WB_WORLD_SIZE;
+      wbMinimapCtx.clearRect(0, 0, 160, 160);
+      wbMinimapCtx.fillStyle = '#f5f6f8';
+      wbMinimapCtx.fillRect(0, 0, 160, 160);
+
+      for (let i = 0; i < wbItems.length; i++) {
+        const it = wbItems[i];
+        if (it.type === 'stroke' && it.points && it.points.length > 0) {
+          wbMinimapCtx.save();
+          wbMinimapCtx.strokeStyle = it.color || '#111827';
+          wbMinimapCtx.lineWidth = Math.max(1, (it.size || 3) * scale * 2);
+          wbMinimapCtx.beginPath();
+          wbMinimapCtx.moveTo(it.points[0].x * scale, it.points[0].y * scale);
+          for (let p = 1; p < it.points.length; p++) {
+            wbMinimapCtx.lineTo(it.points[p].x * scale, it.points[p].y * scale);
+          }
+          wbMinimapCtx.stroke();
+          wbMinimapCtx.restore();
+        } else {
+          wbMinimapCtx.fillStyle = it.color || '#0e72ed';
+          wbMinimapCtx.fillRect((it.x || 0) * scale, (it.y || 0) * scale, 6, 6);
+        }
+      }
+
+      const rect = wbViewport.getBoundingClientRect();
+      const vx = (-wbPanX / wbZoom) * scale;
+      const vy = (-wbPanY / wbZoom) * scale;
+      const vw = (rect.width / wbZoom) * scale;
+      const vh = (rect.height / wbZoom) * scale;
+      wbMinimapViewport.style.left = `${Math.max(0, Math.min(156, vx))}px`;
+      wbMinimapViewport.style.top = `${Math.max(0, Math.min(156, vy))}px`;
+      wbMinimapViewport.style.width = `${Math.max(10, Math.min(160, vw))}px`;
+      wbMinimapViewport.style.height = `${Math.max(10, Math.min(160, vh))}px`;
+    }
+
+    function renderWhiteboardAll() {
+      renderWbCanvas();
+      renderWbObjects();
+      renderWbMinimap();
+      updateUndoRedoButtons();
+    }
+
+    function upsertWbItemLocal(item) {
+      const idx = wbItems.findIndex(x => x.id === item.id);
+      if (idx >= 0) wbItems[idx] = item;
+      else wbItems.push(item);
+    }
+
+    function deleteWbItemById(id, shouldBroadcast = false) {
+      wbItems = wbItems.filter(x => x.id !== id);
+      if (wbSelectedId === id) wbSelectedId = null;
+      if (wbEditingTextId === id) wbEditingTextId = null;
+      renderWhiteboardAll();
+      if (shouldBroadcast && roomChannel) {
+        roomChannel.send({
+          type: 'broadcast',
+          event: 'WB_ITEM_DELETE',
+          payload: { id: id, senderId: wbClientId }
+        });
+      }
+    }
+
+    function broadcastWbItemUpsert(item) {
+      if (!roomChannel) return;
+      roomChannel.send({
+        type: 'broadcast',
+        event: 'WB_ITEM_UPSERT',
+        payload: { item: item, senderId: wbClientId }
+      });
+    }
+
+    function broadcastWbFullState() {
+      if (!roomChannel) return;
+      roomChannel.send({
+        type: 'broadcast',
+        event: 'WB_STATE_SYNC',
+        payload: {
+          items: wbItems,
+          title: wbTitleInput.value,
+          senderId: wbClientId
+        }
+      });
+    }
+
+    function setupWhiteboardChannelListeners(channel) {
+      channel.on('broadcast', { event: 'WB_ITEM_UPSERT' }, ({ payload }) => {
+        if (!payload || payload.senderId === wbClientId || !payload.item) return;
+        upsertWbItemLocal(payload.item);
+        renderWhiteboardAll();
+      });
+
+      channel.on('broadcast', { event: 'WB_ITEM_DELETE' }, ({ payload }) => {
+        if (!payload || payload.senderId === wbClientId || !payload.id) return;
+        deleteWbItemById(payload.id, false);
+      });
+
+      channel.on('broadcast', { event: 'WB_STATE_SYNC' }, ({ payload }) => {
+        if (!payload || payload.senderId === wbClientId) return;
+        if (Array.isArray(payload.items)) {
+          wbItems = payload.items;
+          if (payload.title) wbTitleInput.value = payload.title;
+          renderWhiteboardAll();
+        }
+      });
+
+      channel.on('broadcast', { event: 'WB_REQUEST_STATE' }, () => {
+        if (wbIsOpen) {
+          channel.send({ type: 'broadcast', event: 'WB_TOGGLE', payload: { active: true } });
+        }
+        broadcastWbFullState();
+      });
+    }
+
+    function toggleWhiteboardView(forceState) {
+      wbIsOpen = typeof forceState === 'boolean' ? forceState : !wbIsOpen;
+      whiteboardView.classList.toggle('hidden', !wbIsOpen);
+      const toggleBtn = document.getElementById('toggleWhiteboardBtn');
+      if (wbIsOpen) {
+        toggleBtn.innerHTML = '<span>📖 Volver a Lección</span>';
+        toggleBtn.classList.replace('bg-[#0e72ed]', 'bg-emerald-600');
+        setTimeout(() => {
+          if (wbPanX === 0 && wbPanY === 0) centerWhiteboardView(1);
+          renderWhiteboardAll();
+        }, 30);
+      } else {
+        toggleBtn.innerHTML = '<span>🎨 Pizarra Colaborativa</span>';
+        toggleBtn.classList.replace('bg-emerald-600', 'bg-[#0e72ed]');
+      }
+      if (roomChannel) {
+        roomChannel.send({
+          type: 'broadcast',
+          event: 'WB_TOGGLE',
+          payload: { active: wbIsOpen }
+        });
+      }
+    }
+
+    document.getElementById('toggleWhiteboardBtn').addEventListener('click', () => toggleWhiteboardView());
+    document.getElementById('wbCloseBtn').addEventListener('click', () => toggleWhiteboardView(false));
+    document.getElementById('wbBannerStopBtn').addEventListener('click', () => toggleWhiteboardView(false));
+    document.getElementById('wbCenterBoardBtn').addEventListener('click', () => centerWhiteboardView(1));
+
+    wbTitleInput.addEventListener('change', () => broadcastWbFullState());
+
+    // Prevenir menú contextual en el lienzo para permitir Paneo con CLIC DERECHO
+    whiteboardView.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    // Eventos del lienzo principal
+    wbViewport.addEventListener('mousedown', (e) => {
+      wbZoomMenu.classList.add('hidden');
+      wbHelpPopover.classList.add('hidden');
+
+      // CLIC DERECHO (button === 2) o Rueda (button === 1) o herramienta Mano -> Paneo
+      if (e.button === 2 || e.button === 1 || wbTool === 'pan') {
+        wbIsPanning = true;
+        wbPanStartX = e.clientX - wbPanX;
+        wbPanStartY = e.clientY - wbPanY;
+        wbViewport.style.cursor = 'grabbing';
+        return;
+      }
+
+      if (e.button !== 0) return;
+
+      const worldPt = screenToWorld(e.clientX, e.clientY);
+
+      if (wbEditingTextId) {
+        wbEditingTextId = null;
+        renderWhiteboardAll();
+      }
+
+      // Si hay una imagen cargada lista para pegarse en el punto exacto del clic
+      if (wbPendingImageDataUrl) {
+        pushWbHistory();
+        const imgObj = new Image();
+        imgObj.onload = () => {
+          const maxDim = 320;
+          let w = imgObj.width || 240;
+          let h = imgObj.height || 180;
+          if (w > maxDim || h > maxDim) {
+            const ratio = Math.min(maxDim / w, maxDim / h);
+            w = Math.round(w * ratio);
+            h = Math.round(h * ratio);
+          }
+          const newItem = {
+            id: 'wb_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+            type: 'image',
+            x: Math.round(worldPt.x),
+            y: Math.round(worldPt.y),
+            width: w,
+            height: h,
+            src: wbPendingImageDataUrl
+          };
+          wbPendingImageDataUrl = null;
+          upsertWbItemLocal(newItem);
+          wbSelectedId = newItem.id;
+          setActiveWbTool('select');
+          renderWhiteboardAll();
+          broadcastWbItemUpsert(newItem);
+        };
+        imgObj.src = wbPendingImageDataUrl;
+        return;
+      }
+
+      if (wbTool === 'select') {
+        // Buscar si hizo clic sobre algún trazo (stroke) para moverlo o borrarlo
+        let hitStroke = null;
+        for (let i = wbItems.length - 1; i >= 0; i--) {
+          if (wbItems[i].type === 'stroke' && isPointNearStroke(wbItems[i], worldPt.x, worldPt.y)) {
+            hitStroke = wbItems[i];
+            break;
+          }
+        }
+        if (hitStroke) {
+          pushWbHistory();
+          wbSelectedId = hitStroke.id;
+          wbIsDraggingItem = true;
+          wbDragItem = hitStroke;
+          wbDragStartWorld = worldPt;
+          wbDragOrigState = { points: hitStroke.points.map(p => ({ x: p.x, y: p.y })) };
+          renderWhiteboardAll();
+        } else {
+          wbSelectedId = null;
+          renderWhiteboardAll();
+        }
+        return;
+      }
+
+      if (wbTool === 'pen' || wbTool === 'highlighter') {
+        pushWbHistory();
+        wbIsDrawing = true;
+        wbCurrentStroke = {
+          id: 'wb_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+          type: 'stroke',
+          color: wbColor,
+          size: wbTool === 'highlighter' ? Math.max(16, wbSize * 3.2) : wbSize,
+          isHighlighter: wbTool === 'highlighter',
+          points: [{ x: Math.round(worldPt.x * 10) / 10, y: Math.round(worldPt.y * 10) / 10 }]
+        };
+        upsertWbItemLocal(wbCurrentStroke);
+        renderWbCanvas();
+        return;
+      }
+
+      if (wbTool === 'eraser') {
+        pushWbHistory();
+        wbIsErasing = true;
+        for (let i = wbItems.length - 1; i >= 0; i--) {
+          if (wbItems[i].type === 'stroke' && isPointNearStroke(wbItems[i], worldPt.x, worldPt.y, 16)) {
+            deleteWbItemById(wbItems[i].id, true);
+          }
+        }
+        return;
+      }
+
+      if (wbTool === 'text') {
+        pushWbHistory();
+        const newText = {
+          id: 'wb_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+          type: 'text',
+          x: Math.round(worldPt.x),
+          y: Math.round(worldPt.y),
+          text: 'Texto',
+          color: wbColor,
+          fontSize: wbSize === 3 ? 20 : (wbSize === 6 ? 28 : 38)
+        };
+        upsertWbItemLocal(newText);
+        wbSelectedId = newText.id;
+        wbEditingTextId = newText.id;
+        setActiveWbTool('select');
+        wbEditingTextId = newText.id;
+        renderWhiteboardAll();
+        broadcastWbItemUpsert(newText);
+        setTimeout(() => {
+          const el = wbObjectsLayer.querySelector(`[data-wb-id="${newText.id}"] .wb-text-content`);
+          if (el) {
+            el.focus();
+            document.execCommand('selectAll', false, null);
+          }
+        }, 20);
+        return;
+      }
+
+      if (wbTool === 'emoji') {
+        pushWbHistory();
+        const emojiSize = wbSize === 3 ? 44 : (wbSize === 6 ? 60 : 80);
+        const newEmoji = {
+          id: 'wb_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+          type: 'emoji',
+          x: Math.round(worldPt.x - emojiSize / 2),
+          y: Math.round(worldPt.y - emojiSize / 2),
+          text: wbSelectedEmoji,
+          fontSize: emojiSize
+        };
+        upsertWbItemLocal(newEmoji);
+        wbSelectedId = newEmoji.id;
+        renderWhiteboardAll();
+        broadcastWbItemUpsert(newEmoji);
+        return;
+      }
+
+      if (wbTool === 'image') {
+        window.__wbPendingImageClickPt = worldPt;
+        document.getElementById('wbImageInput').click();
+      }
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!wbIsOpen) return;
+
+      if (wbIsPanning) {
+        wbPanX = e.clientX - wbPanStartX;
+        wbPanY = e.clientY - wbPanStartY;
+        updateWbTransform();
+        return;
+      }
+
+      const worldPt = screenToWorld(e.clientX, e.clientY);
+
+      if (wbIsDrawing && wbCurrentStroke) {
+        wbCurrentStroke.points.push({
+          x: Math.round(worldPt.x * 10) / 10,
+          y: Math.round(worldPt.y * 10) / 10
+        });
+        renderWbCanvas();
+        broadcastWbItemUpsert(wbCurrentStroke);
+        return;
+      }
+
+      if (wbIsErasing && wbTool === 'eraser') {
+        for (let i = wbItems.length - 1; i >= 0; i--) {
+          if (wbItems[i].type === 'stroke' && isPointNearStroke(wbItems[i], worldPt.x, worldPt.y, 16)) {
+            deleteWbItemById(wbItems[i].id, true);
+          }
+        }
+        return;
+      }
+
+      if (wbIsDraggingItem && wbDragItem) {
+        const dx = worldPt.x - wbDragStartWorld.x;
+        const dy = worldPt.y - wbDragStartWorld.y;
+        if (wbDragItem.type === 'stroke' && wbDragOrigState && wbDragOrigState.points) {
+          wbDragItem.points = wbDragOrigState.points.map(p => ({
+            x: Math.round((p.x + dx) * 10) / 10,
+            y: Math.round((p.y + dy) * 10) / 10
+          }));
+          renderWbCanvas();
+        } else if (wbDragOrigState) {
+          wbDragItem.x = Math.round(wbDragOrigState.x + dx);
+          wbDragItem.y = Math.round(wbDragOrigState.y + dy);
+          renderWbObjects();
+        }
+        renderWbMinimap();
+        broadcastWbItemUpsert(wbDragItem);
+        return;
+      }
+
+      if (wbIsResizingItem && wbDragItem && wbDragOrigState) {
+        const dx = worldPt.x - wbDragStartWorld.x;
+        const dy = worldPt.y - wbDragStartWorld.y;
+        if (wbDragItem.type === 'image') {
+          wbDragItem.width = Math.max(40, Math.round(wbDragOrigState.width + dx));
+          wbDragItem.height = Math.max(40, Math.round(wbDragOrigState.height + dy));
+        } else {
+          wbDragItem.fontSize = Math.max(12, Math.min(160, Math.round(wbDragOrigState.fontSize + (dx + dy) * 0.25)));
+        }
+        renderWbObjects();
+        broadcastWbItemUpsert(wbDragItem);
+      }
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (wbIsPanning) {
+        wbIsPanning = false;
+        setActiveWbTool(wbTool);
+      }
+      if (wbIsDrawing && wbCurrentStroke) {
+        wbIsDrawing = false;
+        broadcastWbItemUpsert(wbCurrentStroke);
+        wbCurrentStroke = null;
+        renderWbMinimap();
+      }
+      wbIsErasing = false;
+      wbIsDraggingItem = false;
+      wbIsResizingItem = false;
+      wbDragItem = null;
+    });
+
+    // Rueda del mouse para Zoom suave centrado en el cursor
+    wbViewport.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.1 : 0.9;
+      setWbZoomAtPoint(wbZoom * factor, e.clientX, e.clientY);
+    }, { passive: false });
+
+    // Selección de herramientas de la barra izquierda
+    document.querySelectorAll('.wb-tool-btn[data-tool]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const t = btn.dataset.tool;
+        setActiveWbTool(t);
+        if (t === 'emoji') {
+          wbEmojiPopover.classList.toggle('hidden');
+        } else if (t === 'image') {
+          window.__wbPendingImageClickPt = null;
+          document.getElementById('wbImageInput').click();
+        }
+      });
+    });
+
+    document.getElementById('wbQuickPlusBtn').addEventListener('click', () => {
+      setActiveWbTool('emoji');
+      wbEmojiPopover.classList.toggle('hidden');
+    });
+
+    document.querySelectorAll('.wb-emoji-opt').forEach(btn => {
+      btn.addEventListener('click', () => {
+        wbSelectedEmoji = btn.dataset.emoji;
+        document.getElementById('wbActiveEmojiPreview').textContent = wbSelectedEmoji;
+        document.querySelectorAll('.wb-emoji-opt').forEach(b => b.classList.remove('bg-white/10'));
+        btn.classList.add('bg-white/10');
+        setActiveWbTool('emoji');
+        wbEmojiPopover.classList.add('hidden');
+      });
+    });
+
+    // Subida de imagen comprimida para sincronización instantánea
+    document.getElementById('wbImageInput').addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        const img = new Image();
+        img.onload = () => {
+          const maxDim = 480;
+          let w = img.width || 240;
+          let h = img.height || 180;
+          if (w > maxDim || h > maxDim) {
+            const r = Math.min(maxDim / w, maxDim / h);
+            w = Math.round(w * r);
+            h = Math.round(h * r);
+          }
+          const off = document.createElement('canvas');
+          off.width = w;
+          off.height = h;
+          off.getContext('2d').drawImage(img, 0, 0, w, h);
+          const compressedDataUrl = off.toDataURL('image/jpeg', 0.82);
+
+          if (window.__wbPendingImageClickPt) {
+            pushWbHistory();
+            const pt = window.__wbPendingImageClickPt;
+            window.__wbPendingImageClickPt = null;
+            const newItem = {
+              id: 'wb_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+              type: 'image',
+              x: Math.round(pt.x),
+              y: Math.round(pt.y),
+              width: Math.min(280, w),
+              height: Math.min(280, h),
+              src: compressedDataUrl
+            };
+            upsertWbItemLocal(newItem);
+            wbSelectedId = newItem.id;
+            setActiveWbTool('select');
+            renderWhiteboardAll();
+            broadcastWbItemUpsert(newItem);
+          } else {
+            wbPendingImageDataUrl = compressedDataUrl;
+            wbViewport.style.cursor = 'copy';
+          }
+        };
+        img.src = evt.target.result;
+      };
+      reader.readAsDataURL(file);
+      e.target.value = '';
+    });
+
+    // Colores y Grosores
+    document.querySelectorAll('.wb-color-swatch').forEach(sw => {
+      sw.addEventListener('click', () => {
+        wbColor = sw.dataset.color;
+        document.querySelectorAll('.wb-color-swatch').forEach(s => s.classList.remove('ring-2', 'ring-white', 'scale-110'));
+        sw.classList.add('ring-2', 'ring-white', 'scale-110');
+        if (wbSelectedId) {
+          const sel = wbItems.find(x => x.id === wbSelectedId);
+          if (sel && (sel.type === 'text' || sel.type === 'stroke')) {
+            pushWbHistory();
+            sel.color = wbColor;
+            renderWhiteboardAll();
+            broadcastWbItemUpsert(sel);
+          }
+        }
+      });
+    });
+
+    document.getElementById('wbCustomColor').addEventListener('input', (e) => {
+      wbColor = e.target.value;
+      if (wbSelectedId) {
+        const sel = wbItems.find(x => x.id === wbSelectedId);
+        if (sel && (sel.type === 'text' || sel.type === 'stroke')) {
+          sel.color = wbColor;
+          renderWhiteboardAll();
+          broadcastWbItemUpsert(sel);
+        }
+      }
+    });
+
+    document.querySelectorAll('.wb-size-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        wbSize = parseInt(btn.dataset.size, 10);
+        document.querySelectorAll('.wb-size-btn').forEach(b => {
+          b.className = 'wb-size-btn text-[10px] font-bold px-1.5 py-0.5 rounded hover:bg-white/10 text-slate-300';
+        });
+        btn.className = 'wb-size-btn text-[10px] font-bold px-1.5 py-0.5 rounded bg-white/15 text-white';
+      });
+    });
+
+    // Undo / Redo / Clear
+    document.getElementById('wbUndoBtn').addEventListener('click', () => {
+      if (wbHistory.length === 0) return;
+      wbRedoStack.push(JSON.stringify(wbItems));
+      wbItems = JSON.parse(wbHistory.pop());
+      wbSelectedId = null;
+      renderWhiteboardAll();
+      broadcastWbFullState();
+    });
+
+    document.getElementById('wbRedoBtn').addEventListener('click', () => {
+      if (wbRedoStack.length === 0) return;
+      wbHistory.push(JSON.stringify(wbItems));
+      wbItems = JSON.parse(wbRedoStack.pop());
+      wbSelectedId = null;
+      renderWhiteboardAll();
+      broadcastWbFullState();
+    });
+
+    document.getElementById('wbClearAllBtn').addEventListener('click', () => {
+      if (wbItems.length === 0) return;
+      pushWbHistory();
+      wbItems = [];
+      wbSelectedId = null;
+      wbEditingTextId = null;
+      renderWhiteboardAll();
+      broadcastWbFullState();
+    });
+
+    // Teclas rápidas (Delete / Backspace / Ctrl+Z / Ctrl+Y)
+    window.addEventListener('keydown', (e) => {
+      if (!wbIsOpen) return;
+      if (wbEditingTextId || document.activeElement === wbTitleInput) return;
+
+      if ((e.key === 'Delete' || e.key === 'Backspace') && wbSelectedId) {
+        e.preventDefault();
+        pushWbHistory();
+        deleteWbItemById(wbSelectedId, true);
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        document.getElementById('wbUndoBtn').click();
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        document.getElementById('wbRedoBtn').click();
+      }
+    });
+
+    // Minimapa Táctico
+    document.getElementById('wbMinimapToggleBtn').addEventListener('click', () => {
+      wbMinimapCard.classList.toggle('hidden');
+      renderWbMinimap();
+    });
+    document.getElementById('wbCloseMinimapBtn').addEventListener('click', () => {
+      wbMinimapCard.classList.add('hidden');
+    });
+    document.getElementById('wbMinimapContainer').addEventListener('mousedown', (e) => {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const targetWorldX = (mx / 160) * WB_WORLD_SIZE;
+      const targetWorldY = (my / 160) * WB_WORLD_SIZE;
+      const vRect = wbViewport.getBoundingClientRect();
+      wbPanX = (vRect.width / 2) - targetWorldX * wbZoom;
+      wbPanY = (vRect.height / 2) - targetWorldY * wbZoom;
+      updateWbTransform();
+    });
+
+    // Controles de Zoom y Menú Exacto de Zoom ("Fit to screen", "200%", "100%", "75%", "50%")
+    wbZoomPercentBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      wbZoomMenu.classList.toggle('hidden');
+    });
+
+    document.querySelectorAll('.wb-zoom-option').forEach(opt => {
+      opt.addEventListener('click', () => {
+        const preset = opt.dataset.zoomPreset;
+        if (preset === 'fit') {
+          fitWhiteboardToScreen();
+        } else {
+          setWbZoomAtPoint(parseFloat(preset));
+        }
+        document.querySelectorAll('.wb-zoom-option').forEach(o => o.classList.remove('font-bold', 'text-[#3b82f6]'));
+        opt.classList.add('font-bold', 'text-[#3b82f6]');
+        wbZoomMenu.classList.add('hidden');
+      });
+    });
+
+    document.getElementById('wbZoomInBtn').addEventListener('click', () => {
+      setWbZoomAtPoint(wbZoom + 0.25);
+    });
+    document.getElementById('wbZoomOutBtn').addEventListener('click', () => {
+      setWbZoomAtPoint(wbZoom - 0.25);
+    });
+
+    document.getElementById('wbHelpBtn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      wbHelpPopover.classList.toggle('hidden');
+    });
+
+    // Exportación a PDF Limpio
+    document.getElementById('wbExportPdfBtn').addEventListener('click', async () => {
+      let minX = 1400, minY = 1500, maxX = 2600, maxY = 2500;
+      if (wbItems.length > 0) {
+        minX = Infinity; minY = Infinity; maxX = -Infinity; maxY = -Infinity;
+        wbItems.forEach(it => {
+          if (it.type === 'stroke' && it.points) {
+            const b = getStrokeBounds(it);
+            minX = Math.min(minX, b.x);
+            minY = Math.min(minY, b.y);
+            maxX = Math.max(maxX, b.x + b.w);
+            maxY = Math.max(maxY, b.y + b.h);
+          } else {
+            const w = it.width || 240;
+            const h = it.height || 120;
+            minX = Math.min(minX, it.x);
+            minY = Math.min(minY, it.y);
+            maxX = Math.max(maxX, it.x + w);
+            maxY = Math.max(maxY, it.y + h);
+          }
+        });
+        minX = Math.max(0, minX - 80);
+        minY = Math.max(0, minY - 80);
+        maxX = Math.min(WB_WORLD_SIZE, maxX + 80);
+        maxY = Math.min(WB_WORLD_SIZE, maxY + 80);
+      }
+
+      const expW = Math.max(800, Math.round(maxX - minX));
+      const expH = Math.max(550, Math.round(maxY - minY));
+      const exportCanvas = document.createElement('canvas');
+      exportCanvas.width = expW;
+      exportCanvas.height = expH;
+      const ctx = exportCanvas.getContext('2d');
+
+      // Fondo blanco limpio con cuadrícula de puntos sutil
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, expW, expH);
+      ctx.fillStyle = '#e2e8f0';
+      for (let gx = 0; gx < expW; gx += 24) {
+        for (let gy = 0; gy < expH; gy += 24) {
+          ctx.beginPath();
+          ctx.arc(gx, gy, 1, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      ctx.save();
+      ctx.translate(-minX, -minY);
+
+      for (const item of wbItems) {
+        if (item.type === 'stroke' && item.points && item.points.length > 0) {
+          ctx.save();
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.strokeStyle = item.color || '#111827';
+          ctx.lineWidth = item.size || 3;
+          ctx.globalAlpha = item.isHighlighter ? 0.36 : 1;
+          ctx.beginPath();
+          ctx.moveTo(item.points[0].x, item.points[0].y);
+          for (let p = 1; p < item.points.length; p++) {
+            ctx.lineTo(item.points[p].x, item.points[p].y);
+          }
+          ctx.stroke();
+          ctx.restore();
+        } else if (item.type === 'text') {
+          ctx.save();
+          ctx.fillStyle = item.color || '#111827';
+          const fs = item.fontSize || 22;
+          ctx.font = `600 ${fs}px sans-serif`;
+          ctx.textBaseline = 'top';
+          const lines = (item.text || '').split('\n');
+          lines.forEach((line, idx) => {
+            ctx.fillText(line, item.x, item.y + idx * (fs * 1.25));
+          });
+          ctx.restore();
+        } else if (item.type === 'emoji') {
+          ctx.save();
+          const fs = item.fontSize || 48;
+          ctx.font = `${fs}px sans-serif`;
+          ctx.textBaseline = 'top';
+          ctx.fillText(item.text || '⭐', item.x, item.y);
+          ctx.restore();
+        } else if (item.type === 'image' && item.src) {
+          await new Promise((resolve) => {
+            const im = new Image();
+            im.onload = () => {
+              ctx.drawImage(im, item.x, item.y, item.width || 240, item.height || 180);
+              resolve();
+            };
+            im.onerror = resolve;
+            im.src = item.src;
+          });
+        }
+      }
+      ctx.restore();
+
+      const imgData = exportCanvas.toDataURL('image/jpeg', 0.95);
+      if (window.jspdf && window.jspdf.jsPDF) {
+        const orientation = expW >= expH ? 'l' : 'p';
+        const pdf = new window.jspdf.jsPDF({ orientation, unit: 'px', format: [expW, expH] });
+        pdf.addImage(imgData, 'JPEG', 0, 0, expW, expH);
+        pdf.save(`${(wbTitleInput.value || 'ELT-Whiteboard').replace(/\s+/g, '-')}.pdf`);
+      } else {
+        const a = document.createElement('a');
+        a.href = imgData;
+        a.download = 'ELT-Whiteboard.jpg';
+        a.click();
+      }
     });
   </script>
 </body>

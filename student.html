@@ -7,6 +7,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <style>
     html, body {
       height: 100%;
@@ -42,8 +43,21 @@
     }
     .wb-item-selected {
       outline: 2px solid #0e72ed !important;
-      outline-offset: 3px;
+      outline-offset: 0px !important;
     }
+    .wb-item-locked.wb-item-selected {
+      outline: 2px dashed #f59e0b !important;
+      outline-offset: 0px !important;
+    }
+    /* Controladores de redimensionado del Chat (Acoplado y Flotante) */
+    .zm-resize-handle-n { position: absolute; top: 0; left: 10px; right: 10px; height: 6px; cursor: ns-resize; z-index: 60; }
+    .zm-resize-handle-s { position: absolute; bottom: 0; left: 10px; right: 10px; height: 6px; cursor: ns-resize; z-index: 60; }
+    .zm-resize-handle-e { position: absolute; right: 0; top: 10px; bottom: 10px; width: 6px; cursor: ew-resize; z-index: 60; }
+    .zm-resize-handle-w { position: absolute; left: 0; top: 10px; bottom: 10px; width: 6px; cursor: ew-resize; z-index: 60; }
+    .zm-resize-handle-nw { position: absolute; top: 0; left: 0; width: 12px; height: 12px; cursor: nwse-resize; z-index: 65; }
+    .zm-resize-handle-ne { position: absolute; top: 0; right: 0; width: 12px; height: 12px; cursor: nesw-resize; z-index: 65; }
+    .zm-resize-handle-sw { position: absolute; bottom: 0; left: 0; width: 12px; height: 12px; cursor: nesw-resize; z-index: 65; }
+    .zm-resize-handle-se { position: absolute; bottom: 0; right: 0; width: 14px; height: 14px; cursor: nwse-resize; z-index: 65; }
   </style>
 </head>
 <body class="font-sans flex flex-col h-screen w-screen bg-slate-950">
@@ -79,14 +93,19 @@
         <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
         <span id="displayStudentName" class="font-bold">Alumno</span>
       </div>
-      <div class="flex items-center gap-3">
+      <div class="flex items-center gap-2.5">
         <button id="toggleWhiteboardBtn" class="bg-[#0e72ed] hover:bg-[#0b5ed7] text-white text-[11px] font-bold px-2.5 py-1 rounded-lg transition shadow-sm flex items-center gap-1">
           <span>🎨 Pizarra Colaborativa</span>
+        </button>
+        <button id="headerChatToggleBtn" class="bg-[#1e2124] hover:bg-[#2b2f36] text-slate-100 text-[11px] font-bold px-2.5 py-1 rounded-lg border border-slate-700 flex items-center gap-1.5 transition relative">
+          <span>💬 Chat</span>
+          <span id="headerChatUnreadBadge" class="hidden bg-rose-500 text-white text-[9px] font-black px-1.5 py-0.2 rounded-full">0</span>
         </button>
         <span id="studentSlideBadge" class="text-emerald-400 font-mono text-[11px] font-bold">● Sincronizado</span>
       </div>
     </header>
 
+    <div class="flex-1 w-full h-full flex overflow-hidden relative">
     <main id="studentFrameContainer" class="flex-1 w-full h-full relative overflow-hidden bg-white">
       <iframe id="studentFrame" class="w-full h-full border-0 bg-white"></iframe>
       
@@ -224,29 +243,86 @@
         </div>
 
         <!-- Popover Flotante de Emojis / Stickers -->
-        <div id="wbEmojiPopover" class="hidden absolute left-20 top-1/2 -translate-y-1/2 z-50 bg-[#1e2124] border border-white/15 rounded-2xl shadow-2xl p-3 w-56 text-white">
+        <div id="wbEmojiPopover" class="hidden absolute left-20 top-1/2 -translate-y-1/2 z-50 bg-[#1e2124] border border-white/15 rounded-2xl shadow-2xl p-3 w-72 text-white">
           <div class="flex items-center justify-between mb-2 pb-1.5 border-b border-white/10">
-            <span class="text-[11px] font-bold text-slate-300">Stickers / Emojis</span>
+            <span class="text-[11px] font-bold text-slate-300">Stickers, Caritas y Reacciones</span>
             <span id="wbActiveEmojiPreview" class="text-lg">⭐</span>
           </div>
-          <p class="text-[10px] text-slate-400 mb-2">Elige uno y haz clic en el punto exacto del lienzo:</p>
-          <div id="wbEmojiGrid" class="grid grid-cols-4 gap-1.5 text-xl">
-            <button type="button" data-emoji="⭐" class="wb-emoji-opt p-1.5 rounded-lg hover:bg-white/15 bg-white/10 transition">⭐</button>
-            <button type="button" data-emoji="✅" class="wb-emoji-opt p-1.5 rounded-lg hover:bg-white/15 transition">✅</button>
-            <button type="button" data-emoji="🎉" class="wb-emoji-opt p-1.5 rounded-lg hover:bg-white/15 transition">🎉</button>
-            <button type="button" data-emoji="👍" class="wb-emoji-opt p-1.5 rounded-lg hover:bg-white/15 transition">👍</button>
-            <button type="button" data-emoji="❤️" class="wb-emoji-opt p-1.5 rounded-lg hover:bg-white/15 transition">❤️</button>
-            <button type="button" data-emoji="🔥" class="wb-emoji-opt p-1.5 rounded-lg hover:bg-white/15 transition">🔥</button>
-            <button type="button" data-emoji="💡" class="wb-emoji-opt p-1.5 rounded-lg hover:bg-white/15 transition">💡</button>
-            <button type="button" data-emoji="❓" class="wb-emoji-opt p-1.5 rounded-lg hover:bg-white/15 transition">❓</button>
-            <button type="button" data-emoji="🏆" class="wb-emoji-opt p-1.5 rounded-lg hover:bg-white/15 transition">🏆</button>
-            <button type="button" data-emoji="👏" class="wb-emoji-opt p-1.5 rounded-lg hover:bg-white/15 transition">👏</button>
-            <button type="button" data-emoji="🚀" class="wb-emoji-opt p-1.5 rounded-lg hover:bg-white/15 transition">🚀</button>
-            <button type="button" data-emoji="🎯" class="wb-emoji-opt p-1.5 rounded-lg hover:bg-white/15 transition">🎯</button>
-            <button type="button" data-emoji="📌" class="wb-emoji-opt p-1.5 rounded-lg hover:bg-white/15 transition">📌</button>
-            <button type="button" data-emoji="💬" class="wb-emoji-opt p-1.5 rounded-lg hover:bg-white/15 transition">💬</button>
-            <button type="button" data-emoji="💯" class="wb-emoji-opt p-1.5 rounded-lg hover:bg-white/15 transition">💯</button>
-            <button type="button" data-emoji="👀" class="wb-emoji-opt p-1.5 rounded-lg hover:bg-white/15 transition">👀</button>
+          <p class="text-[10px] text-slate-400 mb-2">Elige uno y haz clic en el lienzo (o reacciona a un elemento seleccionado):</p>
+          <div id="wbEmojiGrid" class="grid grid-cols-6 gap-1 text-lg max-h-56 overflow-y-auto pr-1">
+            <!-- Caritas y Expresiones -->
+            <button type="button" data-emoji="😀" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">😀</button>
+            <button type="button" data-emoji="😃" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">😃</button>
+            <button type="button" data-emoji="😄" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">😄</button>
+            <button type="button" data-emoji="😁" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">😁</button>
+            <button type="button" data-emoji="😆" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">😆</button>
+            <button type="button" data-emoji="😅" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">😅</button>
+            <button type="button" data-emoji="🤣" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">🤣</button>
+            <button type="button" data-emoji="😂" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">😂</button>
+            <button type="button" data-emoji="🙂" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">🙂</button>
+            <button type="button" data-emoji="🙃" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">🙃</button>
+            <button type="button" data-emoji="😉" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">😉</button>
+            <button type="button" data-emoji="😊" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">😊</button>
+            <button type="button" data-emoji="😇" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">😇</button>
+            <button type="button" data-emoji="🥰" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">🥰</button>
+            <button type="button" data-emoji="😍" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">😍</button>
+            <button type="button" data-emoji="🤩" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">🤩</button>
+            <button type="button" data-emoji="😘" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">😘</button>
+            <button type="button" data-emoji="😋" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">😋</button>
+            <button type="button" data-emoji="😜" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">😜</button>
+            <button type="button" data-emoji="🤪" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">🤪</button>
+            <button type="button" data-emoji="😝" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">😝</button>
+            <button type="button" data-emoji="🤗" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">🤗</button>
+            <button type="button" data-emoji="🤭" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">🤭</button>
+            <button type="button" data-emoji="🤫" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">🤫</button>
+            <button type="button" data-emoji="🤔" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">🤔</button>
+            <button type="button" data-emoji="🫡" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">🫡</button>
+            <button type="button" data-emoji="🤓" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">🤓</button>
+            <button type="button" data-emoji="😎" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">😎</button>
+            <button type="button" data-emoji="🥳" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">🥳</button>
+            <button type="button" data-emoji="🤯" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">🤯</button>
+            <button type="button" data-emoji="😮" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">😮</button>
+            <button type="button" data-emoji="😲" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">😲</button>
+            <button type="button" data-emoji="🥺" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">🥺</button>
+            <button type="button" data-emoji="😢" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">😢</button>
+            <button type="button" data-emoji="😭" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">😭</button>
+            <button type="button" data-emoji="😴" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">😴</button>
+            <!-- Manos, Corazones y Stickers de Clase -->
+            <button type="button" data-emoji="👍" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">👍</button>
+            <button type="button" data-emoji="👎" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">👎</button>
+            <button type="button" data-emoji="👏" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">👏</button>
+            <button type="button" data-emoji="🙌" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">🙌</button>
+            <button type="button" data-emoji="🙏" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">🙏</button>
+            <button type="button" data-emoji="🤝" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">🤝</button>
+            <button type="button" data-emoji="✌️" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">✌️</button>
+            <button type="button" data-emoji="👌" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">👌</button>
+            <button type="button" data-emoji="💪" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">💪</button>
+            <button type="button" data-emoji="👋" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">👋</button>
+            <button type="button" data-emoji="✋" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">✋</button>
+            <button type="button" data-emoji="🫶" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">🫶</button>
+            <button type="button" data-emoji="❤️" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">❤️</button>
+            <button type="button" data-emoji="🧡" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">🧡</button>
+            <button type="button" data-emoji="💛" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">💛</button>
+            <button type="button" data-emoji="💚" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">💚</button>
+            <button type="button" data-emoji="💙" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">💙</button>
+            <button type="button" data-emoji="💜" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">💜</button>
+            <button type="button" data-emoji="⭐" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 bg-white/10 transition">⭐</button>
+            <button type="button" data-emoji="🌟" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">🌟</button>
+            <button type="button" data-emoji="✨" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">✨</button>
+            <button type="button" data-emoji="🔥" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">🔥</button>
+            <button type="button" data-emoji="💯" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">💯</button>
+            <button type="button" data-emoji="✅" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">✅</button>
+            <button type="button" data-emoji="❌" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">❌</button>
+            <button type="button" data-emoji="❓" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">❓</button>
+            <button type="button" data-emoji="❗" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">❗</button>
+            <button type="button" data-emoji="💡" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">💡</button>
+            <button type="button" data-emoji="🎉" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">🎉</button>
+            <button type="button" data-emoji="🏆" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">🏆</button>
+            <button type="button" data-emoji="🚀" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">🚀</button>
+            <button type="button" data-emoji="🎯" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">🎯</button>
+            <button type="button" data-emoji="📌" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">📌</button>
+            <button type="button" data-emoji="💬" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">💬</button>
+            <button type="button" data-emoji="👀" class="wb-emoji-opt p-1 rounded-lg hover:bg-white/15 transition">👀</button>
           </div>
         </div>
 
@@ -301,9 +377,9 @@
           <p class="font-bold text-white text-xs mb-1">Atajos de la Pizarra Zoom</p>
           <p>🖱️ <b>Clic derecho + arrastrar:</b> Desplazar (Pan) el lienzo gigante</p>
           <p>🔍 <b>Rueda del mouse:</b> Zoom In / Out</p>
-          <p>↖️ <b>Puntero:</b> Arrastrar, redimensionar o editar cualquier texto, imagen, emoji o trazo</p>
+          <p>↖️ <b>Puntero + arrastrar en vacío:</b> Caja de selección múltiple (mover o borrar en grupo)</p>
           <p>✏️ <b>Doble clic en texto:</b> Editar texto en vivo</p>
-          <p>⌫ <b>Tecla Supr / Backspace:</b> Eliminar elemento seleccionado</p>
+          <p>⌫ <b>Tecla Supr / Backspace:</b> Eliminar elementos seleccionados</p>
         </div>
 
         <!-- Controles Inferiores Derechos: Zoom (- 100% + ?) -->
@@ -326,6 +402,254 @@
       </div>
       <!-- ==================== FIN PIZARRA COLABORATIVA ==================== -->
     </main>
+
+      <!-- Panel Acoplado de Chat Estilo Zoom (Derecha / Inferior Derecha, Colapsable, Redimensionable y Desacoplable a Flotante) -->
+      <aside id="zmChatDockSlot" class="relative w-[325px] h-full flex-shrink-0 flex flex-col border-l border-[#2c2e33] bg-[#1a1a1a]">
+        <!-- Tirador izquierdo para redimensionar el ancho del panel acoplado -->
+        <div id="zmChatDockResizeLeft" class="absolute left-0 top-0 bottom-0 w-1.5 cursor-ew-resize hover:bg-[#0e72ed]/60 z-40 transition-colors" title="Arrastra para ajustar el ancho del panel del chat"></div>
+        <div id="zmChatWindow" class="relative w-full h-full flex flex-col bg-[#1a1a1a] text-[#e4e6eb] select-none overflow-hidden">
+          <!-- Controladores de redimensionado en modo flotante (8 direcciones) -->
+          <div data-resize-dir="n" class="zm-float-resizer zm-resize-handle-n hidden"></div>
+          <div data-resize-dir="s" class="zm-float-resizer zm-resize-handle-s hidden"></div>
+          <div data-resize-dir="e" class="zm-float-resizer zm-resize-handle-e hidden"></div>
+          <div data-resize-dir="w" class="zm-float-resizer zm-resize-handle-w hidden"></div>
+          <div data-resize-dir="nw" class="zm-float-resizer zm-resize-handle-nw hidden"></div>
+          <div data-resize-dir="ne" class="zm-float-resizer zm-resize-handle-ne hidden"></div>
+          <div data-resize-dir="sw" class="zm-float-resizer zm-resize-handle-sw hidden"></div>
+          <div data-resize-dir="se" class="zm-float-resizer zm-resize-handle-se hidden flex items-end justify-end p-0.5 text-slate-500/70 pointer-events-auto" title="Arrastra para redimensionar">
+            <svg class="w-2.5 h-2.5" viewBox="0 0 10 10" fill="currentColor"><path d="M8 2v6H2M9 5v4H5"/></svg>
+          </div>
+          
+          <!-- Barra de Título Superior (Meeting chat) -->
+          <div id="zmChatTitleBar" class="bg-[#18191b] px-3 py-2 flex items-center justify-between border-b border-[#2a2c30] flex-shrink-0">
+            <div class="flex items-center gap-2">
+              <span class="bg-[#0e72ed] text-white text-[9px] font-black px-1.5 py-0.5 rounded tracking-tight">zm</span>
+              <span class="text-xs font-semibold text-slate-200">Meeting chat</span>
+              <span id="zmChatUnreadPill" class="hidden bg-rose-500 text-white text-[9px] font-bold px-1.5 py-0.2 rounded-full">0</span>
+            </div>
+            <div class="flex items-center gap-1">
+              <button id="zmChatMinimizeBtn" type="button" class="w-6 h-6 rounded hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center transition" title="Minimizar / Colapsar chat">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M5 12h14"/></svg>
+              </button>
+              <button id="zmChatFloatToggleBtn" type="button" class="w-6 h-6 rounded hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center transition" title="Desacoplar como ventana flotante / Acoplar al panel fijo">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path stroke-linecap="round" d="M9 4v16"/></svg>
+              </button>
+              <button id="zmChatCloseBtn" type="button" class="w-6 h-6 rounded hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 flex items-center justify-center transition" title="Ocultar chat">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Cuerpo del Chat -->
+          <div id="zmChatBody" class="flex-1 flex flex-col overflow-hidden">
+            
+            <!-- Sub-Header con nombre de sesión -->
+            <div class="px-3 py-1.5 border-b border-[#2a2c30] flex items-center justify-between bg-[#1a1a1a] flex-shrink-0">
+              <div class="w-4"></div>
+              <div class="flex items-center gap-1.5 text-[#3b82f6] font-bold text-xs truncate">
+                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
+                <span id="zmChatSessionName" class="truncate">ELT Live Session</span>
+              </div>
+              <button id="zmChatClearHistoryBtn" type="button" class="text-slate-400 hover:text-white text-xs px-1" title="Opciones del chat">•••</button>
+            </div>
+
+            <!-- Selector de Destinatario (Everyone + New Chat / Privados) -->
+            <div class="px-3 py-2 border-b border-[#2a2c30] flex items-center gap-2.5 overflow-x-auto bg-[#1a1a1a] flex-shrink-0 relative">
+              <button type="button" data-chat-target="EVERYONE" class="zm-target-tab flex flex-col items-center gap-1 flex-shrink-0 group">
+                <div class="zm-target-box w-10 h-10 rounded-xl border-2 border-[#0e72ed] bg-[#1c2638] flex items-center justify-center text-[#3b82f6] transition">
+                  <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z"/></svg>
+                </div>
+                <span class="zm-target-label text-[10px] font-bold text-[#3b82f6]">Everyone</span>
+              </button>
+
+              <div class="h-8 w-[1px] bg-[#2e3035] flex-shrink-0"></div>
+
+              <div id="zmPrivateTabsContainer" class="flex items-center gap-2"></div>
+
+              <button id="zmNewPrivateChatBtn" type="button" class="flex flex-col items-center gap-1 flex-shrink-0 group" title="Iniciar chat privado con un participante">
+                <div class="w-10 h-10 rounded-xl border border-[#383b42] bg-[#22252a] group-hover:border-[#0e72ed] flex items-center justify-center text-[#3b82f6] transition">
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14m-7-7h14"/></svg>
+                </div>
+                <span class="text-[10px] text-slate-400 group-hover:text-slate-200">New chat</span>
+              </button>
+            </div>
+
+            <!-- Menú Desplegable de Participantes para Chat Privado -->
+            <div id="zmParticipantsDropdown" class="hidden bg-[#22252a] border-b border-[#34373e] px-3 py-2 text-xs">
+              <div class="flex items-center justify-between text-[10px] text-slate-400 font-bold mb-1.5">
+                <span>Enviar mensaje directo a:</span>
+                <button type="button" onclick="document.getElementById('zmParticipantsDropdown').classList.add('hidden')" class="hover:text-white">✕</button>
+              </div>
+              <div id="zmParticipantsList" class="space-y-1 max-h-28 overflow-y-auto"></div>
+            </div>
+
+            <!-- Lista de Mensajes -->
+            <div id="zmChatMessages" class="flex-1 overflow-y-auto p-3 space-y-3 bg-[#1a1a1a] select-text">
+              <div class="flex justify-center">
+                <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#232529] border border-[#32353b] text-[10px] text-slate-400">
+                  <span>📹</span>
+                  <span>Meeting chat ready • Ctrl+V para pegar imágenes</span>
+                </span>
+              </div>
+            </div>
+
+            <!-- Franja Informativa de Privacidad -->
+            <div class="px-3 py-1 bg-[#202226] border-t border-[#2c2e33] flex items-center justify-center gap-1.5 text-[10px] text-slate-400 flex-shrink-0">
+              <svg class="w-3.5 h-3.5 text-[#3b82f6]" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"/></svg>
+              <span id="zmWhoCanSeeText">Who can see your messages? Everyone</span>
+            </div>
+
+            <!-- Vista Previa de Imagen Pegada (Ctrl+V) o Adjunta -->
+            <div id="zmImageAttachmentPreview" class="hidden px-3 py-2 bg-[#23262b] border-t border-[#32353b] flex items-center justify-between gap-2 flex-shrink-0">
+              <div class="flex items-center gap-2 min-w-0">
+                <img id="zmAttachmentThumb" src="" alt="Preview" class="w-11 h-11 rounded-lg object-cover border border-white/15 bg-black">
+                <div class="min-w-0">
+                  <p class="text-[11px] font-semibold text-emerald-400 truncate">Imagen lista para enviar</p>
+                  <p class="text-[9px] text-slate-400">Presiona Enter o Enviar</p>
+                </div>
+              </div>
+              <button id="zmRemoveAttachmentBtn" type="button" class="w-6 h-6 rounded-full bg-rose-500/20 hover:bg-rose-500 text-rose-300 hover:text-white text-xs flex items-center justify-center transition" title="Quitar imagen">✕</button>
+            </div>
+
+            <!-- Cuadro de Escritura (Soporta Ctrl+V y Clic Derecho) -->
+            <div class="p-2.5 bg-[#1a1a1a] border-t border-[#2c2e33] flex-shrink-0 relative">
+              <div id="zmChatEmojiPicker" class="hidden absolute bottom-24 left-3 z-50 bg-[#24272c] border border-[#383b42] rounded-xl shadow-2xl p-2 w-64 max-h-52 overflow-y-auto grid grid-cols-7 gap-1 text-base">
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">😀</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">😃</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">😄</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">😁</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">😆</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">😅</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">🤣</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">😂</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">🙂</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">🙃</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">😉</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">😊</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">😇</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">🥰</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">😍</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">🤩</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">😘</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">😋</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">😜</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">🤪</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">😝</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">🤗</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">🤭</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">🤫</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">🤔</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">🫡</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">🤓</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">😎</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">🥳</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">🤯</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">😮</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">😲</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">🥺</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">😢</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">😭</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">😴</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">👍</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">👎</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">👏</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">🙌</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">🙏</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">🤝</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">✌️</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">👌</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">💪</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">👋</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">✋</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">🫶</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">❤️</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">🧡</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">💛</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">💚</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">💙</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">💜</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">⭐</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">🌟</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">✨</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">🔥</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">💯</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">🎉</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">✅</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">❌</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">💡</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">❓</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">❗</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">🏆</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">🚀</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">🎯</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">💬</button>
+                <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">👀</button>
+              </div>
+
+              <textarea id="zmChatInput" rows="2" placeholder="Message everyone (Ctrl+V para pegar imagen)" class="w-full bg-transparent text-xs text-slate-100 placeholder-slate-500 resize-none focus:outline-none select-text"></textarea>
+              
+              <div class="flex items-center justify-between mt-1.5 pt-1 border-t border-[#26282c]">
+                <div class="flex items-center gap-2 text-slate-400">
+                  <button id="zmChatFormatBtn" type="button" class="hover:text-white font-serif font-bold text-xs px-1 py-0.5 rounded hover:bg-white/10" title="Formato de texto">T</button>
+                  <button id="zmChatEmojiBtn" type="button" class="hover:text-white p-1 rounded hover:bg-white/10" title="Insertar emoji">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" d="M8 14s1.5 2 4 2 4-2 4-2"/><circle cx="9" cy="9.5" r="1" fill="currentColor"/><circle cx="15" cy="9.5" r="1" fill="currentColor"/></svg>
+                  </button>
+                  <button id="zmChatImageBtn" type="button" class="hover:text-white p-1 rounded hover:bg-white/10" title="Adjuntar imagen (o usa Ctrl+V)">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+                  </button>
+                  <input type="file" id="zmChatFileInput" accept="image/*" class="hidden">
+                </div>
+
+                <button id="zmChatSendBtn" type="button" class="bg-[#0e72ed] hover:bg-[#0b5ed7] text-white text-xs font-bold px-3 py-1 rounded-lg flex items-center gap-1 transition shadow-sm" title="Enviar mensaje (Enter)">
+                  <span>Send</span>
+                  <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M12 5l7 7-7 7"/></svg>
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- Modal Lightbox para Ampliar Miniaturas de Imágenes del Chat -->
+  <div id="zmLightboxModal" class="hidden fixed inset-0 z-[90] bg-black/85 backdrop-blur-sm flex flex-col items-center justify-center p-6">
+    <div class="flex items-center gap-3 mb-3">
+      <a id="zmLightboxDownloadBtn" href="#" download="chat-image.jpg" class="bg-[#0e72ed] hover:bg-[#0b5ed7] text-white text-xs font-bold px-3.5 py-1.5 rounded-full flex items-center gap-1.5 shadow-lg transition">
+        <span>💾 Guardar / Descargar</span>
+      </a>
+      <button id="zmLightboxCloseBtn" type="button" class="bg-[#f43f5e] hover:bg-[#e11d48] text-white text-xs font-bold px-3.5 py-1.5 rounded-full shadow-lg transition">
+        ✕ Cerrar
+      </button>
+    </div>
+    <img id="zmLightboxImg" src="" alt="Vista ampliada" class="max-w-[90vw] max-h-[82vh] rounded-xl shadow-2xl border border-white/15 object-contain">
+  </div>
+
+  <!-- Menú Contextual Estándar Estilo Zoom (Clic Derecho en Chat y Pizarra) -->
+  <div id="zmContextMenu" class="hidden fixed z-[100] bg-[#26282c] border border-[#3e4149] rounded-xl shadow-2xl py-1.5 text-xs text-slate-200 min-w-[215px] select-none">
+    <button id="ctxCopyBtn" type="button" class="w-full px-3.5 py-1.5 hover:bg-[#0e72ed] hover:text-white flex items-center justify-between transition">
+      <span>Copy</span>
+      <span class="text-[10px] text-slate-400">Ctrl+C</span>
+    </button>
+    <button id="ctxPasteBtn" type="button" class="w-full px-3.5 py-1.5 hover:bg-[#0e72ed] hover:text-white flex items-center justify-between transition">
+      <span>Paste</span>
+      <span class="text-[10px] text-slate-400">Ctrl+V</span>
+    </button>
+    <div class="h-[1px] bg-white/10 my-1"></div>
+    <button id="ctxSaveBtn" type="button" class="w-full px-3.5 py-1.5 hover:bg-[#0e72ed] hover:text-white flex items-center justify-between transition">
+      <span>Save / Download</span>
+      <span class="text-[10px] text-slate-400">💾</span>
+    </button>
+    <button id="ctxSelectAllBtn" type="button" class="w-full px-3.5 py-1.5 hover:bg-[#0e72ed] hover:text-white flex items-center justify-between transition">
+      <span>Select all</span>
+      <span class="text-[10px] text-slate-400">Ctrl+A</span>
+    </button>
+    <div class="h-[1px] bg-white/10 my-1"></div>
+    <button id="ctxDeleteBtn" type="button" class="w-full px-3.5 py-1.5 hover:bg-rose-600 hover:text-white text-rose-400 flex items-center justify-between transition">
+      <span>Delete</span>
+      <span class="text-[10px] opacity-75">Supr</span>
+    </button>
   </div>
 
   <script>
@@ -1073,6 +1397,22 @@
         config: { presence: { key: myName } }
       });
 
+      myChannel.on('presence', { event: 'sync' }, () => {
+        const state = myChannel.presenceState();
+        const peers = ['Profesor (Host)'];
+        Object.keys(state).forEach(key => {
+          if (key !== 'host') {
+            state[key].forEach(u => {
+              if (u && u.name && u.name !== myName && !peers.includes(u.name)) {
+                peers.push(u.name);
+              }
+            });
+          }
+        });
+        window.__studentKnownPeers = peers;
+        if (typeof renderChatParticipantsDropdown === 'function') renderChatParticipantsDropdown();
+      });
+
       myChannel.on('broadcast', { event: 'LOAD_LESSON' }, ({ payload }) => {
         loadLessonIntoStudent(payload.lessonId, payload.html, payload.targetSlide);
       });
@@ -1082,6 +1422,7 @@
       });
 
       setupWhiteboardChannelListeners(myChannel);
+      setupChatChannelListeners(myChannel);
 
       myChannel.subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
@@ -1119,7 +1460,18 @@
     let wbHistory = [];
     let wbRedoStack = [];
     let wbSelectedId = null;
+    let wbSelectedIds = []; // Selección múltiple por caja (Box Selection)
     let wbEditingTextId = null;
+    let wbOpenReactItemId = null; // Popover de reacción emoji sobre un elemento de pizarra
+
+    const EXTENDED_REACTION_EMOJIS = [
+      '😀','😃','😄','😁','😆','😅','🤣','😂','🙂','🙃','😉','😊',
+      '😇','🥰','😍','🤩','😘','😋','😜','🤪','😝','🤗','🤭','🤫',
+      '🤔','🫡','🤓','😎','🥳','🤯','😮','😲','🥺','😢','😭','😴',
+      '👍','👎','👏','🙌','🙏','🤝','✌️','👌','💪','👋','✋','🫶',
+      '❤️','🧡','💛','💚','💙','💜','⭐','🌟','✨','🔥','💯','🎉',
+      '✅','❌','💡','❓','❗','🏆','🚀','🎯','📌','💬','👀'
+    ];
 
     let wbIsPanning = false;
     let wbPanStartX = 0;
@@ -1130,6 +1482,10 @@
     let wbDragItem = null;
     let wbDragStartWorld = { x: 0, y: 0 };
     let wbDragOrigState = null;
+    let wbDragGroupOrigStates = null; // Mapa id -> estado original para mover selección múltiple
+    let wbIsBoxSelecting = false;
+    let wbBoxSelectStart = { x: 0, y: 0 };
+    let wbBoxSelectCurrent = { x: 0, y: 0 };
     let wbIsResizingItem = false;
     let wbIsErasing = false;
     let wbPendingImageDataUrl = null;
@@ -1219,13 +1575,82 @@
       if (tool !== 'emoji') wbEmojiPopover.classList.add('hidden');
       if (tool !== 'select') {
         wbSelectedId = null;
+        wbSelectedIds = [];
         wbEditingTextId = null;
+        wbOpenReactItemId = null;
         renderWhiteboardAll();
       }
       if (tool === 'pan') wbViewport.style.cursor = 'grab';
       else if (tool === 'text') wbViewport.style.cursor = 'text';
       else if (tool === 'select') wbViewport.style.cursor = 'default';
       else wbViewport.style.cursor = 'crosshair';
+    }
+
+    function isWbItemSelected(id) {
+      return wbSelectedId === id || wbSelectedIds.includes(id);
+    }
+
+    function setSingleWbSelection(id) {
+      wbSelectedId = id;
+      wbSelectedIds = id ? [id] : [];
+    }
+
+    function getWbItemBounds(item) {
+      if (item.type === 'stroke') {
+        return getStrokeBounds(item);
+      }
+      if (item.type === 'image') {
+        return { x: item.x || 0, y: item.y || 0, w: item.width || 240, h: item.height || 180 };
+      }
+      if (item.type === 'emoji') {
+        const fs = item.fontSize || 48;
+        return { x: item.x || 0, y: item.y || 0, w: fs + 12, h: fs + 12 };
+      }
+      const el = wbObjectsLayer.querySelector(`[data-wb-id="${item.id}"]`);
+      if (el && el.offsetWidth > 0 && el.offsetHeight > 0) {
+        return { x: item.x || 0, y: item.y || 0, w: el.offsetWidth, h: el.offsetHeight };
+      }
+      const fs = item.fontSize || 22;
+      const lines = (item.text || 'Texto').split('\n');
+      const maxLen = Math.max(...lines.map(l => l.length), 3);
+      return {
+        x: item.x || 0,
+        y: item.y || 0,
+        w: Math.max(60, maxLen * fs * 0.58),
+        h: Math.max(28, lines.length * fs * 1.3)
+      };
+    }
+
+    function doesWbItemIntersectBox(item, box) {
+      if (item.type === 'stroke' && item.points && item.points.length > 0) {
+        for (let i = 0; i < item.points.length; i++) {
+          const p = item.points[i];
+          if (p.x >= box.x && p.x <= box.x + box.w && p.y >= box.y && p.y <= box.y + box.h) {
+            return true;
+          }
+        }
+      }
+      const b = getWbItemBounds(item);
+      return !(
+        b.x + b.w < box.x ||
+        b.x > box.x + box.w ||
+        b.y + b.h < box.y ||
+        b.y > box.y + box.h
+      );
+    }
+
+    function prepareGroupDragStates() {
+      wbDragGroupOrigStates = {};
+      const idsToMove = wbSelectedIds.length > 0 ? wbSelectedIds : (wbSelectedId ? [wbSelectedId] : []);
+      idsToMove.forEach(id => {
+        const it = wbItems.find(x => x.id === id);
+        if (!it || it.isLocked) return;
+        if (it.type === 'stroke' && it.points) {
+          wbDragGroupOrigStates[id] = { points: it.points.map(p => ({ x: p.x, y: p.y })) };
+        } else {
+          wbDragGroupOrigStates[id] = { x: it.x || 0, y: it.y || 0 };
+        }
+      });
     }
 
     function getStrokeBounds(item) {
@@ -1286,7 +1711,7 @@
         }
         wbCtx.stroke();
 
-        if (wbSelectedId === item.id) {
+        if (isWbItemSelected(item.id)) {
           const b = getStrokeBounds(item);
           wbCtx.globalAlpha = 1;
           wbCtx.strokeStyle = '#0e72ed';
@@ -1296,6 +1721,158 @@
         }
         wbCtx.restore();
       }
+
+      // Dibujar rectángulo de Selección por Caja (Marquee Box Selection)
+      if (wbIsBoxSelecting) {
+        const bx = Math.min(wbBoxSelectStart.x, wbBoxSelectCurrent.x);
+        const by = Math.min(wbBoxSelectStart.y, wbBoxSelectCurrent.y);
+        const bw = Math.abs(wbBoxSelectCurrent.x - wbBoxSelectStart.x);
+        const bh = Math.abs(wbBoxSelectCurrent.y - wbBoxSelectStart.y);
+        wbCtx.save();
+        wbCtx.fillStyle = 'rgba(14, 114, 237, 0.12)';
+        wbCtx.strokeStyle = '#0e72ed';
+        wbCtx.lineWidth = Math.max(1, 1.5 / wbZoom);
+        wbCtx.setLineDash([6, 4]);
+        wbCtx.fillRect(bx, by, bw, bh);
+        wbCtx.strokeRect(bx, by, bw, bh);
+        wbCtx.restore();
+      }
+    }
+
+    function toggleWbItemReaction(itemId, emoji) {
+      const item = wbItems.find(x => x.id === itemId);
+      if (!item) return;
+      if (!item.reactions) item.reactions = {};
+      if (!Array.isArray(item.reactions[emoji])) item.reactions[emoji] = [];
+      const sender = typeof getMySenderName === 'function' ? getMySenderName() : (myName || 'Estudiante');
+      const idx = item.reactions[emoji].indexOf(sender);
+      if (idx >= 0) item.reactions[emoji].splice(idx, 1);
+      else item.reactions[emoji].push(sender);
+      wbOpenReactItemId = null;
+      renderWhiteboardAll();
+      broadcastWbItemUpsert(item);
+    }
+
+    function toggleWbItemLock(itemId) {
+      const item = wbItems.find(x => x.id === itemId);
+      if (!item) return;
+      pushWbHistory();
+      item.isLocked = !item.isLocked;
+      if (item.isLocked && wbEditingTextId === item.id) {
+        wbEditingTextId = null;
+      }
+      renderWhiteboardAll();
+      broadcastWbItemUpsert(item);
+    }
+
+    function appendWbReactionUI(wrapper, item, isSelected) {
+      const reactionsObj = item.reactions || {};
+      const activeEmojis = Object.keys(reactionsObj).filter(em => Array.isArray(reactionsObj[em]) && reactionsObj[em].length > 0);
+      if (activeEmojis.length > 0) {
+        const pillsBar = document.createElement('div');
+        pillsBar.style.position = 'absolute';
+        pillsBar.style.left = '0px';
+        pillsBar.style.top = 'calc(100% + 4px)';
+        pillsBar.style.zIndex = '30';
+        pillsBar.className = 'flex flex-wrap gap-1 pointer-events-auto whitespace-nowrap';
+        const sender = typeof getMySenderName === 'function' ? getMySenderName() : (myName || 'Estudiante');
+        activeEmojis.forEach(em => {
+          const users = reactionsObj[em];
+          const iReacted = users.includes(sender);
+          const pill = document.createElement('button');
+          pill.type = 'button';
+          pill.title = users.join(', ');
+          pill.className = `inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs shadow-sm border transition ${iReacted ? 'bg-blue-600 text-white border-blue-700' : 'bg-white/95 text-slate-800 border-slate-300 hover:border-blue-500'}`;
+          pill.innerHTML = `<span>${em}</span><span class="text-[10px] font-bold">${users.length}</span>`;
+          pill.addEventListener('mousedown', (ev) => {
+            ev.stopPropagation();
+            pushWbHistory();
+            toggleWbItemReaction(item.id, em);
+          });
+          pillsBar.appendChild(pill);
+        });
+        wrapper.appendChild(pillsBar);
+      }
+
+      if (isSelected && wbOpenReactItemId === item.id) {
+        const picker = document.createElement('div');
+        picker.className = 'absolute -top-48 right-0 z-50 bg-[#1e2124] border border-white/20 rounded-2xl shadow-2xl p-2 w-60 max-h-40 overflow-y-auto grid grid-cols-7 gap-1 text-base pointer-events-auto';
+        picker.addEventListener('mousedown', (ev) => ev.stopPropagation());
+        EXTENDED_REACTION_EMOJIS.forEach(em => {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'p-1 hover:bg-white/15 rounded transition text-center leading-none';
+          b.textContent = em;
+          b.addEventListener('mousedown', (ev) => {
+            ev.stopPropagation();
+            pushWbHistory();
+            toggleWbItemReaction(item.id, em);
+          });
+          picker.appendChild(b);
+        });
+        wrapper.appendChild(picker);
+      }
+    }
+
+    function appendWbSelectionToolbar(wrapper, item) {
+      const isLocked = !!item.isLocked;
+      const toolbar = document.createElement('div');
+      toolbar.className = 'absolute -top-7 right-0 flex items-center gap-1 z-30 pointer-events-auto';
+
+      // 1. Botón de Reacción Emoji
+      const reactBtn = document.createElement('button');
+      reactBtn.type = 'button';
+      reactBtn.innerHTML = '😊+';
+      reactBtn.title = 'Reaccionar con carita o emoji a este elemento';
+      reactBtn.className = 'px-1.5 h-5 rounded-full bg-[#1e2124] hover:bg-[#0e72ed] text-white text-[10px] font-bold flex items-center justify-center shadow-md border border-white/20 transition';
+      reactBtn.addEventListener('mousedown', (ev) => {
+        ev.stopPropagation();
+        wbOpenReactItemId = (wbOpenReactItemId === item.id) ? null : item.id;
+        renderWbObjects();
+      });
+      toolbar.appendChild(reactBtn);
+
+      // 2. Botón de Candado (Lock / Unlock)
+      const lockBtn = document.createElement('button');
+      lockBtn.type = 'button';
+      lockBtn.innerHTML = `<i class="fa-solid ${isLocked ? 'fa-lock' : 'fa-lock-open'} text-[9px] mr-0.5"></i><span>${isLocked ? '🔒' : '🔓'}</span>`;
+      lockBtn.title = isLocked ? 'Elemento bloqueado (Clic para desbloquear)' : 'Bloquear elemento (impide mover, redimensionar, editar o borrar)';
+      lockBtn.className = `px-1.5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center shadow-md border transition ${
+        isLocked
+          ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 border-amber-300'
+          : 'bg-[#1e2124] hover:bg-slate-700 text-white border-white/20'
+      }`;
+      lockBtn.addEventListener('mousedown', (ev) => {
+        ev.stopPropagation();
+        toggleWbItemLock(item.id);
+      });
+      toolbar.appendChild(lockBtn);
+
+      // 3. Botón de Eliminar
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.innerHTML = '✕';
+      delBtn.title = isLocked
+        ? 'Elemento bloqueado — Desbloquéalo con el candado para eliminarlo'
+        : (wbSelectedIds.length > 1 ? `Eliminar ${wbSelectedIds.length} elementos seleccionados` : 'Eliminar elemento');
+      delBtn.className = `w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center shadow-md transition ${
+        isLocked
+          ? 'bg-slate-600/60 text-slate-300 cursor-not-allowed opacity-50'
+          : 'bg-rose-500 hover:bg-rose-600 text-white'
+      }`;
+      delBtn.addEventListener('mousedown', (ev) => {
+        ev.stopPropagation();
+        if (isLocked) return;
+        pushWbHistory();
+        if (wbSelectedIds.length > 1) {
+          deleteSelectedWbItems(true);
+        } else {
+          deleteWbItemById(item.id, true);
+        }
+      });
+      toolbar.appendChild(delBtn);
+
+      wrapper.appendChild(toolbar);
     }
 
     function renderWbObjects() {
@@ -1306,10 +1883,31 @@
 
       for (let i = 0; i < wbItems.length; i++) {
         const item = wbItems[i];
-        if (item.type === 'stroke') continue;
+        const isSelected = isWbItemSelected(item.id);
+        const isLocked = !!item.isLocked;
 
-        const isSelected = wbSelectedId === item.id;
-        const isEditing = wbEditingTextId === item.id;
+        if (item.type === 'stroke') {
+          const hasReactions = item.reactions && Object.keys(item.reactions).some(k => Array.isArray(item.reactions[k]) && item.reactions[k].length > 0);
+          if (!isSelected && !hasReactions) continue;
+          const b = getStrokeBounds(item);
+          const strokeUi = document.createElement('div');
+          strokeUi.dataset.wbId = item.id;
+          strokeUi.style.position = 'absolute';
+          strokeUi.style.left = `${b.x}px`;
+          strokeUi.style.top = `${b.y}px`;
+          strokeUi.style.width = `${Math.max(24, b.w)}px`;
+          strokeUi.style.height = `${Math.max(24, b.h)}px`;
+          strokeUi.style.pointerEvents = 'none';
+          strokeUi.style.zIndex = isSelected ? '30' : '18';
+          if (isSelected) {
+            appendWbSelectionToolbar(strokeUi, item);
+          }
+          appendWbReactionUI(strokeUi, item, isSelected);
+          wbObjectsLayer.appendChild(strokeUi);
+          continue;
+        }
+
+        const isEditing = !isLocked && (wbEditingTextId === item.id);
 
         const wrapper = document.createElement('div');
         wrapper.dataset.wbId = item.id;
@@ -1318,7 +1916,23 @@
         wrapper.style.top = `${item.y}px`;
         wrapper.style.pointerEvents = 'auto';
         wrapper.style.userSelect = isEditing ? 'text' : 'none';
-        wrapper.className = `group transition-shadow ${isSelected ? 'wb-item-selected rounded-lg bg-blue-500/5' : 'hover:outline hover:outline-1 hover:outline-blue-400/60 rounded-lg'}`;
+
+        if (item.type === 'image') {
+          const imgW = item.width || 240;
+          const imgH = item.height || 180;
+          wrapper.style.width = `${imgW}px`;
+          wrapper.style.height = `${imgH}px`;
+          wrapper.style.padding = '0px';
+          wrapper.style.margin = '0px';
+          wrapper.style.lineHeight = '0';
+          wrapper.style.fontSize = '0';
+          wrapper.style.boxSizing = 'border-box';
+          wrapper.style.zIndex = isSelected ? '15' : '10';
+          wrapper.className = `group transition-shadow ${isSelected ? 'wb-item-selected' : 'hover:outline hover:outline-1 hover:outline-blue-400/60'} ${isLocked ? 'wb-item-locked' : ''}`;
+        } else {
+          wrapper.style.zIndex = isEditing ? '45' : (isSelected ? '35' : '25');
+          wrapper.className = `group transition-shadow ${isSelected ? 'wb-item-selected rounded-lg bg-blue-500/5' : 'hover:outline hover:outline-1 hover:outline-blue-400/60 rounded-lg'} ${isLocked ? 'wb-item-locked' : ''}`;
+        }
 
         if (item.type === 'text') {
           const textDiv = document.createElement('div');
@@ -1327,14 +1941,15 @@
           textDiv.style.fontSize = `${item.fontSize || 22}px`;
           textDiv.style.fontWeight = '600';
           textDiv.style.lineHeight = '1.25';
-          textDiv.style.cursor = isEditing ? 'text' : 'move';
+          textDiv.style.cursor = isEditing ? 'text' : (wbTool === 'text' ? 'text' : (isLocked ? 'default' : 'move'));
           textDiv.contentEditable = isEditing ? 'true' : 'false';
           textDiv.innerText = (isEditing && activeTextVal !== null) ? activeTextVal : (item.text || '');
 
           textDiv.addEventListener('dblclick', (e) => {
             e.stopPropagation();
+            if (item.isLocked) return;
             pushWbHistory();
-            wbSelectedId = item.id;
+            setSingleWbSelection(item.id);
             wbEditingTextId = item.id;
             renderWhiteboardAll();
             setTimeout(() => {
@@ -1344,6 +1959,7 @@
           });
 
           textDiv.addEventListener('input', () => {
+            if (item.isLocked) return;
             item.text = textDiv.innerText;
             broadcastWbItemUpsert(item);
             renderWbMinimap();
@@ -1360,27 +1976,48 @@
           const emojiDiv = document.createElement('div');
           emojiDiv.style.fontSize = `${item.fontSize || 48}px`;
           emojiDiv.style.lineHeight = '1';
-          emojiDiv.style.cursor = 'move';
+          emojiDiv.style.cursor = wbTool === 'text' ? 'text' : (isLocked ? 'default' : 'move');
           emojiDiv.className = 'p-1 select-none';
           emojiDiv.textContent = item.text || '⭐';
           wrapper.appendChild(emojiDiv);
         } else if (item.type === 'image') {
           const img = document.createElement('img');
           img.src = item.src;
-          img.style.width = `${item.width || 240}px`;
-          img.style.height = `${item.height || 180}px`;
-          img.style.objectFit = 'contain';
-          img.style.cursor = 'move';
+          img.style.width = '100%';
+          img.style.height = '100%';
+          img.style.objectFit = 'fill';
+          img.style.display = 'block';
+          img.style.margin = '0px';
+          img.style.padding = '0px';
+          img.style.cursor = wbTool === 'text' ? 'text' : (isLocked ? 'default' : 'move');
           img.draggable = false;
-          img.className = 'rounded-md block select-none pointer-events-none';
+          img.className = 'block select-none pointer-events-none';
+          img.onload = () => {
+            if (!item._aspectCorrected && img.naturalWidth > 0 && img.naturalHeight > 0) {
+              const expectedH = Math.max(20, Math.round((item.width || 240) * (img.naturalHeight / img.naturalWidth)));
+              item._aspectCorrected = true;
+              if (Math.abs((item.height || 180) - expectedH) > 2) {
+                item.height = expectedH;
+                wrapper.style.height = `${expectedH}px`;
+              }
+            }
+          };
           wrapper.appendChild(img);
         }
 
         wrapper.addEventListener('mousedown', (e) => {
           if (e.button === 2) return;
+
+          // Si la herramienta activa es Texto ('text'), Lápiz, Resaltador, Emoji o hay imagen pendiente,
+          // NO capturar el clic sobre la imagen/elemento para que el lienzo cree el texto/trazo encima con z-index superior
+          if (wbEditingTextId !== item.id && (wbTool === 'text' || wbTool === 'pen' || wbTool === 'highlighter' || wbTool === 'emoji' || wbPendingImageDataUrl)) {
+            return;
+          }
+
           e.stopPropagation();
 
           if (wbTool === 'eraser') {
+            if (item.isLocked) return;
             pushWbHistory();
             deleteWbItemById(item.id, true);
             return;
@@ -1388,54 +2025,64 @@
 
           if (wbEditingTextId === item.id) return;
 
-          if (wbSelectedId !== item.id) {
-            wbSelectedId = item.id;
+          if (e.shiftKey) {
+            if (wbSelectedIds.includes(item.id)) {
+              wbSelectedIds = wbSelectedIds.filter(id => id !== item.id);
+              wbSelectedId = wbSelectedIds[0] || null;
+            } else {
+              wbSelectedIds.push(item.id);
+              wbSelectedId = item.id;
+            }
             wbEditingTextId = null;
             renderWhiteboardAll();
+          } else if (!isWbItemSelected(item.id)) {
+            setSingleWbSelection(item.id);
+            wbEditingTextId = null;
+            wbOpenReactItemId = null;
+            renderWhiteboardAll();
           }
+
+          // Si el elemento está bloqueado con candado, permitir seleccionarlo para ver el botón de desbloqueo, pero NO arrastrarlo
+          if (item.isLocked) return;
 
           pushWbHistory();
           wbIsDraggingItem = true;
           wbDragItem = item;
           wbDragStartWorld = screenToWorld(e.clientX, e.clientY);
           wbDragOrigState = { x: item.x, y: item.y };
+          prepareGroupDragStates();
         });
 
         wrapper.addEventListener('mouseenter', () => {
-          if (wbIsErasing && wbTool === 'eraser') {
+          if (wbIsErasing && wbTool === 'eraser' && !item.isLocked) {
             deleteWbItemById(item.id, true);
           }
         });
 
-        if (isSelected) {
-          const delBtn = document.createElement('button');
-          delBtn.type = 'button';
-          delBtn.innerHTML = '✕';
-          delBtn.title = 'Eliminar elemento';
-          delBtn.className = 'absolute -top-3 -right-3 w-5 h-5 rounded-full bg-rose-500 hover:bg-rose-600 text-white text-[10px] font-bold flex items-center justify-center shadow-md z-20';
-          delBtn.addEventListener('mousedown', (e) => {
-            e.stopPropagation();
-            pushWbHistory();
-            deleteWbItemById(item.id, true);
-          });
-          wrapper.appendChild(delBtn);
+        appendWbReactionUI(wrapper, item, isSelected);
 
-          const resizeHandle = document.createElement('div');
-          resizeHandle.title = 'Arrastrar para redimensionar';
-          resizeHandle.className = 'absolute -bottom-2.5 -right-2.5 w-4 h-4 rounded-full bg-[#0e72ed] border-2 border-white cursor-nwse-resize shadow-md z-20';
-          resizeHandle.addEventListener('mousedown', (e) => {
-            e.stopPropagation();
-            pushWbHistory();
-            wbIsResizingItem = true;
-            wbDragItem = item;
-            wbDragStartWorld = screenToWorld(e.clientX, e.clientY);
-            wbDragOrigState = {
-              width: item.width || 240,
-              height: item.height || 180,
-              fontSize: item.fontSize || (item.type === 'emoji' ? 48 : 22)
-            };
-          });
-          wrapper.appendChild(resizeHandle);
+        if (isSelected) {
+          appendWbSelectionToolbar(wrapper, item);
+
+          if (!isLocked) {
+            const resizeHandle = document.createElement('div');
+            resizeHandle.title = 'Arrastrar para redimensionar';
+            resizeHandle.className = 'absolute -bottom-2 -right-2 w-4 h-4 rounded-full bg-[#0e72ed] border-2 border-white cursor-nwse-resize shadow-md z-20 pointer-events-auto';
+            resizeHandle.addEventListener('mousedown', (e) => {
+              e.stopPropagation();
+              if (item.isLocked) return;
+              pushWbHistory();
+              wbIsResizingItem = true;
+              wbDragItem = item;
+              wbDragStartWorld = screenToWorld(e.clientX, e.clientY);
+              wbDragOrigState = {
+                width: item.width || 240,
+                height: item.height || 180,
+                fontSize: item.fontSize || (item.type === 'emoji' ? 48 : 22)
+              };
+            });
+            wrapper.appendChild(resizeHandle);
+          }
         }
 
         wbObjectsLayer.appendChild(wrapper);
@@ -1498,15 +2145,47 @@
     }
 
     function deleteWbItemById(id, shouldBroadcast = false) {
+      if (shouldBroadcast) {
+        const target = wbItems.find(x => x.id === id);
+        if (target && target.isLocked) return;
+      }
       wbItems = wbItems.filter(x => x.id !== id);
       if (wbSelectedId === id) wbSelectedId = null;
+      wbSelectedIds = wbSelectedIds.filter(x => x !== id);
+      if (!wbSelectedId && wbSelectedIds.length > 0) wbSelectedId = wbSelectedIds[0];
       if (wbEditingTextId === id) wbEditingTextId = null;
+      if (wbOpenReactItemId === id) wbOpenReactItemId = null;
       renderWhiteboardAll();
       if (shouldBroadcast && myChannel) {
         myChannel.send({
           type: 'broadcast',
           event: 'WB_ITEM_DELETE',
           payload: { id: id, senderId: wbClientId }
+        });
+      }
+    }
+
+    function deleteSelectedWbItems(shouldBroadcast = true) {
+      const rawToDelete = wbSelectedIds.length > 0 ? [...wbSelectedIds] : (wbSelectedId ? [wbSelectedId] : []);
+      const idsToDelete = rawToDelete.filter(id => {
+        const it = wbItems.find(x => x.id === id);
+        return it && !it.isLocked;
+      });
+      if (idsToDelete.length === 0) return;
+      const idSet = new Set(idsToDelete);
+      wbItems = wbItems.filter(x => !idSet.has(x.id));
+      wbSelectedIds = wbSelectedIds.filter(id => !idSet.has(id));
+      wbSelectedId = wbSelectedIds[0] || null;
+      wbEditingTextId = null;
+      wbOpenReactItemId = null;
+      renderWhiteboardAll();
+      if (shouldBroadcast && myChannel) {
+        idsToDelete.forEach(id => {
+          myChannel.send({
+            type: 'broadcast',
+            event: 'WB_ITEM_DELETE',
+            payload: { id: id, senderId: wbClientId }
+          });
         });
       }
     }
@@ -1603,8 +2282,9 @@
 
       const worldPt = screenToWorld(e.clientX, e.clientY);
 
-      if (wbEditingTextId) {
+      if (wbEditingTextId || wbOpenReactItemId) {
         wbEditingTextId = null;
+        wbOpenReactItemId = null;
         renderWhiteboardAll();
       }
 
@@ -1631,7 +2311,7 @@
           };
           wbPendingImageDataUrl = null;
           upsertWbItemLocal(newItem);
-          wbSelectedId = newItem.id;
+          setSingleWbSelection(newItem.id);
           setActiveWbTool('select');
           renderWhiteboardAll();
           broadcastWbItemUpsert(newItem);
@@ -1650,14 +2330,26 @@
         }
         if (hitStroke) {
           pushWbHistory();
-          wbSelectedId = hitStroke.id;
-          wbIsDraggingItem = true;
-          wbDragItem = hitStroke;
-          wbDragStartWorld = worldPt;
-          wbDragOrigState = { points: hitStroke.points.map(p => ({ x: p.x, y: p.y })) };
+          if (!isWbItemSelected(hitStroke.id)) {
+            setSingleWbSelection(hitStroke.id);
+          }
+          if (!hitStroke.isLocked) {
+            wbIsDraggingItem = true;
+            wbDragItem = hitStroke;
+            wbDragStartWorld = worldPt;
+            wbDragOrigState = { points: hitStroke.points.map(p => ({ x: p.x, y: p.y })) };
+            prepareGroupDragStates();
+          }
           renderWhiteboardAll();
         } else {
-          wbSelectedId = null;
+          // Iniciar Selección Múltiple por Caja (Box Selection / Marquee)
+          if (!e.shiftKey) {
+            wbSelectedId = null;
+            wbSelectedIds = [];
+          }
+          wbIsBoxSelecting = true;
+          wbBoxSelectStart = { x: worldPt.x, y: worldPt.y };
+          wbBoxSelectCurrent = { x: worldPt.x, y: worldPt.y };
           renderWhiteboardAll();
         }
         return;
@@ -1683,7 +2375,7 @@
         pushWbHistory();
         wbIsErasing = true;
         for (let i = wbItems.length - 1; i >= 0; i--) {
-          if (wbItems[i].type === 'stroke' && isPointNearStroke(wbItems[i], worldPt.x, worldPt.y, 16)) {
+          if (wbItems[i].type === 'stroke' && !wbItems[i].isLocked && isPointNearStroke(wbItems[i], worldPt.x, worldPt.y, 16)) {
             deleteWbItemById(wbItems[i].id, true);
           }
         }
@@ -1691,18 +2383,21 @@
       }
 
       if (wbTool === 'text') {
+        e.preventDefault();
         pushWbHistory();
+        const fontSize = wbSize === 3 ? 20 : (wbSize === 6 ? 28 : 38);
         const newText = {
           id: 'wb_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
           type: 'text',
           x: Math.round(worldPt.x),
-          y: Math.round(worldPt.y),
+          y: Math.round(worldPt.y - fontSize / 2),
           text: 'Texto',
           color: wbColor,
-          fontSize: wbSize === 3 ? 20 : (wbSize === 6 ? 28 : 38)
+          fontSize: fontSize,
+          isLocked: false
         };
         upsertWbItemLocal(newText);
-        wbSelectedId = newText.id;
+        setSingleWbSelection(newText.id);
         wbEditingTextId = newText.id;
         setActiveWbTool('select');
         wbEditingTextId = newText.id;
@@ -1773,22 +2468,52 @@
         return;
       }
 
+      if (wbIsBoxSelecting) {
+        wbBoxSelectCurrent = { x: worldPt.x, y: worldPt.y };
+        const box = {
+          x: Math.min(wbBoxSelectStart.x, wbBoxSelectCurrent.x),
+          y: Math.min(wbBoxSelectStart.y, wbBoxSelectCurrent.y),
+          w: Math.abs(wbBoxSelectCurrent.x - wbBoxSelectStart.x),
+          h: Math.abs(wbBoxSelectCurrent.y - wbBoxSelectStart.y)
+        };
+        if (box.w > 3 || box.h > 3) {
+          const matchedIds = wbItems.filter(it => doesWbItemIntersectBox(it, box)).map(it => it.id);
+          wbSelectedIds = matchedIds;
+          wbSelectedId = matchedIds[0] || null;
+          renderWbObjects();
+        }
+        renderWbCanvas();
+        return;
+      }
+
       if (wbIsDraggingItem && wbDragItem) {
         const dx = worldPt.x - wbDragStartWorld.x;
         const dy = worldPt.y - wbDragStartWorld.y;
-        if (wbDragItem.type === 'stroke' && wbDragOrigState && wbDragOrigState.points) {
-          wbDragItem.points = wbDragOrigState.points.map(p => ({
-            x: Math.round((p.x + dx) * 10) / 10,
-            y: Math.round((p.y + dy) * 10) / 10
-          }));
-          renderWbCanvas();
-        } else if (wbDragOrigState) {
-          wbDragItem.x = Math.round(wbDragOrigState.x + dx);
-          wbDragItem.y = Math.round(wbDragOrigState.y + dy);
-          renderWbObjects();
-        }
+        const idsToMove = wbSelectedIds.length > 0 ? wbSelectedIds : [wbDragItem.id];
+        let movedCanvas = false;
+        let movedObjects = false;
+
+        idsToMove.forEach(id => {
+          const it = wbItems.find(x => x.id === id);
+          const orig = wbDragGroupOrigStates && wbDragGroupOrigStates[id];
+          if (!it || !orig) return;
+          if (it.type === 'stroke' && orig.points) {
+            it.points = orig.points.map(p => ({
+              x: Math.round((p.x + dx) * 10) / 10,
+              y: Math.round((p.y + dy) * 10) / 10
+            }));
+            movedCanvas = true;
+          } else {
+            it.x = Math.round(orig.x + dx);
+            it.y = Math.round(orig.y + dy);
+            movedObjects = true;
+          }
+          broadcastWbItemUpsert(it);
+        });
+
+        if (movedCanvas) renderWbCanvas();
+        if (movedObjects) renderWbObjects();
         renderWbMinimap();
-        broadcastWbItemUpsert(wbDragItem);
         return;
       }
 
@@ -1817,10 +2542,15 @@
         wbCurrentStroke = null;
         renderWbMinimap();
       }
+      if (wbIsBoxSelecting) {
+        wbIsBoxSelecting = false;
+        renderWhiteboardAll();
+      }
       wbIsErasing = false;
       wbIsDraggingItem = false;
       wbIsResizingItem = false;
       wbDragItem = null;
+      wbDragGroupOrigStates = null;
     });
 
     wbViewport.addEventListener('wheel', (e) => {
@@ -1883,17 +2613,21 @@
             pushWbHistory();
             const pt = window.__wbPendingImageClickPt;
             window.__wbPendingImageClickPt = null;
+            const scale = (w > 280 || h > 280) ? Math.min(280 / w, 280 / h) : 1;
+            const finalW = Math.max(40, Math.round(w * scale));
+            const finalH = Math.max(40, Math.round(h * scale));
             const newItem = {
               id: 'wb_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
               type: 'image',
               x: Math.round(pt.x),
               y: Math.round(pt.y),
-              width: Math.min(280, w),
-              height: Math.min(280, h),
+              width: finalW,
+              height: finalH,
+              _aspectCorrected: true,
               src: compressedDataUrl
             };
             upsertWbItemLocal(newItem);
-            wbSelectedId = newItem.id;
+            setSingleWbSelection(newItem.id);
             setActiveWbTool('select');
             renderWhiteboardAll();
             broadcastWbItemUpsert(newItem);
@@ -1913,27 +2647,36 @@
         wbColor = sw.dataset.color;
         document.querySelectorAll('.wb-color-swatch').forEach(s => s.classList.remove('ring-2', 'ring-white', 'scale-110'));
         sw.classList.add('ring-2', 'ring-white', 'scale-110');
-        if (wbSelectedId) {
-          const sel = wbItems.find(x => x.id === wbSelectedId);
-          if (sel && (sel.type === 'text' || sel.type === 'stroke')) {
-            pushWbHistory();
-            sel.color = wbColor;
-            renderWhiteboardAll();
-            broadcastWbItemUpsert(sel);
-          }
+        const idsToColor = wbSelectedIds.length > 0 ? wbSelectedIds : (wbSelectedId ? [wbSelectedId] : []);
+        if (idsToColor.length > 0) {
+          let changed = false;
+          idsToColor.forEach(id => {
+            const sel = wbItems.find(x => x.id === id);
+            if (sel && !sel.isLocked && (sel.type === 'text' || sel.type === 'stroke')) {
+              if (!changed) { pushWbHistory(); changed = true; }
+              sel.color = wbColor;
+              broadcastWbItemUpsert(sel);
+            }
+          });
+          if (changed) renderWhiteboardAll();
         }
       });
     });
 
     document.getElementById('wbCustomColor').addEventListener('input', (e) => {
       wbColor = e.target.value;
-      if (wbSelectedId) {
-        const sel = wbItems.find(x => x.id === wbSelectedId);
-        if (sel && (sel.type === 'text' || sel.type === 'stroke')) {
-          sel.color = wbColor;
-          renderWhiteboardAll();
-          broadcastWbItemUpsert(sel);
-        }
+      const idsToColor = wbSelectedIds.length > 0 ? wbSelectedIds : (wbSelectedId ? [wbSelectedId] : []);
+      if (idsToColor.length > 0) {
+        let changed = false;
+        idsToColor.forEach(id => {
+          const sel = wbItems.find(x => x.id === id);
+          if (sel && !sel.isLocked && (sel.type === 'text' || sel.type === 'stroke')) {
+            changed = true;
+            sel.color = wbColor;
+            broadcastWbItemUpsert(sel);
+          }
+        });
+        if (changed) renderWhiteboardAll();
       }
     });
 
@@ -1952,6 +2695,7 @@
       wbRedoStack.push(JSON.stringify(wbItems));
       wbItems = JSON.parse(wbHistory.pop());
       wbSelectedId = null;
+      wbSelectedIds = [];
       renderWhiteboardAll();
       broadcastWbFullState();
     });
@@ -1961,6 +2705,7 @@
       wbHistory.push(JSON.stringify(wbItems));
       wbItems = JSON.parse(wbRedoStack.pop());
       wbSelectedId = null;
+      wbSelectedIds = [];
       renderWhiteboardAll();
       broadcastWbFullState();
     });
@@ -1970,6 +2715,7 @@
       pushWbHistory();
       wbItems = [];
       wbSelectedId = null;
+      wbSelectedIds = [];
       wbEditingTextId = null;
       renderWhiteboardAll();
       broadcastWbFullState();
@@ -1979,10 +2725,16 @@
       if (!wbIsOpen) return;
       if (wbEditingTextId || document.activeElement === wbTitleInput) return;
 
-      if ((e.key === 'Delete' || e.key === 'Backspace') && wbSelectedId) {
+      if ((e.key === 'Delete' || e.key === 'Backspace') && (wbSelectedId || wbSelectedIds.length > 0)) {
         e.preventDefault();
         pushWbHistory();
-        deleteWbItemById(wbSelectedId, true);
+        deleteSelectedWbItems(true);
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+        if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) return;
+        e.preventDefault();
+        wbSelectedIds = wbItems.map(it => it.id);
+        wbSelectedId = wbSelectedIds[0] || null;
+        renderWhiteboardAll();
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
         e.preventDefault();
         document.getElementById('wbUndoBtn').click();
@@ -2147,6 +2899,1053 @@
         a.href = imgData;
         a.download = 'ELT-Whiteboard.jpg';
         a.click();
+      }
+    });
+
+    // ==================== MOTOR DE CHAT ESTILO ZOOM + PORTAPAPELES + MENÚ CONTEXTUAL (ESTUDIANTE) ====================
+    let zmMessages = [];
+    let zmActiveTarget = 'EVERYONE';
+    let zmPrivateTabs = [];
+    let zmPendingAttachment = null;
+    let zmIsFloating = false;
+    let zmIsMinimized = false;
+    let zmIsHidden = false;
+    let zmUnreadCount = 0;
+
+    let zmContextState = {
+      source: null,
+      messageId: null,
+      wbItemId: null,
+      imageSrc: null,
+      text: null,
+      worldPt: null
+    };
+    let zmInternalClipboard = {
+      type: null,
+      data: null
+    };
+    let wbLastMouseWorldPt = { x: 2000, y: 2000 };
+    let wbRightDownScreenPt = null;
+
+    const zmChatDockSlot = document.getElementById('zmChatDockSlot');
+    const zmChatWindow = document.getElementById('zmChatWindow');
+    const zmChatTitleBar = document.getElementById('zmChatTitleBar');
+    const zmChatBody = document.getElementById('zmChatBody');
+    const zmChatMessagesEl = document.getElementById('zmChatMessages');
+    const zmChatInput = document.getElementById('zmChatInput');
+    const zmImageAttachmentPreview = document.getElementById('zmImageAttachmentPreview');
+    const zmAttachmentThumb = document.getElementById('zmAttachmentThumb');
+    const zmPrivateTabsContainer = document.getElementById('zmPrivateTabsContainer');
+    const zmParticipantsDropdown = document.getElementById('zmParticipantsDropdown');
+    const zmParticipantsList = document.getElementById('zmParticipantsList');
+    const zmWhoCanSeeText = document.getElementById('zmWhoCanSeeText');
+    const zmContextMenu = document.getElementById('zmContextMenu');
+    const zmLightboxModal = document.getElementById('zmLightboxModal');
+    const zmLightboxImg = document.getElementById('zmLightboxImg');
+    const zmLightboxDownloadBtn = document.getElementById('zmLightboxDownloadBtn');
+
+    function getMySenderName() {
+      return myName || 'Estudiante';
+    }
+
+    function compressImageBlobToDataUrl(blob, maxDim = 640, quality = 0.84) {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+          const img = new Image();
+          img.onload = () => {
+            let w = img.width || 300;
+            let h = img.height || 220;
+            if (w > maxDim || h > maxDim) {
+              const r = Math.min(maxDim / w, maxDim / h);
+              w = Math.round(w * r);
+              h = Math.round(h * r);
+            }
+            const c = document.createElement('canvas');
+            c.width = w;
+            c.height = h;
+            c.getContext('2d').drawImage(img, 0, 0, w, h);
+            resolve({ dataUrl: c.toDataURL('image/jpeg', quality), width: w, height: h });
+          };
+          img.onerror = () => resolve(null);
+          img.src = evt.target.result;
+        };
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(blob);
+      });
+    }
+
+    function setChatAttachment(dataUrl) {
+      zmPendingAttachment = dataUrl;
+      if (dataUrl) {
+        zmAttachmentThumb.src = dataUrl;
+        zmImageAttachmentPreview.classList.remove('hidden');
+      } else {
+        zmAttachmentThumb.src = '';
+        zmImageAttachmentPreview.classList.add('hidden');
+      }
+    }
+
+    document.getElementById('zmRemoveAttachmentBtn').addEventListener('click', () => setChatAttachment(null));
+
+    let zmFloatingWidth = 345;
+    let zmFloatingHeight = 510;
+    let zmDockedWidthPx = 325;
+
+    function updateChatLayoutMode() {
+      const headerBadge = document.getElementById('headerChatUnreadBadge');
+      const titlePill = document.getElementById('zmChatUnreadPill');
+      if (zmUnreadCount > 0 && (zmIsMinimized || zmIsHidden)) {
+        headerBadge.textContent = zmUnreadCount;
+        headerBadge.classList.remove('hidden');
+        titlePill.textContent = zmUnreadCount;
+        titlePill.classList.remove('hidden');
+      } else {
+        headerBadge.classList.add('hidden');
+        titlePill.classList.add('hidden');
+      }
+
+      const floatResizers = zmChatWindow.querySelectorAll('.zm-float-resizer');
+      const dockResizerLeft = document.getElementById('zmChatDockResizeLeft');
+
+      if (zmIsHidden) {
+        zmChatWindow.classList.add('hidden');
+        zmChatDockSlot.classList.add('hidden');
+        return;
+      }
+
+      zmChatWindow.classList.remove('hidden');
+
+      if (zmIsFloating) {
+        // Modo Ventana Flotante Independiente (Pop-out y Redimensionable)
+        zmChatDockSlot.classList.add('hidden');
+        if (dockResizerLeft) dockResizerLeft.classList.add('hidden');
+        document.body.appendChild(zmChatWindow);
+        zmChatWindow.style.position = 'fixed';
+        if (!zmChatWindow.style.right && !zmChatWindow.style.left) {
+          zmChatWindow.style.right = '20px';
+          zmChatWindow.style.bottom = '20px';
+        }
+        zmChatWindow.style.width = `${zmFloatingWidth}px`;
+        zmChatWindow.style.height = zmIsMinimized ? '38px' : `${zmFloatingHeight}px`;
+        zmChatWindow.style.zIndex = '85';
+        zmChatWindow.className = 'relative flex flex-col bg-[#1a1a1a] text-[#e4e6eb] select-none overflow-hidden rounded-2xl shadow-2xl border border-[#3a3d45]';
+        zmChatTitleBar.style.cursor = 'move';
+        floatResizers.forEach(r => r.classList.toggle('hidden', zmIsMinimized));
+      } else {
+        // Modo Panel Fijo Acoplado a la Derecha (Redimensionable en ancho)
+        floatResizers.forEach(r => r.classList.add('hidden'));
+        if (zmIsMinimized) {
+          zmChatDockSlot.classList.add('hidden');
+          if (dockResizerLeft) dockResizerLeft.classList.add('hidden');
+          document.body.appendChild(zmChatWindow);
+          zmChatWindow.style.position = 'fixed';
+          zmChatWindow.style.right = '16px';
+          zmChatWindow.style.bottom = '12px';
+          zmChatWindow.style.width = '280px';
+          zmChatWindow.style.height = '38px';
+          zmChatWindow.style.zIndex = '85';
+          zmChatWindow.className = 'relative flex flex-col bg-[#1a1a1a] text-[#e4e6eb] select-none overflow-hidden rounded-xl shadow-2xl border border-[#3a3d45]';
+        } else {
+          zmChatDockSlot.classList.remove('hidden');
+          if (dockResizerLeft) dockResizerLeft.classList.remove('hidden');
+          zmChatDockSlot.style.width = `${zmDockedWidthPx}px`;
+          zmChatDockSlot.appendChild(zmChatWindow);
+          zmChatWindow.style.position = '';
+          zmChatWindow.style.left = '';
+          zmChatWindow.style.top = '';
+          zmChatWindow.style.right = '';
+          zmChatWindow.style.bottom = '';
+          zmChatWindow.style.width = '100%';
+          zmChatWindow.style.height = '100%';
+          zmChatWindow.style.zIndex = '';
+          zmChatWindow.className = 'relative w-full h-full flex flex-col bg-[#1a1a1a] text-[#e4e6eb] select-none overflow-hidden';
+          zmChatTitleBar.style.cursor = 'default';
+        }
+      }
+
+      zmChatBody.classList.toggle('hidden', zmIsMinimized);
+    }
+
+    document.getElementById('zmChatFloatToggleBtn').addEventListener('click', () => {
+      zmIsFloating = !zmIsFloating;
+      zmIsMinimized = false;
+      updateChatLayoutMode();
+    });
+
+    document.getElementById('zmChatMinimizeBtn').addEventListener('click', () => {
+      zmIsMinimized = !zmIsMinimized;
+      if (!zmIsMinimized) zmUnreadCount = 0;
+      updateChatLayoutMode();
+    });
+
+    document.getElementById('zmChatCloseBtn').addEventListener('click', () => {
+      zmIsHidden = true;
+      updateChatLayoutMode();
+    });
+
+    document.getElementById('headerChatToggleBtn').addEventListener('click', () => {
+      if (zmIsHidden || zmIsMinimized) {
+        zmIsHidden = false;
+        zmIsMinimized = false;
+        zmUnreadCount = 0;
+      } else {
+        zmIsMinimized = true;
+      }
+      updateChatLayoutMode();
+    });
+
+    let zmDragWinActive = false;
+    let zmDragOffsetX = 0;
+    let zmDragOffsetY = 0;
+    let zmResizeMode = null; // 'dock-w' | 'float'
+    let zmResizeDir = '';
+    let zmResizeStartRect = null;
+    let zmResizeStartMouse = { x: 0, y: 0 };
+
+    zmChatTitleBar.addEventListener('mousedown', (e) => {
+      if (!zmIsFloating || e.target.closest('button') || zmResizeMode) return;
+      zmDragWinActive = true;
+      const rect = zmChatWindow.getBoundingClientRect();
+      zmDragOffsetX = e.clientX - rect.left;
+      zmDragOffsetY = e.clientY - rect.top;
+      zmChatWindow.style.right = 'auto';
+      zmChatWindow.style.bottom = 'auto';
+      zmChatWindow.style.left = `${rect.left}px`;
+      zmChatWindow.style.top = `${rect.top}px`;
+    });
+
+    // Redimensionar el ancho del panel acoplado desde su borde izquierdo
+    const zmChatDockResizeLeftEl = document.getElementById('zmChatDockResizeLeft');
+    if (zmChatDockResizeLeftEl) {
+      zmChatDockResizeLeftEl.addEventListener('mousedown', (e) => {
+        if (zmIsFloating || zmIsMinimized) return;
+        e.preventDefault();
+        e.stopPropagation();
+        zmResizeMode = 'dock-w';
+        zmResizeStartMouse = { x: e.clientX, y: e.clientY };
+        zmResizeStartRect = zmChatDockSlot.getBoundingClientRect();
+      });
+    }
+
+    // Redimensionar ventana flotante del chat en las 8 direcciones
+    zmChatWindow.querySelectorAll('.zm-float-resizer').forEach(handle => {
+      handle.addEventListener('mousedown', (e) => {
+        if (!zmIsFloating || zmIsMinimized) return;
+        e.preventDefault();
+        e.stopPropagation();
+        zmResizeMode = 'float';
+        zmResizeDir = handle.dataset.resizeDir || 'se';
+        zmResizeStartMouse = { x: e.clientX, y: e.clientY };
+        const rect = zmChatWindow.getBoundingClientRect();
+        zmResizeStartRect = { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+        zmChatWindow.style.right = 'auto';
+        zmChatWindow.style.bottom = 'auto';
+        zmChatWindow.style.left = `${rect.left}px`;
+        zmChatWindow.style.top = `${rect.top}px`;
+      });
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (zmResizeMode === 'dock-w' && zmResizeStartRect) {
+        const dx = zmResizeStartMouse.x - e.clientX;
+        const maxW = Math.min(680, window.innerWidth - 260);
+        zmDockedWidthPx = Math.max(250, Math.min(maxW, Math.round(zmResizeStartRect.width + dx)));
+        zmChatDockSlot.style.width = `${zmDockedWidthPx}px`;
+        return;
+      }
+
+      if (zmResizeMode === 'float' && zmResizeStartRect) {
+        const dx = e.clientX - zmResizeStartMouse.x;
+        const dy = e.clientY - zmResizeStartMouse.y;
+        const minW = 260;
+        const minH = 260;
+        let newL = zmResizeStartRect.left;
+        let newT = zmResizeStartRect.top;
+        let newW = zmResizeStartRect.width;
+        let newH = zmResizeStartRect.height;
+
+        if (zmResizeDir.includes('e')) {
+          newW = Math.max(minW, Math.min(window.innerWidth - newL - 8, zmResizeStartRect.width + dx));
+        }
+        if (zmResizeDir.includes('s')) {
+          newH = Math.max(minH, Math.min(window.innerHeight - newT - 8, zmResizeStartRect.height + dy));
+        }
+        if (zmResizeDir.includes('w')) {
+          const possibleW = zmResizeStartRect.width - dx;
+          if (possibleW >= minW && (zmResizeStartRect.left + dx) >= 8) {
+            newW = possibleW;
+            newL = zmResizeStartRect.left + dx;
+          }
+        }
+        if (zmResizeDir.includes('n')) {
+          const possibleH = zmResizeStartRect.height - dy;
+          if (possibleH >= minH && (zmResizeStartRect.top + dy) >= 8) {
+            newH = possibleH;
+            newT = zmResizeStartRect.top + dy;
+          }
+        }
+
+        zmFloatingWidth = Math.round(newW);
+        zmFloatingHeight = Math.round(newH);
+        zmChatWindow.style.left = `${Math.round(newL)}px`;
+        zmChatWindow.style.top = `${Math.round(newT)}px`;
+        zmChatWindow.style.width = `${zmFloatingWidth}px`;
+        zmChatWindow.style.height = `${zmFloatingHeight}px`;
+        return;
+      }
+
+      if (!zmDragWinActive || !zmIsFloating) return;
+      const nx = Math.max(8, Math.min(window.innerWidth - zmFloatingWidth - 10, e.clientX - zmDragOffsetX));
+      const ny = Math.max(8, Math.min(window.innerHeight - 60, e.clientY - zmDragOffsetY));
+      zmChatWindow.style.left = `${nx}px`;
+      zmChatWindow.style.top = `${ny}px`;
+    });
+    window.addEventListener('mouseup', () => {
+      zmDragWinActive = false;
+      zmResizeMode = null;
+      zmResizeStartRect = null;
+    });
+
+    function setChatTarget(target) {
+      zmActiveTarget = target || 'EVERYONE';
+      if (zmActiveTarget !== 'EVERYONE' && !zmPrivateTabs.includes(zmActiveTarget)) {
+        zmPrivateTabs.push(zmActiveTarget);
+      }
+      renderPrivateChatTabs();
+      renderChatMessages();
+
+      if (zmActiveTarget === 'EVERYONE') {
+        zmWhoCanSeeText.textContent = 'Who can see your messages? Everyone';
+        zmChatInput.placeholder = 'Message everyone (Ctrl+V para pegar imagen)';
+      } else {
+        zmWhoCanSeeText.innerHTML = `<span class="text-amber-400 font-semibold">🔒 Direct Message to ${zmActiveTarget} (Privado)</span>`;
+        zmChatInput.placeholder = `Message ${zmActiveTarget} privately...`;
+      }
+    }
+
+    function renderPrivateChatTabs() {
+      const everyoneBtn = document.querySelector('.zm-target-tab[data-chat-target="EVERYONE"]');
+      if (everyoneBtn) {
+        const box = everyoneBtn.querySelector('.zm-target-box');
+        const lbl = everyoneBtn.querySelector('.zm-target-label');
+        if (zmActiveTarget === 'EVERYONE') {
+          box.className = 'zm-target-box w-10 h-10 rounded-xl border-2 border-[#0e72ed] bg-[#1c2638] flex items-center justify-center text-[#3b82f6] transition';
+          lbl.className = 'zm-target-label text-[10px] font-bold text-[#3b82f6]';
+        } else {
+          box.className = 'zm-target-box w-10 h-10 rounded-xl border border-[#383b42] bg-[#22252a] flex items-center justify-center text-slate-400 transition';
+          lbl.className = 'zm-target-label text-[10px] text-slate-400';
+        }
+      }
+
+      zmPrivateTabsContainer.innerHTML = zmPrivateTabs.map(pName => {
+        const isActive = zmActiveTarget === pName;
+        const initials = pName.slice(0, 2).toUpperCase();
+        return `
+          <button type="button" data-priv-name="${pName.replace(/"/g, '&quot;')}" class="zm-priv-tab flex flex-col items-center gap-1 flex-shrink-0">
+            <div class="w-10 h-10 rounded-xl ${isActive ? 'border-2 border-[#0e72ed] bg-[#1c2638] text-white' : 'border border-[#383b42] bg-[#22252a] text-slate-300'} flex items-center justify-center text-xs font-bold relative transition">
+              <span>${initials}</span>
+              <span class="absolute -bottom-1 -right-1 text-[9px] bg-amber-500 text-black rounded-full px-1 font-black" title="Privado">🔒</span>
+            </div>
+            <span class="text-[10px] max-w-[54px] truncate ${isActive ? 'font-bold text-[#3b82f6]' : 'text-slate-400'}">${pName}</span>
+          </button>
+        `;
+      }).join('');
+
+      zmPrivateTabsContainer.querySelectorAll('.zm-priv-tab').forEach(btn => {
+        btn.addEventListener('click', () => setChatTarget(btn.dataset.privName));
+      });
+    }
+
+    document.querySelector('.zm-target-tab[data-chat-target="EVERYONE"]').addEventListener('click', () => {
+      setChatTarget('EVERYONE');
+    });
+
+    function renderChatParticipantsDropdown() {
+      const peers = window.__studentKnownPeers || ['Profesor (Host)'];
+      zmParticipantsList.innerHTML = peers.map(n => `
+        <button type="button" data-part="${n.replace(/"/g, '&quot;')}" class="zm-pick-part w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-[#0e72ed] hover:text-white text-slate-200 flex items-center justify-between transition">
+          <span class="font-medium truncate">👤 ${n}</span>
+          <span class="text-[10px] opacity-80">Privado →</span>
+        </button>
+      `).join('');
+
+      zmParticipantsList.querySelectorAll('.zm-pick-part').forEach(b => {
+        b.addEventListener('click', () => {
+          setChatTarget(b.dataset.part);
+          zmParticipantsDropdown.classList.add('hidden');
+          zmChatInput.focus();
+        });
+      });
+    }
+
+    document.getElementById('zmNewPrivateChatBtn').addEventListener('click', () => {
+      renderChatParticipantsDropdown();
+      zmParticipantsDropdown.classList.toggle('hidden');
+    });
+
+    function isMessageVisibleInCurrentTab(msg) {
+      const me = getMySenderName();
+      if (msg.target !== 'EVERYONE') {
+        if (msg.sender !== me && msg.target !== me) return false;
+      }
+      if (zmActiveTarget === 'EVERYONE') return true;
+      return (
+        (msg.sender === me && msg.target === zmActiveTarget) ||
+        (msg.sender === zmActiveTarget && msg.target === me)
+      );
+    }
+
+    function escapeHtmlChat(str) {
+      return (str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    }
+
+    function renderChatMessages() {
+      const me = getMySenderName();
+      const visible = zmMessages.filter(isMessageVisibleInCurrentTab);
+      const headerPill = `
+        <div class="flex justify-center">
+          <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#232529] border border-[#32353b] text-[10px] text-slate-400">
+            <span>📹</span>
+            <span>Meeting chat ready • Ctrl+V para pegar imágenes</span>
+          </span>
+        </div>
+      `;
+
+      const cardsHtml = visible.map(msg => {
+        const isMine = msg.sender === me;
+        const initials = (msg.sender || 'U').slice(0, 2).toUpperCase();
+        const privBadge = msg.target !== 'EVERYONE'
+          ? `<span class="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[9px] px-1.5 py-0.2 rounded font-semibold">🔒 Privado ${isMine ? '→ ' + escapeHtmlChat(msg.target) : 'para ti'}</span>`
+          : '';
+
+        const reactionsObj = msg.reactions || {};
+        const reactionPills = Object.keys(reactionsObj).filter(em => Array.isArray(reactionsObj[em]) && reactionsObj[em].length > 0).map(em => {
+          const users = reactionsObj[em];
+          const iReacted = users.includes(me);
+          return `
+            <button type="button" data-react-msg="${msg.id}" data-react-emoji="${em}" title="${escapeHtmlChat(users.join(', '))}" class="zm-reaction-pill inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] border ${iReacted ? 'bg-[#1c2d48] border-[#0e72ed] text-white' : 'bg-[#23262b] border-[#363940] text-slate-300'} hover:border-[#0e72ed] transition">
+              <span>${em}</span>
+              <span class="text-[10px] font-bold">${users.length}</span>
+            </button>
+          `;
+        }).join('');
+
+        const imgHtml = msg.image
+          ? `<div class="mt-1.5">
+               <img src="${msg.image}" data-chat-img="${msg.id}" alt="Imagen enviada" class="zm-chat-thumb max-h-40 max-w-full rounded-xl object-cover border border-white/10 cursor-zoom-in hover:opacity-95 transition">
+             </div>`
+          : '';
+
+        const textHtml = msg.text
+          ? `<p class="text-xs text-slate-100 whitespace-pre-wrap break-words leading-relaxed">${escapeHtmlChat(msg.text)}</p>`
+          : '';
+
+        return `
+          <div class="zm-msg-item group relative" data-msg-id="${msg.id}">
+            <div class="flex items-center gap-2 mb-1 pl-9">
+              <span class="text-[11px] font-semibold text-slate-300">${escapeHtmlChat(msg.sender)}</span>
+              <span class="text-[10px] text-slate-500">${escapeHtmlChat(msg.time || '')}</span>
+              ${privBadge}
+            </div>
+            <div class="flex items-start gap-2">
+              <div class="w-7 h-7 rounded-full ${isMine ? 'bg-[#0e72ed]' : 'bg-indigo-600'} text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
+                ${initials}
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="inline-block max-w-full rounded-2xl px-3 py-2 ${isMine ? 'bg-[#1f293a] border border-[#2d3c56]' : 'bg-[#24262b] border border-[#32353b]'} shadow-sm">
+                  ${textHtml}
+                  ${imgHtml}
+                </div>
+
+                ${reactionPills ? `<div class="flex flex-wrap gap-1 mt-1.5">${reactionPills}</div>` : ''}
+
+                <div class="flex items-center gap-2 mt-1 text-slate-400 opacity-80 group-hover:opacity-100 transition relative">
+                  ${!isMine ? `<button type="button" data-dm-sender="${escapeHtmlChat(msg.sender)}" class="zm-reply-priv-btn hover:text-white p-0.5 rounded" title="Responder en privado a ${escapeHtmlChat(msg.sender)}">💬+</button>` : ''}
+                  <button type="button" data-open-react="${msg.id}" class="zm-open-react-btn hover:text-white p-0.5 rounded text-xs" title="Reaccionar con emoji">😊+</button>
+                  <button type="button" data-msg-menu="${msg.id}" class="zm-msg-menu-btn hover:text-white px-1 rounded text-xs" title="Más opciones (Copiar, Guardar, Eliminar)">•••</button>
+
+                  <div id="reactBar_${msg.id}" class="hidden absolute bottom-7 left-0 z-40 bg-[#25282e] border border-[#3a3e47] rounded-2xl p-2 shadow-2xl w-60 max-h-44 overflow-y-auto grid grid-cols-7 gap-1">
+                    ${EXTENDED_REACTION_EMOJIS.map(em => `
+                      <button type="button" data-react-msg="${msg.id}" data-react-emoji="${em}" class="zm-reaction-pill hover:scale-125 hover:bg-white/10 rounded p-0.5 transition text-sm leading-none text-center">${em}</button>
+                    `).join('')}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      zmChatMessagesEl.innerHTML = headerPill + cardsHtml;
+      zmChatMessagesEl.scrollTop = zmChatMessagesEl.scrollHeight;
+
+      zmChatMessagesEl.querySelectorAll('.zm-chat-thumb').forEach(imgEl => {
+        imgEl.addEventListener('click', () => openLightboxModal(imgEl.src));
+      });
+
+      zmChatMessagesEl.querySelectorAll('.zm-open-react-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const bar = document.getElementById(`reactBar_${btn.dataset.openReact}`);
+          if (bar) bar.classList.toggle('hidden');
+        });
+      });
+
+      zmChatMessagesEl.querySelectorAll('.zm-reaction-pill').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          toggleMessageReaction(btn.dataset.reactMsg, btn.dataset.reactEmoji, true);
+        });
+      });
+
+      zmChatMessagesEl.querySelectorAll('.zm-reply-priv-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          setChatTarget(btn.dataset.dmSender);
+          zmChatInput.focus();
+        });
+      });
+
+      zmChatMessagesEl.querySelectorAll('.zm-msg-menu-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const m = zmMessages.find(x => x.id === btn.dataset.msgMenu);
+          if (m) openZoomContextMenu(e.clientX, e.clientY, {
+            source: 'chat-msg',
+            messageId: m.id,
+            text: m.text || '',
+            imageSrc: m.image || null
+          });
+        });
+      });
+
+      zmChatMessagesEl.querySelectorAll('.zm-msg-item').forEach(card => {
+        card.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const m = zmMessages.find(x => x.id === card.dataset.msgId);
+          if (m) openZoomContextMenu(e.clientX, e.clientY, {
+            source: 'chat-msg',
+            messageId: m.id,
+            text: m.text || '',
+            imageSrc: m.image || null
+          });
+        });
+      });
+    }
+
+    function openLightboxModal(src) {
+      if (!src) return;
+      zmLightboxImg.src = src;
+      zmLightboxDownloadBtn.href = src;
+      zmLightboxModal.classList.remove('hidden');
+    }
+
+    document.getElementById('zmLightboxCloseBtn').addEventListener('click', () => {
+      zmLightboxModal.classList.add('hidden');
+    });
+    zmLightboxModal.addEventListener('click', (e) => {
+      if (e.target === zmLightboxModal) zmLightboxModal.classList.add('hidden');
+    });
+
+    function sendChatMessage() {
+      const txt = zmChatInput.value.trim();
+      if (!txt && !zmPendingAttachment) return;
+
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const newMsg = {
+        id: 'msg_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+        sender: getMySenderName(),
+        target: zmActiveTarget,
+        text: txt,
+        image: zmPendingAttachment,
+        time: timeStr,
+        reactions: {}
+      };
+
+      zmMessages.push(newMsg);
+      zmChatInput.value = '';
+      setChatAttachment(null);
+      renderChatMessages();
+
+      if (myChannel) {
+        myChannel.send({
+          type: 'broadcast',
+          event: 'CHAT_MESSAGE',
+          payload: { message: newMsg, senderId: wbClientId }
+        });
+      }
+    }
+
+    function toggleMessageReaction(msgId, emoji, shouldBroadcast = false) {
+      const me = getMySenderName();
+      const msg = zmMessages.find(m => m.id === msgId);
+      if (!msg) return;
+      if (!msg.reactions) msg.reactions = {};
+      if (!Array.isArray(msg.reactions[emoji])) msg.reactions[emoji] = [];
+
+      const idx = msg.reactions[emoji].indexOf(me);
+      if (idx >= 0) msg.reactions[emoji].splice(idx, 1);
+      else msg.reactions[emoji].push(me);
+
+      renderChatMessages();
+
+      if (shouldBroadcast && myChannel) {
+        myChannel.send({
+          type: 'broadcast',
+          event: 'CHAT_REACTION',
+          payload: { msgId, reactions: msg.reactions, senderId: wbClientId }
+        });
+      }
+    }
+
+    function deleteChatMessageById(msgId, shouldBroadcast = false) {
+      zmMessages = zmMessages.filter(m => m.id !== msgId);
+      renderChatMessages();
+      if (shouldBroadcast && myChannel) {
+        myChannel.send({
+          type: 'broadcast',
+          event: 'CHAT_DELETE',
+          payload: { msgId, senderId: wbClientId }
+        });
+      }
+    }
+
+    function setupChatChannelListeners(channel) {
+      channel.on('broadcast', { event: 'CHAT_MESSAGE' }, ({ payload }) => {
+        if (!payload || payload.senderId === wbClientId || !payload.message) return;
+        const m = payload.message;
+        const me = getMySenderName();
+        if (!zmMessages.some(x => x.id === m.id)) {
+          zmMessages.push(m);
+          if (m.target === me && !zmPrivateTabs.includes(m.sender)) {
+            zmPrivateTabs.push(m.sender);
+            renderPrivateChatTabs();
+          }
+          if (zmIsMinimized || zmIsHidden) {
+            zmUnreadCount++;
+            updateChatLayoutMode();
+          }
+          renderChatMessages();
+        }
+      });
+
+      channel.on('broadcast', { event: 'CHAT_REACTION' }, ({ payload }) => {
+        if (!payload || payload.senderId === wbClientId) return;
+        const m = zmMessages.find(x => x.id === payload.msgId);
+        if (m && payload.reactions) {
+          m.reactions = payload.reactions;
+          renderChatMessages();
+        }
+      });
+
+      channel.on('broadcast', { event: 'CHAT_DELETE' }, ({ payload }) => {
+        if (!payload || payload.senderId === wbClientId) return;
+        deleteChatMessageById(payload.msgId, false);
+      });
+
+      channel.on('broadcast', { event: 'CHAT_SYNC_ALL' }, ({ payload }) => {
+        if (!payload || payload.senderId === wbClientId || !Array.isArray(payload.messages)) return;
+        zmMessages = payload.messages;
+        renderChatMessages();
+      });
+    }
+
+    document.getElementById('zmChatSendBtn').addEventListener('click', sendChatMessage);
+    zmChatInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendChatMessage();
+      }
+    });
+
+    document.getElementById('zmChatEmojiBtn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      document.getElementById('zmChatEmojiPicker').classList.toggle('hidden');
+    });
+
+    document.querySelectorAll('.zm-chat-emoji').forEach(btn => {
+      btn.addEventListener('click', () => {
+        zmChatInput.value += btn.textContent;
+        document.getElementById('zmChatEmojiPicker').classList.add('hidden');
+        zmChatInput.focus();
+      });
+    });
+
+    document.getElementById('zmChatImageBtn').addEventListener('click', () => {
+      document.getElementById('zmChatFileInput').click();
+    });
+
+    document.getElementById('zmChatFileInput').addEventListener('change', async (e) => {
+      const f = e.target.files && e.target.files[0];
+      if (!f) return;
+      const res = await compressImageBlobToDataUrl(f);
+      if (res && res.dataUrl) setChatAttachment(res.dataUrl);
+      e.target.value = '';
+    });
+
+    document.getElementById('zmChatFormatBtn').addEventListener('click', () => {
+      const start = zmChatInput.selectionStart;
+      const end = zmChatInput.selectionEnd;
+      if (start !== end) {
+        const sel = zmChatInput.value.slice(start, end);
+        zmChatInput.setRangeText(`*${sel}*`, start, end, 'end');
+      } else {
+        zmChatInput.value += '**';
+      }
+      zmChatInput.focus();
+    });
+
+    // ==================== PORTAPAPELES (CTRL+V / CTRL+C) Y MENÚ CONTEXTUAL (CLIC DERECHO) ====================
+    wbViewport.addEventListener('mousemove', (e) => {
+      wbLastMouseWorldPt = screenToWorld(e.clientX, e.clientY);
+    });
+
+    wbViewport.addEventListener('mousedown', (e) => {
+      if (e.button === 2) {
+        wbRightDownScreenPt = { x: e.clientX, y: e.clientY };
+      }
+    });
+
+    wbViewport.addEventListener('mouseup', (e) => {
+      if (e.button === 2 && wbRightDownScreenPt) {
+        const dist = Math.hypot(e.clientX - wbRightDownScreenPt.x, e.clientY - wbRightDownScreenPt.y);
+        wbRightDownScreenPt = null;
+        if (dist <= 5) {
+          const wPt = screenToWorld(e.clientX, e.clientY);
+          const itemEl = e.target.closest ? e.target.closest('[data-wb-id]') : null;
+          let hitItem = null;
+          if (itemEl) {
+            hitItem = wbItems.find(x => x.id === itemEl.dataset.wbId);
+          } else {
+            for (let i = wbItems.length - 1; i >= 0; i--) {
+              if (wbItems[i].type === 'stroke' && isPointNearStroke(wbItems[i], wPt.x, wPt.y)) {
+                hitItem = wbItems[i];
+                break;
+              }
+            }
+          }
+          if (hitItem) {
+            wbSelectedId = hitItem.id;
+            renderWhiteboardAll();
+            openZoomContextMenu(e.clientX, e.clientY, {
+              source: 'wb-item',
+              wbItemId: hitItem.id,
+              text: hitItem.text || '',
+              imageSrc: hitItem.src || null,
+              worldPt: wPt
+            });
+          } else {
+            openZoomContextMenu(e.clientX, e.clientY, {
+              source: 'wb-canvas',
+              worldPt: wPt
+            });
+          }
+        }
+      }
+    });
+
+    zmChatInput.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const selectedTxt = zmChatInput.value.slice(zmChatInput.selectionStart, zmChatInput.selectionEnd);
+      openZoomContextMenu(e.clientX, e.clientY, {
+        source: 'chat-input',
+        text: selectedTxt || zmChatInput.value
+      });
+    });
+
+    function openZoomContextMenu(clientX, clientY, ctxData) {
+      zmContextState = Object.assign({
+        source: null,
+        messageId: null,
+        wbItemId: null,
+        imageSrc: null,
+        text: null,
+        worldPt: null
+      }, ctxData);
+
+      zmContextMenu.classList.remove('hidden');
+      const menuW = 220;
+      const menuH = 190;
+      const left = Math.min(window.innerWidth - menuW - 8, Math.max(8, clientX));
+      const top = Math.min(window.innerHeight - menuH - 8, Math.max(8, clientY));
+      zmContextMenu.style.left = `${left}px`;
+      zmContextMenu.style.top = `${top}px`;
+    }
+
+    window.addEventListener('click', () => {
+      zmContextMenu.classList.add('hidden');
+      document.getElementById('zmChatEmojiPicker').classList.add('hidden');
+    });
+
+    async function pasteImageDataUrlToWhiteboard(dataUrl, width, height, targetWorldPt) {
+      pushWbHistory();
+      const pt = targetWorldPt || wbLastMouseWorldPt || { x: 1900, y: 1900 };
+      let w = width || 0;
+      let h = height || 0;
+      if (!w || !h) {
+        await new Promise((resolve) => {
+          const im = new Image();
+          im.onload = () => {
+            w = im.naturalWidth || 240;
+            h = im.naturalHeight || 180;
+            resolve();
+          };
+          im.onerror = () => {
+            w = 240;
+            h = 180;
+            resolve();
+          };
+          im.src = dataUrl;
+        });
+      }
+      if (w > 320 || h > 320) {
+        const ratio = Math.min(320 / w, 320 / h);
+        w = Math.max(40, Math.round(w * ratio));
+        h = Math.max(40, Math.round(h * ratio));
+      }
+      const newItem = {
+        id: 'wb_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+        type: 'image',
+        x: Math.round(pt.x),
+        y: Math.round(pt.y),
+        width: w,
+        height: h,
+        _aspectCorrected: true,
+        src: dataUrl
+      };
+      upsertWbItemLocal(newItem);
+      setSingleWbSelection(newItem.id);
+      setActiveWbTool('select');
+      renderWhiteboardAll();
+      broadcastWbItemUpsert(newItem);
+    }
+
+    window.addEventListener('paste', async (e) => {
+      const items = (e.clipboardData && e.clipboardData.items) ? e.clipboardData.items : [];
+      let imageBlob = null;
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type && items[i].type.indexOf('image') !== -1) {
+          imageBlob = items[i].getAsFile();
+          break;
+        }
+      }
+
+      const isChatFocused = (document.activeElement === zmChatInput) || (e.target && e.target.closest && e.target.closest('#zmChatWindow'));
+
+      if (imageBlob) {
+        e.preventDefault();
+        const compressed = await compressImageBlobToDataUrl(imageBlob);
+        if (!compressed || !compressed.dataUrl) return;
+        zmInternalClipboard = { type: 'image', data: compressed };
+
+        if (isChatFocused || !wbIsOpen) {
+          zmIsHidden = false;
+          zmIsMinimized = false;
+          updateChatLayoutMode();
+          setChatAttachment(compressed.dataUrl);
+          zmChatInput.focus();
+        } else {
+          await pasteImageDataUrlToWhiteboard(compressed.dataUrl, compressed.width, compressed.height, wbLastMouseWorldPt);
+        }
+        return;
+      }
+
+      if (wbIsOpen && !isChatFocused && !wbEditingTextId && document.activeElement !== wbTitleInput) {
+        const clipText = e.clipboardData ? e.clipboardData.getData('text/plain') : '';
+        if (zmInternalClipboard.type === 'wb-item' && zmInternalClipboard.data) {
+          e.preventDefault();
+          pushWbHistory();
+          const clone = JSON.parse(JSON.stringify(zmInternalClipboard.data));
+          clone.id = 'wb_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+          if (clone.type === 'stroke' && clone.points) {
+            clone.points = clone.points.map(p => ({ x: p.x + 30, y: p.y + 30 }));
+          } else {
+            clone.x = Math.round(wbLastMouseWorldPt.x);
+            clone.y = Math.round(wbLastMouseWorldPt.y);
+          }
+          upsertWbItemLocal(clone);
+          wbSelectedId = clone.id;
+          renderWhiteboardAll();
+          broadcastWbItemUpsert(clone);
+        } else if (clipText && clipText.trim()) {
+          e.preventDefault();
+          pushWbHistory();
+          const newText = {
+            id: 'wb_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+            type: 'text',
+            x: Math.round(wbLastMouseWorldPt.x),
+            y: Math.round(wbLastMouseWorldPt.y),
+            text: clipText.trim(),
+            color: wbColor,
+            fontSize: 22
+          };
+          upsertWbItemLocal(newText);
+          wbSelectedId = newText.id;
+          renderWhiteboardAll();
+          broadcastWbItemUpsert(newText);
+        }
+      }
+    });
+
+    document.getElementById('ctxCopyBtn').addEventListener('click', async () => {
+      zmContextMenu.classList.add('hidden');
+      if (zmContextState.source === 'wb-item' && zmContextState.wbItemId) {
+        const it = wbItems.find(x => x.id === zmContextState.wbItemId);
+        if (it) {
+          zmInternalClipboard = { type: 'wb-item', data: JSON.parse(JSON.stringify(it)) };
+          if (it.text) {
+            try { await navigator.clipboard.writeText(it.text); } catch (e) {}
+          }
+        }
+      } else if (zmContextState.imageSrc) {
+        zmInternalClipboard = { type: 'image', data: { dataUrl: zmContextState.imageSrc, width: 260, height: 200 } };
+        try {
+          const pngCanvas = document.createElement('canvas');
+          const im = new Image();
+          await new Promise(r => { im.onload = r; im.src = zmContextState.imageSrc; });
+          pngCanvas.width = im.width || 260;
+          pngCanvas.height = im.height || 200;
+          pngCanvas.getContext('2d').drawImage(im, 0, 0);
+          pngCanvas.toBlob(async (pngBlob) => {
+            if (pngBlob && window.ClipboardItem) {
+              try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })]); } catch (e) {}
+            }
+          }, 'image/png');
+        } catch (err) {}
+      } else if (zmContextState.text) {
+        zmInternalClipboard = { type: 'text', data: zmContextState.text };
+        try { await navigator.clipboard.writeText(zmContextState.text); } catch (e) {}
+      }
+    });
+
+    document.getElementById('ctxPasteBtn').addEventListener('click', async () => {
+      zmContextMenu.classList.add('hidden');
+      const targetPt = zmContextState.worldPt || wbLastMouseWorldPt;
+      const isChatTarget = zmContextState.source === 'chat-input' || zmContextState.source === 'chat-msg';
+
+      try {
+        if (navigator.clipboard && navigator.clipboard.read) {
+          const clipItems = await navigator.clipboard.read();
+          for (const clipItem of clipItems) {
+            const imgType = clipItem.types.find(t => t.startsWith('image/'));
+            if (imgType) {
+              const blob = await clipItem.getType(imgType);
+              const compressed = await compressImageBlobToDataUrl(blob);
+              if (compressed && compressed.dataUrl) {
+                if (isChatTarget) {
+                  setChatAttachment(compressed.dataUrl);
+                  zmChatInput.focus();
+                } else {
+                  await pasteImageDataUrlToWhiteboard(compressed.dataUrl, compressed.width, compressed.height, targetPt);
+                }
+                return;
+              }
+            }
+          }
+        }
+      } catch (e) {}
+
+      if (zmInternalClipboard.type === 'image' && zmInternalClipboard.data) {
+        if (isChatTarget) {
+          setChatAttachment(zmInternalClipboard.data.dataUrl);
+          zmChatInput.focus();
+        } else {
+          await pasteImageDataUrlToWhiteboard(zmInternalClipboard.data.dataUrl, zmInternalClipboard.data.width, zmInternalClipboard.data.height, targetPt);
+        }
+        return;
+      }
+
+      if (!isChatTarget && zmInternalClipboard.type === 'wb-item' && zmInternalClipboard.data) {
+        pushWbHistory();
+        const clone = JSON.parse(JSON.stringify(zmInternalClipboard.data));
+        clone.id = 'wb_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+        if (clone.type !== 'stroke') {
+          clone.x = Math.round(targetPt.x);
+          clone.y = Math.round(targetPt.y);
+        }
+        upsertWbItemLocal(clone);
+        wbSelectedId = clone.id;
+        renderWhiteboardAll();
+        broadcastWbItemUpsert(clone);
+        return;
+      }
+
+      try {
+        const txt = (await navigator.clipboard.readText()) || (zmInternalClipboard.type === 'text' ? zmInternalClipboard.data : '');
+        if (txt) {
+          if (isChatTarget) {
+            zmChatInput.value += txt;
+            zmChatInput.focus();
+          } else if (wbIsOpen) {
+            pushWbHistory();
+            const newText = {
+              id: 'wb_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+              type: 'text',
+              x: Math.round(targetPt.x),
+              y: Math.round(targetPt.y),
+              text: txt,
+              color: wbColor,
+              fontSize: 22
+            };
+            upsertWbItemLocal(newText);
+            wbSelectedId = newText.id;
+            renderWhiteboardAll();
+            broadcastWbItemUpsert(newText);
+          }
+        }
+      } catch (e) {}
+    });
+
+    document.getElementById('ctxSaveBtn').addEventListener('click', () => {
+      zmContextMenu.classList.add('hidden');
+      if (zmContextState.imageSrc) {
+        const a = document.createElement('a');
+        a.href = zmContextState.imageSrc;
+        a.download = 'elt-live-image.jpg';
+        a.click();
+      } else if (zmContextState.text) {
+        const blob = new Blob([zmContextState.text], { type: 'text/plain;charset=utf-8' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'mensaje-chat.txt';
+        a.click();
+      } else if (wbIsOpen) {
+        document.getElementById('wbExportPdfBtn').click();
+      }
+    });
+
+    document.getElementById('ctxSelectAllBtn').addEventListener('click', () => {
+      zmContextMenu.classList.add('hidden');
+      if (zmContextState.source === 'chat-input') {
+        zmChatInput.focus();
+        zmChatInput.select();
+      } else if (wbIsOpen) {
+        wbSelectedIds = wbItems.map(it => it.id);
+        wbSelectedId = wbSelectedIds[0] || null;
+        renderWhiteboardAll();
+      }
+    });
+
+    document.getElementById('ctxDeleteBtn').addEventListener('click', () => {
+      zmContextMenu.classList.add('hidden');
+      if (zmContextState.source === 'chat-msg' && zmContextState.messageId) {
+        deleteChatMessageById(zmContextState.messageId, true);
+      } else if (zmContextState.source === 'wb-item' && zmContextState.wbItemId) {
+        pushWbHistory();
+        if (wbSelectedIds.length > 1 && wbSelectedIds.includes(zmContextState.wbItemId)) {
+          deleteSelectedWbItems(true);
+        } else {
+          deleteWbItemById(zmContextState.wbItemId, true);
+        }
+      } else if (zmContextState.source === 'chat-input') {
+        zmChatInput.value = '';
+        setChatAttachment(null);
       }
     });
   </script>

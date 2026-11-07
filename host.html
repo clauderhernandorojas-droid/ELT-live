@@ -488,6 +488,21 @@
             <span>📊 Panel de Resultados</span>
             <span id="studentCount" class="bg-indigo-600 text-white text-[10px] px-2 py-0.5 rounded-full font-bold">0 Alumnos</span>
           </h3>
+          <span id="waitingRoomCountBadge" class="hidden bg-amber-500 text-slate-950 text-[10px] px-2 py-0.5 rounded-full font-extrabold animate-pulse">0 En espera</span>
+        </div>
+
+        <!-- Sección Superior Dinámica: Sala de Espera (Waiting Room) -->
+        <div id="hostWaitingRoomSection" class="hidden bg-slate-900/95 border-b border-amber-500/40 p-2.5 space-y-2 max-h-60 overflow-y-auto flex-shrink-0">
+          <div class="flex items-center justify-between">
+            <span class="text-[11px] font-bold text-amber-400 flex items-center gap-1.5">
+              <i class="fa-solid fa-user-clock"></i>
+              <span>Sala de Espera</span>
+            </span>
+            <button id="admitAllWaitingBtn" type="button" class="text-[10px] bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-2 py-0.5 rounded-md transition">
+              Admitir a todos
+            </button>
+          </div>
+          <div id="hostWaitingRoomList" class="space-y-2"></div>
         </div>
 
         <div id="studentsGrid" class="flex-1 overflow-y-auto space-y-2 p-3 scroll-smooth">
@@ -1121,6 +1136,185 @@
 
     setInterval(renderStudentsDashboard, 1000);
 
+    // ==================== GESTIÓN DE SALA DE ESPERA (WAITING ROOM) EN EL PROFESOR ====================
+    const waitingRoomStudents = {}; // studentId -> { studentId, name, peerId, joinedAt, lastMsg, messages: [], draftText: '' }
+    const admittedStudentIds = new Set();
+
+    function playHostWaitingRoomBeep() {
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(523.25, ctx.currentTime); // C5
+        osc.frequency.exponentialRampToValueAtTime(659.25, ctx.currentTime + 0.14); // E5
+        gain.gain.setValueAtTime(0.07, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.32);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.34);
+      } catch (e) {}
+    }
+
+    function renderHostWaitingRoom() {
+      const sectionEl = document.getElementById('hostWaitingRoomSection');
+      const listEl = document.getElementById('hostWaitingRoomList');
+      const badgeEl = document.getElementById('waitingRoomCountBadge');
+      if (!sectionEl || !listEl) return;
+
+      // Preservar el texto que el profesor esté escribiendo en algún input de sala de espera
+      listEl.querySelectorAll('input[data-wr-input-id]').forEach(inp => {
+        const sid = inp.getAttribute('data-wr-input-id');
+        if (waitingRoomStudents[sid]) {
+          waitingRoomStudents[sid].draftText = inp.value;
+        }
+      });
+      const activeInputEl = document.activeElement;
+      const focusedSid = activeInputEl && activeInputEl.getAttribute ? activeInputEl.getAttribute('data-wr-input-id') : null;
+
+      const ids = Object.keys(waitingRoomStudents);
+      if (badgeEl) {
+        badgeEl.textContent = `${ids.length} En espera`;
+        badgeEl.classList.toggle('hidden', ids.length === 0);
+      }
+      sectionEl.classList.toggle('hidden', ids.length === 0);
+
+      if (ids.length === 0) {
+        listEl.innerHTML = '';
+        return;
+      }
+
+      listEl.innerHTML = ids.map(sid => {
+        const st = waitingRoomStudents[sid];
+        const safeName = (st.name || 'Alumno').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const lastMsgHtml = st.lastMsg
+          ? `<div class="mt-1 bg-slate-950/90 border border-slate-700/80 rounded-lg px-2 py-1 text-[11px] text-amber-200 flex items-start gap-1.5">
+               <span class="text-[10px]">💬</span>
+               <span class="break-words leading-tight">${st.lastMsg.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span>
+             </div>`
+          : '';
+        const draftVal = (st.draftText || '').replace(/"/g, '&quot;');
+
+        return `
+          <div class="bg-slate-800/95 border border-amber-500/40 rounded-xl p-2.5 shadow-md space-y-2">
+            <div class="flex items-center justify-between gap-2">
+              <div class="flex items-center gap-2 min-w-0">
+                <span class="w-2 h-2 rounded-full bg-amber-400 animate-ping shrink-0"></span>
+                <span class="font-bold text-white text-xs truncate">${safeName}</span>
+              </div>
+              <div class="flex items-center gap-1 shrink-0">
+                <button type="button" onclick="admitWaitingStudent('${sid}')" class="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold px-2.5 py-1 rounded-lg transition shadow-xs">
+                  ✓ Admitir
+                </button>
+                <button type="button" onclick="rejectWaitingStudent('${sid}')" class="bg-rose-600/90 hover:bg-rose-500 text-white text-[10px] font-bold px-2 py-1 rounded-lg transition shadow-xs">
+                  ✕ Rechazar
+                </button>
+              </div>
+            </div>
+            ${lastMsgHtml}
+            <div class="space-y-1 pt-1 border-t border-slate-700/60">
+              <div class="flex items-center gap-1 overflow-x-auto pb-0.5">
+                <button type="button" onclick="sendWaitingRoomMsgFromHost('${sid}', 'Ya casi terminamos, espera unos minutos por favor ⏳')" class="shrink-0 text-[9px] bg-slate-700 hover:bg-indigo-600 text-slate-200 hover:text-white px-2 py-0.5 rounded-full transition">
+                  ⏳ Espera unos minutos
+                </button>
+                <button type="button" onclick="sendWaitingRoomMsgFromHost('${sid}', 'Dame 3 minutos, estoy terminando la sesión anterior 🙏')" class="shrink-0 text-[9px] bg-slate-700 hover:bg-indigo-600 text-slate-200 hover:text-white px-2 py-0.5 rounded-full transition">
+                  🕒 Dame 3 min
+                </button>
+              </div>
+              <div class="flex items-center gap-1">
+                <input type="text" data-wr-input-id="${sid}" value="${draftVal}" placeholder="Mensaje a ${safeName} (Enter)..." onkeydown="if(event.key==='Enter'){event.preventDefault();sendWaitingRoomCustomInput('${sid}');}" class="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-[11px] text-white focus:outline-none focus:border-indigo-500">
+                <button type="button" onclick="sendWaitingRoomCustomInput('${sid}')" class="bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-bold px-2 py-1 rounded-lg transition">
+                  Enviar
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      if (focusedSid) {
+        const toFocus = listEl.querySelector(`input[data-wr-input-id="${focusedSid}"]`);
+        if (toFocus) {
+          toFocus.focus();
+          toFocus.setSelectionRange(toFocus.value.length, toFocus.value.length);
+        }
+      }
+    }
+
+    window.admitWaitingStudent = function(studentId) {
+      const st = waitingRoomStudents[studentId];
+      if (!st || !roomChannel) return;
+      admittedStudentIds.add(studentId);
+      delete waitingRoomStudents[studentId];
+      renderHostWaitingRoom();
+
+      if (!studentsState[st.name]) {
+        studentsState[st.name] = { joined: true, slide: currentSlide, answers: [], slideHistory: {}, officialScoreHistory: {} };
+      }
+      renderStudentsDashboard();
+
+      roomChannel.send({
+        type: 'broadcast',
+        event: 'WAITING_ROOM_ADMIT',
+        payload: {
+          studentId: studentId,
+          studentName: st.name
+        }
+      });
+    };
+
+    window.rejectWaitingStudent = function(studentId) {
+      const st = waitingRoomStudents[studentId];
+      if (!st || !roomChannel) return;
+      delete waitingRoomStudents[studentId];
+      renderHostWaitingRoom();
+
+      roomChannel.send({
+        type: 'broadcast',
+        event: 'WAITING_ROOM_REJECT',
+        payload: {
+          studentId: studentId,
+          studentName: st.name
+        }
+      });
+    };
+
+    window.sendWaitingRoomMsgFromHost = function(studentId, messageText) {
+      const st = waitingRoomStudents[studentId];
+      const text = (messageText || '').trim();
+      if (!st || !text || !roomChannel) return;
+      roomChannel.send({
+        type: 'broadcast',
+        event: 'WAITING_ROOM_MSG',
+        payload: {
+          fromRole: 'host',
+          targetStudentId: studentId,
+          targetStudentName: st.name,
+          text: text,
+          timestamp: Date.now()
+        }
+      });
+    };
+
+    window.sendWaitingRoomCustomInput = function(studentId) {
+      const inp = document.querySelector(`input[data-wr-input-id="${studentId}"]`);
+      if (!inp) return;
+      const txt = inp.value.trim();
+      if (!txt) return;
+      window.sendWaitingRoomMsgFromHost(studentId, txt);
+      inp.value = '';
+      if (waitingRoomStudents[studentId]) {
+        waitingRoomStudents[studentId].draftText = '';
+      }
+    };
+
+    document.getElementById('admitAllWaitingBtn')?.addEventListener('click', () => {
+      Object.keys(waitingRoomStudents).forEach(sid => window.admitWaitingStudent(sid));
+    });
+
     document.getElementById('createRoomBtn').addEventListener('click', () => {
       roomPin = Math.floor(1000 + Math.random() * 9000).toString();
       document.getElementById('roomPinDisplay').textContent = '#' + roomPin;
@@ -1160,6 +1354,69 @@
         });
         renderStudentsDashboard();
         if (typeof renderChatParticipantsDropdown === 'function') renderChatParticipantsDropdown();
+      });
+
+      roomChannel.on('broadcast', { event: 'WAITING_ROOM_JOIN' }, ({ payload }) => {
+        if (!payload || !payload.studentId) return;
+        const sid = payload.studentId;
+        const sName = payload.studentName || 'Alumno';
+        // Si ya fue admitido previamente en esta sesión, re-enviarle admisión automática
+        if (admittedStudentIds.has(sid)) {
+          roomChannel.send({
+            type: 'broadcast',
+            event: 'WAITING_ROOM_ADMIT',
+            payload: { studentId: sid, studentName: sName }
+          });
+          return;
+        }
+        const isNew = !waitingRoomStudents[sid];
+        if (isNew) {
+          waitingRoomStudents[sid] = {
+            studentId: sid,
+            name: sName,
+            peerId: payload.peerId || null,
+            joinedAt: Date.now(),
+            lastMsg: '',
+            draftText: ''
+          };
+          playHostWaitingRoomBeep();
+          renderHostWaitingRoom();
+        } else {
+          waitingRoomStudents[sid].name = sName;
+        }
+      });
+
+      roomChannel.on('broadcast', { event: 'WAITING_ROOM_MSG' }, ({ payload }) => {
+        if (!payload || payload.fromRole !== 'student' || !payload.studentId) return;
+        const sid = payload.studentId;
+        const sName = payload.studentName || 'Alumno';
+        if (!waitingRoomStudents[sid]) {
+          waitingRoomStudents[sid] = {
+            studentId: sid,
+            name: sName,
+            peerId: null,
+            joinedAt: Date.now(),
+            lastMsg: payload.text || '',
+            draftText: ''
+          };
+        } else {
+          waitingRoomStudents[sid].lastMsg = payload.text || '';
+        }
+        playHostWaitingRoomBeep();
+        renderHostWaitingRoom();
+      });
+
+      roomChannel.on('broadcast', { event: 'STUDENT_JOIN' }, ({ payload }) => {
+        if (!payload || !payload.studentName) return;
+        const stName = payload.studentName;
+        if (payload.studentId && waitingRoomStudents[payload.studentId]) {
+          delete waitingRoomStudents[payload.studentId];
+          renderHostWaitingRoom();
+        }
+        if (!studentsState[stName]) {
+          studentsState[stName] = { joined: true, slide: currentSlide, answers: [], slideHistory: {}, officialScoreHistory: {} };
+        }
+        renderStudentsDashboard();
       });
 
       roomChannel.on('broadcast', { event: 'REQUEST_LESSON' }, () => {

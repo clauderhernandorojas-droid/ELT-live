@@ -85,6 +85,70 @@
     </div>
   </div>
 
+  <!-- Pantalla 1.5: Sala de Espera (Waiting Room) con Mensajería Bidireccional -->
+  <div id="waitingRoomScreen" class="hidden m-auto w-full max-w-md bg-white p-6 rounded-2xl shadow-2xl border border-slate-200 flex flex-col gap-4">
+    <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+      <div class="flex items-center gap-2.5">
+        <div class="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600">
+          <i class="fa-solid fa-hourglass-half animate-pulse"></i>
+        </div>
+        <div>
+          <h2 class="text-sm font-bold text-slate-800">Sala de Espera — ELT Live</h2>
+          <p class="text-[11px] text-slate-500">Sala <span id="wrPinBadge" class="font-mono font-bold text-indigo-600">#----</span> • <span id="wrStudentNameBadge" class="font-semibold text-slate-700">Alumno</span></p>
+        </div>
+      </div>
+      <span class="bg-amber-100 text-amber-800 text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1.5">
+        <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping"></span>
+        En espera
+      </span>
+    </div>
+
+    <div class="bg-slate-50 border border-slate-200/80 rounded-xl p-3.5 text-center">
+      <p class="text-xs font-bold text-slate-800">Estás en la sala de espera. El profesor te dará acceso en breve...</p>
+      <p class="text-[11px] text-slate-500 mt-1">Mantén esta ventana abierta. Ingresarás automáticamente apenas el profesor te admita.</p>
+    </div>
+
+    <!-- Recuadro de Mensajes en Tiempo Real con el Profesor -->
+    <div class="flex flex-col border border-slate-200 rounded-xl overflow-hidden bg-white">
+      <div class="bg-slate-900 text-white px-3 py-2 flex items-center justify-between text-[11px]">
+        <span class="font-semibold flex items-center gap-1.5">
+          <i class="fa-regular fa-comment-dots text-indigo-400"></i>
+          <span>Mensajes con el Profesor</span>
+        </span>
+        <span id="wrNewMsgIndicator" class="hidden bg-emerald-500 text-slate-950 text-[9px] font-extrabold px-2 py-0.5 rounded-full animate-bounce">Nuevo mensaje</span>
+      </div>
+
+      <div id="waitingRoomMessagesList" class="h-40 overflow-y-auto p-3 space-y-2 bg-slate-50/60 text-xs">
+        <p id="wrEmptyMsgNotice" class="text-[11px] text-slate-400 text-center py-10 italic">Aún no hay mensajes. Puedes escribirle al profesor si lo necesitas.</p>
+      </div>
+
+      <!-- Botones de Respuesta Rápida para el Estudiante -->
+      <div class="px-2.5 py-1.5 bg-slate-100 border-t border-slate-200 flex items-center gap-1.5 overflow-x-auto">
+        <button type="button" data-wr-quick="Listo profe, aquí espero 👍" class="wr-student-quick-btn shrink-0 text-[10px] bg-white hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-300 px-2 py-1 rounded-full transition font-medium">
+          👍 Listo profe, aquí espero
+        </button>
+        <button type="button" data-wr-quick="Hola profe, ya estoy conectado 👋" class="wr-student-quick-btn shrink-0 text-[10px] bg-white hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-300 px-2 py-1 rounded-full transition font-medium">
+          👋 Ya estoy conectado
+        </button>
+        <button type="button" data-wr-quick="Entendido, muchas gracias 🙏" class="wr-student-quick-btn shrink-0 text-[10px] bg-white hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-300 px-2 py-1 rounded-full transition font-medium">
+          🙏 Entendido, gracias
+        </button>
+      </div>
+
+      <!-- Input para enviar respuesta breve al profesor -->
+      <div class="p-2 bg-white border-t border-slate-200 flex items-center gap-1.5">
+        <input id="waitingRoomStudentInput" type="text" maxlength="160" placeholder="Escribe un mensaje breve al profesor..." class="flex-1 text-xs px-3 py-2 rounded-lg border border-slate-300 focus:outline-indigo-600 text-slate-800">
+        <button id="waitingRoomStudentSendBtn" type="button" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3.5 py-2 rounded-lg transition">
+          Enviar
+        </button>
+      </div>
+    </div>
+
+    <button id="waitingRoomCancelBtn" type="button" class="text-[11px] text-slate-400 hover:text-rose-600 font-semibold self-center transition">
+      Cancelar y volver al inicio
+    </button>
+  </div>
+
   <!-- Pantalla 2: Vista del Estudiante Maximizada (Interfaz Unificada de Videoconferencia) -->
   <div id="liveScreen" class="hidden flex-1 flex flex-col h-full w-full bg-white relative overflow-hidden">
     
@@ -1458,6 +1522,160 @@
       }, 350);
     }
 
+    let isAdmittedToClass = false;
+    let waitingRoomPingInterval = null;
+    const myStudentId = 'stu_' + Math.random().toString(36).slice(2, 9);
+
+    function playGentleNotificationBeep() {
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+        osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.14); // A5
+        gain.gain.setValueAtTime(0.08, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.36);
+      } catch (e) {}
+    }
+
+    function appendWaitingRoomMessage(sender, text, isFromHost) {
+      const listEl = document.getElementById('waitingRoomMessagesList');
+      const emptyEl = document.getElementById('wrEmptyMsgNotice');
+      const badgeEl = document.getElementById('wrNewMsgIndicator');
+      if (!listEl) return;
+      if (emptyEl) emptyEl.classList.add('hidden');
+
+      const item = document.createElement('div');
+      item.className = `flex flex-col ${isFromHost ? 'items-start' : 'items-end'}`;
+      const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      item.innerHTML = `
+        <div class="max-w-[85%] rounded-xl px-3 py-2 shadow-xs ${
+          isFromHost
+            ? 'bg-indigo-600 text-white rounded-tl-none'
+            : 'bg-slate-200 text-slate-800 rounded-tr-none'
+        }">
+          <div class="flex items-center justify-between gap-2 mb-0.5">
+            <span class="text-[10px] font-bold ${isFromHost ? 'text-indigo-200' : 'text-slate-600'}">${sender}</span>
+            <span class="text-[9px] ${isFromHost ? 'text-indigo-200/80' : 'text-slate-500'}">${timeStr}</span>
+          </div>
+          <p class="text-xs leading-snug break-words"></p>
+        </div>
+      `;
+      item.querySelector('p').textContent = text;
+      listEl.appendChild(item);
+      listEl.scrollTop = listEl.scrollHeight;
+
+      if (isFromHost) {
+        if (badgeEl) {
+          badgeEl.classList.remove('hidden');
+          setTimeout(() => badgeEl.classList.add('hidden'), 4000);
+        }
+        playGentleNotificationBeep();
+      }
+    }
+
+    function sendStudentWaitingRoomMessage(rawText) {
+      const text = (rawText || '').trim();
+      if (!text || !myChannel || isAdmittedToClass) return;
+      appendWaitingRoomMessage(myName || 'Yo', text, false);
+      myChannel.send({
+        type: 'broadcast',
+        event: 'WAITING_ROOM_MSG',
+        payload: {
+          studentId: myStudentId,
+          studentName: myName,
+          fromRole: 'student',
+          text: text,
+          timestamp: Date.now()
+        }
+      });
+    }
+
+    document.getElementById('waitingRoomStudentSendBtn')?.addEventListener('click', () => {
+      const inp = document.getElementById('waitingRoomStudentInput');
+      if (!inp) return;
+      sendStudentWaitingRoomMessage(inp.value);
+      inp.value = '';
+    });
+
+    document.getElementById('waitingRoomStudentInput')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        document.getElementById('waitingRoomStudentSendBtn')?.click();
+      }
+    });
+
+    document.querySelectorAll('.wr-student-quick-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        sendStudentWaitingRoomMessage(btn.getAttribute('data-wr-quick') || '');
+      });
+    });
+
+    document.getElementById('waitingRoomCancelBtn')?.addEventListener('click', () => {
+      if (waitingRoomPingInterval) {
+        clearInterval(waitingRoomPingInterval);
+        waitingRoomPingInterval = null;
+      }
+      if (myChannel) {
+        myChannel.unsubscribe();
+        myChannel = null;
+      }
+      document.getElementById('waitingRoomScreen').classList.add('hidden');
+      document.getElementById('joinScreen').classList.remove('hidden');
+    });
+
+    async function completeStudentAdmissionToClass() {
+      if (isAdmittedToClass) return;
+      isAdmittedToClass = true;
+      if (waitingRoomPingInterval) {
+        clearInterval(waitingRoomPingInterval);
+        waitingRoomPingInterval = null;
+      }
+
+      document.getElementById('waitingRoomScreen').classList.add('hidden');
+      document.getElementById('joinScreen').classList.add('hidden');
+      document.getElementById('liveScreen').classList.remove('hidden');
+
+      if (typeof updateLocalMediaUI === 'function') updateLocalMediaUI();
+      if (typeof setupWebRTCSignaling === 'function') setupWebRTCSignaling(myChannel);
+
+      try {
+        await myChannel.track({
+          name: myName,
+          role: 'student',
+          peerId: webrtcPeerId,
+          studentId: myStudentId,
+          audioEnabled: webrtcAudioEnabled,
+          videoEnabled: webrtcVideoEnabled,
+          joinedAt: new Date().toISOString()
+        });
+      } catch (e) {}
+
+      myChannel.send({
+        type: 'broadcast',
+        event: 'STUDENT_JOIN',
+        payload: { studentId: myStudentId, studentName: myName, peerId: webrtcPeerId }
+      });
+      myChannel.send({
+        type: 'broadcast',
+        event: 'REQUEST_LESSON',
+        payload: { studentName: myName, peerId: webrtcPeerId }
+      });
+      myChannel.send({
+        type: 'broadcast',
+        event: 'WB_REQUEST_STATE',
+        payload: { studentName: myName }
+      });
+      if (typeof announceWebRTCPresence === 'function') announceWebRTCPresence();
+    }
+
     document.getElementById('joinBtn').addEventListener('click', () => {
       myName = document.getElementById('studentNameInput').value.trim();
       const pin = document.getElementById('roomPinInput').value.trim();
@@ -1467,19 +1685,29 @@
         return;
       }
 
+      isAdmittedToClass = false;
       document.getElementById('displayStudentName').textContent = myName;
       const pinHeaderEl = document.getElementById('studentHeaderPinLabel');
       if (pinHeaderEl) pinHeaderEl.textContent = `#${pin}`;
+      const wrPinEl = document.getElementById('wrPinBadge');
+      if (wrPinEl) wrPinEl.textContent = `#${pin}`;
+      const wrNameEl = document.getElementById('wrStudentNameBadge');
+      if (wrNameEl) wrNameEl.textContent = myName;
       const localNameEl = document.getElementById('webrtcLocalNameTag');
       if (localNameEl) localNameEl.textContent = myName;
       const localInitEl = document.getElementById('webrtcLocalAvatarInitial');
       if (localInitEl) localInitEl.textContent = (myName.charAt(0) || 'A').toUpperCase();
+
+      if (myChannel) {
+        myChannel.unsubscribe();
+      }
 
       myChannel = sbClient.channel(`room_${pin}`, {
         config: { presence: { key: myName } }
       });
 
       myChannel.on('presence', { event: 'sync' }, () => {
+        if (!isAdmittedToClass) return;
         const state = myChannel.presenceState();
         const peers = ['Profesor (Host)'];
         Object.keys(state).forEach(key => {
@@ -1510,43 +1738,74 @@
         if (typeof renderChatParticipantsDropdown === 'function') renderChatParticipantsDropdown();
       });
 
+      // Eventos de Sala de Espera (Waiting Room)
+      myChannel.on('broadcast', { event: 'WAITING_ROOM_MSG' }, ({ payload }) => {
+        if (!payload || isAdmittedToClass) return;
+        if (payload.fromRole === 'host' && (!payload.targetStudentId || payload.targetStudentId === myStudentId || payload.targetStudentName === myName)) {
+          appendWaitingRoomMessage('Profesor (Host)', payload.text || '', true);
+        }
+      });
+
+      myChannel.on('broadcast', { event: 'WAITING_ROOM_ADMIT' }, ({ payload }) => {
+        if (!payload || isAdmittedToClass) return;
+        if (payload.studentId === myStudentId || payload.studentName === myName) {
+          playGentleNotificationBeep();
+          completeStudentAdmissionToClass();
+        }
+      });
+
+      myChannel.on('broadcast', { event: 'WAITING_ROOM_REJECT' }, ({ payload }) => {
+        if (!payload || isAdmittedToClass) return;
+        if (payload.studentId === myStudentId || payload.studentName === myName) {
+          if (waitingRoomPingInterval) {
+            clearInterval(waitingRoomPingInterval);
+            waitingRoomPingInterval = null;
+          }
+          if (myChannel) {
+            myChannel.unsubscribe();
+            myChannel = null;
+          }
+          document.getElementById('waitingRoomScreen').classList.add('hidden');
+          document.getElementById('joinScreen').classList.remove('hidden');
+          alert('El acceso a la sala fue denegado por el profesor.');
+        }
+      });
+
       myChannel.on('broadcast', { event: 'LOAD_LESSON' }, ({ payload }) => {
+        if (!isAdmittedToClass) return;
         loadLessonIntoStudent(payload.lessonId, payload.html, payload.targetSlide);
       });
 
       myChannel.on('broadcast', { event: 'SYNC_SLIDE_NUMBER' }, ({ payload }) => {
+        if (!isAdmittedToClass) return;
         syncStudentToSlide(payload.targetSlide);
       });
 
       setupWhiteboardChannelListeners(myChannel);
       setupChatChannelListeners(myChannel);
-      if (typeof setupWebRTCSignaling === 'function') setupWebRTCSignaling(myChannel);
 
       myChannel.subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
-          await myChannel.track({
-            name: myName,
-            role: 'student',
-            peerId: webrtcPeerId,
-            audioEnabled: webrtcAudioEnabled,
-            videoEnabled: webrtcVideoEnabled,
-            joinedAt: new Date().toISOString()
-          });
           document.getElementById('joinScreen').classList.add('hidden');
-          document.getElementById('liveScreen').classList.remove('hidden');
-          if (typeof updateLocalMediaUI === 'function') updateLocalMediaUI();
+          document.getElementById('waitingRoomScreen').classList.remove('hidden');
 
-          myChannel.send({
-            type: 'broadcast',
-            event: 'REQUEST_LESSON',
-            payload: { studentName: myName, peerId: webrtcPeerId }
-          });
-          myChannel.send({
-            type: 'broadcast',
-            event: 'WB_REQUEST_STATE',
-            payload: { studentName: myName }
-          });
-          if (typeof announceWebRTCPresence === 'function') announceWebRTCPresence();
+          const sendWaitingJoin = () => {
+            if (!myChannel || isAdmittedToClass) return;
+            myChannel.send({
+              type: 'broadcast',
+              event: 'WAITING_ROOM_JOIN',
+              payload: {
+                studentId: myStudentId,
+                studentName: myName,
+                peerId: webrtcPeerId,
+                timestamp: Date.now()
+              }
+            });
+          };
+
+          sendWaitingJoin();
+          if (waitingRoomPingInterval) clearInterval(waitingRoomPingInterval);
+          waitingRoomPingInterval = setInterval(sendWaitingJoin, 4000);
         }
       });
     });

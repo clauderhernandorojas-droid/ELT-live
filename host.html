@@ -50,6 +50,99 @@
     .zm-resize-handle-ne { position: absolute; top: -5px; right: -5px; width: 12px; height: 12px; cursor: nesw-resize; z-index: 45; }
     .zm-resize-handle-sw { position: absolute; bottom: -5px; left: -5px; width: 12px; height: 12px; cursor: nesw-resize; z-index: 45; }
     .zm-resize-handle-se { position: absolute; bottom: 0px; right: 0px; width: 16px; height: 16px; cursor: nwse-resize; z-index: 45; }
+
+    /* Estilos de Impresión Nativa (@media print) para el Cronograma de Clases */
+    @page {
+      size: letter portrait;
+      margin: 14mm;
+    }
+    @media print {
+      html, body {
+        background: #ffffff !important;
+        color: #000000 !important;
+        height: auto !important;
+        width: 100% !important;
+        overflow: visible !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      body > *:not(#printableScheduleWrapper) {
+        display: none !important;
+      }
+      #hostLobbyScreen,
+      #liveClassHeader,
+      #liveClassMain,
+      #scheduleModal,
+      #scheduleOccurrenceModal,
+      #printScheduleModal,
+      #printableScheduleToolbar,
+      .no-print {
+        display: none !important;
+      }
+      #printableScheduleWrapper {
+        display: block !important;
+        position: static !important;
+        inset: auto !important;
+        background: #ffffff !important;
+        color: #000000 !important;
+        overflow: visible !important;
+        height: auto !important;
+        width: 100% !important;
+        padding: 0 !important;
+        margin: 0 !important;
+      }
+      #printableScheduleArea {
+        display: block !important;
+        background: #ffffff !important;
+        color: #000000 !important;
+        box-shadow: none !important;
+        border: none !important;
+        max-width: 100% !important;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
+      #printableScheduleArea table {
+        width: 100% !important;
+        border-collapse: collapse !important;
+      }
+      #printableScheduleArea thead {
+        display: table-header-group !important;
+      }
+      #printableScheduleArea tr {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+      }
+      #printableScheduleArea th,
+      #printableScheduleArea td {
+        border: 1px solid #9ca3af !important;
+        color: #000000 !important;
+        background: #ffffff !important;
+      }
+      #printableScheduleArea th {
+        background: #f3f4f6 !important;
+        font-weight: 700 !important;
+      }
+      .print-avoid-break,
+      .print-calendar-month-block {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+      }
+      .print-calendar-grid-table {
+        width: 100% !important;
+        table-layout: fixed !important;
+        border-collapse: collapse !important;
+      }
+      .print-calendar-grid-table th,
+      .print-calendar-grid-table td {
+        border: 1px solid #9ca3af !important;
+        vertical-align: top !important;
+        background: #ffffff !important;
+        color: #000000 !important;
+      }
+    }
   </style>
 </head>
 <body class="bg-slate-900 font-sans h-screen w-screen overflow-hidden flex flex-col text-slate-100">
@@ -104,6 +197,11 @@
         <div id="schedActiveDateLabel" class="text-xs font-bold text-slate-200 bg-slate-900/90 border border-slate-800 px-3.5 py-2 rounded-xl min-w-[210px] text-center capitalize">
           Cargando fecha...
         </div>
+
+        <!-- Botón de Impresión / PDF del Cronograma -->
+        <button id="btnOpenPrintModal" type="button" class="bg-slate-900 hover:bg-slate-800 text-slate-200 hover:text-white border border-slate-700/90 active:scale-95 text-xs font-bold px-3.5 py-2 rounded-xl shadow-sm flex items-center gap-1.5 transition" title="Imprimir o exportar cronograma a PDF">
+          <span>🖨️ Imprimir / PDF</span>
+        </button>
 
         <!-- Botón de Acción: + Nuevo Alumno / Clase -->
         <button id="btnOpenScheduleModal" type="button" class="bg-[#0e72ed] hover:bg-[#0b5ed7] active:scale-95 text-white text-xs font-bold px-4 py-2 rounded-xl shadow-lg flex items-center gap-1.5 transition">
@@ -385,6 +483,105 @@
           </button>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- Modal de Filtros para Impresión y Exportación a PDF (#printScheduleModal) -->
+  <div id="printScheduleModal" class="hidden fixed inset-0 z-[140] bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 no-print">
+    <div class="bg-[#111622] border border-slate-700/90 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden text-slate-100">
+      <div class="bg-[#090d16] px-5 py-3.5 border-b border-slate-800 flex items-center justify-between">
+        <h3 class="text-sm font-bold text-white flex items-center gap-2">
+          <i class="fa-solid fa-print text-indigo-400"></i>
+          <span>Imprimir / Exportar Cronograma a PDF</span>
+        </h3>
+        <button id="btnClosePrintModal" type="button" class="text-slate-400 hover:text-white w-7 h-7 rounded-lg hover:bg-slate-800 flex items-center justify-center transition">✕</button>
+      </div>
+
+      <div class="p-5 space-y-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-300 mb-1.5">Seleccionar Estudiante</label>
+          <select id="printStudentSelect" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-white focus:outline-none focus:border-indigo-500">
+            <option value="ALL">Todos los estudiantes</option>
+          </select>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-bold text-slate-300 mb-1.5">Desde</label>
+            <input id="printDateFromInput" type="date" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500">
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-300 mb-1.5">Hasta</label>
+            <input id="printDateToInput" type="date" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-300 mb-1.5">Formato del Documento</label>
+          <div class="grid grid-cols-2 gap-2" id="printFormatRadioGroup">
+            <label class="cursor-pointer bg-slate-900 hover:bg-slate-800/90 border border-indigo-500 rounded-xl p-2.5 flex items-start gap-2 transition" id="lblPrintFormatCalendar">
+              <input type="radio" name="printFormatOption" value="calendar" checked class="mt-0.5 accent-indigo-500">
+              <div>
+                <span class="block text-xs font-bold text-white">🗓️ Cuadrícula de Calendario</span>
+                <span class="block text-[10px] text-slate-400 leading-tight mt-0.5">Vista visual mensual (L-D) con tarjetas de horario</span>
+              </div>
+            </label>
+            <label class="cursor-pointer bg-slate-900 hover:bg-slate-800/90 border border-slate-700 rounded-xl p-2.5 flex items-start gap-2 transition" id="lblPrintFormatTable">
+              <input type="radio" name="printFormatOption" value="table" class="mt-0.5 accent-indigo-500">
+              <div>
+                <span class="block text-xs font-bold text-white">📋 Tabla detallada con firmas</span>
+                <span class="block text-[10px] text-slate-400 leading-tight mt-0.5">Listado cronológico de sesiones y firmas</span>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-300 mb-1.5">Nombre del Profesor / Docente</label>
+          <input id="printTeacherNameInput" type="text" value="Profesor Titular — ELT Live" placeholder="Ej: Lic. Clauder Rojas" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-indigo-500">
+        </div>
+
+        <div class="pt-2 flex items-center justify-end gap-2 border-t border-slate-800">
+          <button id="btnCancelPrintModal" type="button" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold px-4 py-2 rounded-xl transition">
+            Cancelar / Cerrar
+          </button>
+          <button id="btnConfirmGeneratePrintDoc" type="button" class="bg-[#0e72ed] hover:bg-[#0b5ed7] text-white text-xs font-bold px-4 py-2 rounded-xl shadow-lg transition flex items-center gap-1.5">
+            <i class="fa-solid fa-file-pdf"></i>
+            <span>Generar Vista de Impresión</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Contenedor de Vista Previa e Impresión del Cronograma (#printableScheduleWrapper / #printableScheduleArea) -->
+  <div id="printableScheduleWrapper" class="hidden fixed inset-0 z-[150] bg-slate-950/95 overflow-y-auto flex flex-col items-center">
+    <!-- Barra Flotante Superior (NO se imprime gracias a @media print y .no-print) -->
+    <div id="printableScheduleToolbar" class="no-print sticky top-0 z-20 w-full bg-[#090d16]/95 backdrop-blur-md border-b border-slate-800 px-6 py-3 flex flex-wrap items-center justify-between gap-3 shadow-xl">
+      <div class="flex items-center gap-3">
+        <span class="bg-indigo-600 text-white text-xs font-black px-2.5 py-1 rounded-lg">VISTA PREVIA DE IMPRESIÓN</span>
+        <div class="bg-slate-900 p-1 rounded-xl border border-slate-800 flex items-center gap-1">
+          <button id="btnPreviewSwitchCalendar" type="button" class="bg-indigo-600 text-white text-xs font-bold px-3 py-1 rounded-lg transition">
+            🗓️ Cuadrícula de Calendario
+          </button>
+          <button id="btnPreviewSwitchTable" type="button" class="text-slate-400 hover:text-white text-xs font-bold px-3 py-1 rounded-lg transition">
+            📋 Tabla detallada con firmas
+          </button>
+        </div>
+      </div>
+      <div class="flex items-center gap-2.5">
+        <button id="btnTriggerBrowserPrint" type="button" class="bg-[#0e72ed] hover:bg-[#0b5ed7] active:scale-95 text-white text-xs font-bold px-4 py-2 rounded-xl shadow-lg transition flex items-center gap-2">
+          <span>🖨️ Imprimir / Guardar como PDF</span>
+        </button>
+        <button id="btnClosePrintPreview" type="button" class="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold px-4 py-2 rounded-xl transition">
+          Cerrar Vista Previa
+        </button>
+      </div>
+    </div>
+
+    <!-- Área Imprimible real (Fondo 100% blanco, texto negro nítido) -->
+    <div class="w-full flex justify-center py-8 px-4 print:p-0">
+      <div id="printableScheduleArea" class="bg-white text-black w-full max-w-[216mm] rounded-xl shadow-2xl p-8 md:p-10 print:shadow-none print:rounded-none print:p-0"></div>
     </div>
   </div>
   <!-- ==================== FIN LOBBY INICIAL ==================== -->
@@ -6398,6 +6595,502 @@
       renderScheduleLobby();
       closeScheduleModal();
       fetchScheduleFromSupabase();
+    });
+
+    // ==================== VISTA DE IMPRESIÓN Y EXPORTACIÓN A PDF DEL CRONOGRAMA ====================
+    const printScheduleModal = document.getElementById('printScheduleModal');
+    const printableScheduleWrapper = document.getElementById('printableScheduleWrapper');
+    const printableScheduleArea = document.getElementById('printableScheduleArea');
+
+    function formatIsoToDdMmYyyy(isoStr) {
+      const parts = String(isoStr || '').slice(0, 10).split('-');
+      if (parts.length === 3) {
+        return `${parts[2]}/${parts[1]}/${parts[0]}`;
+      }
+      return isoStr || '';
+    }
+
+    function getSpanishDayNameFromIso(isoStr) {
+      const d = parseIsoDateLocal(isoStr);
+      const dayNames = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+      return dayNames[d.getDay()] || '';
+    }
+
+    function populatePrintStudentsDropdown() {
+      const selectEl = document.getElementById('printStudentSelect');
+      if (!selectEl) return;
+
+      const uniqueStudents = new Map();
+      scheduleRecords.forEach(r => {
+        if (r.type === 'exception') return;
+        const stName = (r.studentName || r.name || '').trim();
+        const stPin = String(r.pin || '0000').trim();
+        if (!stName) return;
+        const key = `${stName}__${stPin}`;
+        if (!uniqueStudents.has(key)) {
+          uniqueStudents.set(key, { studentName: stName, pin: stPin });
+        }
+      });
+
+      let optionsHtml = `<option value="ALL">Todos los estudiantes</option>`;
+      Array.from(uniqueStudents.entries())
+        .sort((a, b) => a[1].studentName.localeCompare(b[1].studentName))
+        .forEach(([key, info]) => {
+          const safeName = info.studentName.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          const safeKey = key.replace(/"/g, '&quot;');
+          optionsHtml += `<option value="${safeKey}">${safeName} (PIN #${info.pin})</option>`;
+        });
+
+      selectEl.innerHTML = optionsHtml;
+    }
+
+    function openPrintScheduleModal() {
+      if (!printScheduleModal) return;
+      populatePrintStudentsDropdown();
+
+      const fromInp = document.getElementById('printDateFromInput');
+      const toInp = document.getElementById('printDateToInput');
+      const firstOfCurrentMonth = new Date(scheduleCursorDate.getFullYear(), scheduleCursorDate.getMonth(), 1);
+      const lastOfNextMonth = new Date(scheduleCursorDate.getFullYear(), scheduleCursorDate.getMonth() + 2, 0);
+
+      if (fromInp) fromInp.value = toIsoDateString(firstOfCurrentMonth);
+      if (toInp) toInp.value = toIsoDateString(lastOfNextMonth);
+
+      printScheduleModal.classList.remove('hidden');
+    }
+
+    function closePrintScheduleModal() {
+      if (printScheduleModal) printScheduleModal.classList.add('hidden');
+    }
+
+    function closePrintPreview() {
+      if (printableScheduleWrapper) printableScheduleWrapper.classList.add('hidden');
+    }
+
+    function syncPrintFormatRadioBorders() {
+      const checkedVal = document.querySelector('input[name="printFormatOption"]:checked')?.value || 'calendar';
+      const lblCal = document.getElementById('lblPrintFormatCalendar');
+      const lblTbl = document.getElementById('lblPrintFormatTable');
+      if (lblCal) {
+        lblCal.className = checkedVal === 'calendar'
+          ? 'cursor-pointer bg-slate-900 hover:bg-slate-800/90 border border-indigo-500 ring-1 ring-indigo-500/40 rounded-xl p-2.5 flex items-start gap-2 transition'
+          : 'cursor-pointer bg-slate-900 hover:bg-slate-800/90 border border-slate-700 rounded-xl p-2.5 flex items-start gap-2 transition';
+      }
+      if (lblTbl) {
+        lblTbl.className = checkedVal === 'table'
+          ? 'cursor-pointer bg-slate-900 hover:bg-slate-800/90 border border-indigo-500 ring-1 ring-indigo-500/40 rounded-xl p-2.5 flex items-start gap-2 transition'
+          : 'cursor-pointer bg-slate-900 hover:bg-slate-800/90 border border-slate-700 rounded-xl p-2.5 flex items-start gap-2 transition';
+      }
+
+      const btnPrevCal = document.getElementById('btnPreviewSwitchCalendar');
+      const btnPrevTbl = document.getElementById('btnPreviewSwitchTable');
+      if (btnPrevCal) {
+        btnPrevCal.className = checkedVal === 'calendar'
+          ? 'bg-indigo-600 text-white text-xs font-bold px-3 py-1 rounded-lg transition'
+          : 'text-slate-400 hover:text-white text-xs font-bold px-3 py-1 rounded-lg transition';
+      }
+      if (btnPrevTbl) {
+        btnPrevTbl.className = checkedVal === 'table'
+          ? 'bg-indigo-600 text-white text-xs font-bold px-3 py-1 rounded-lg transition'
+          : 'text-slate-400 hover:text-white text-xs font-bold px-3 py-1 rounded-lg transition';
+      }
+    }
+
+    document.querySelectorAll('input[name="printFormatOption"]').forEach(radio => {
+      radio.addEventListener('change', syncPrintFormatRadioBorders);
+    });
+
+    function buildPrintableCalendarMonthsHtml(fromDateIso, toDateIso, filteredOccurrences, selectedStudentKey) {
+      const monthNames = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+      const dayHeaders = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+
+      const occByDate = {};
+      filteredOccurrences.forEach(occ => {
+        if (!occByDate[occ.date]) occByDate[occ.date] = [];
+        occByDate[occ.date].push(occ);
+      });
+
+      const startD = parseIsoDateLocal(fromDateIso);
+      const endD = parseIsoDateLocal(toDateIso);
+      let cursorMonth = new Date(startD.getFullYear(), startD.getMonth(), 1);
+      const lastMonth = new Date(endD.getFullYear(), endD.getMonth(), 1);
+
+      let monthsHtml = '';
+      let safetyCount = 0;
+
+      while (cursorMonth <= lastMonth && safetyCount < 24) {
+        safetyCount++;
+        const year = cursorMonth.getFullYear();
+        const month = cursorMonth.getMonth();
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        const startOffset = (cursorMonth.getDay() + 6) % 7; // Lunes = 0 .. Domingo = 6
+        const totalCells = Math.ceil((startOffset + daysInMonth) / 7) * 7;
+        const totalRows = totalCells / 7;
+
+        let rowsTrHtml = '';
+        for (let r = 0; r < totalRows; r++) {
+          let tdsHtml = '';
+          for (let c = 0; c < 7; c++) {
+            const cellIdx = r * 7 + c;
+            const cellDate = new Date(year, month, 1 - startOffset + cellIdx);
+            const iso = toIsoDateString(cellDate);
+            const isCurrentMonth = cellDate.getMonth() === month;
+            const inSelectedRange = iso >= fromDateIso && iso <= toDateIso;
+            const daySessions = (isCurrentMonth && inSelectedRange) ? (occByDate[iso] || []) : [];
+
+            const cardsHtml = daySessions.map(sess => {
+              const durMin = Number(sess.durationMinutes || 60) || 60;
+              const safeStudent = (sess.studentName || 'Alumno').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+              const labelText = selectedStudentKey === 'ALL'
+                ? `${sess.isRescheduled ? '↻ ' : ''}${sess.time} ${safeStudent} (${durMin}m)`
+                : `${sess.isRescheduled ? '↻ ' : ''}${sess.time} (${durMin} min)`;
+              const borderStyle = sess.isRescheduled ? '1.5px dashed #000000' : '1px solid #374151';
+
+              return `
+                <div style="border: ${borderStyle}; border-radius: 4px; padding: 2px 4px; margin-top: 3px; font-size: 9.5px; font-weight: 700; color: #000000; background: #ffffff; line-height: 1.2; word-break: break-word;">
+                  ${labelText}
+                </div>
+              `;
+            }).join('');
+
+            tdsHtml += `
+              <td style="border: 1px solid #9ca3af; padding: 4px 5px; height: 58px; vertical-align: top; background: #ffffff; color: ${isCurrentMonth ? '#000000' : '#9ca3af'};">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <span style="font-size: 10.5px; font-weight: ${isCurrentMonth ? '800' : '400'}; color: ${isCurrentMonth ? '#000000' : '#9ca3af'};">
+                    ${cellDate.getDate()}
+                  </span>
+                </div>
+                <div>
+                  ${cardsHtml}
+                </div>
+              </td>
+            `;
+          }
+          rowsTrHtml += `<tr>${tdsHtml}</tr>`;
+        }
+
+        monthsHtml += `
+          <div class="print-calendar-month-block" style="margin-bottom: 16px; page-break-inside: avoid; break-inside: avoid;">
+            <div style="display: flex; justify-content: space-between; align-items: center; background: #f3f4f6; border: 1px solid #9ca3af; border-bottom: none; padding: 6px 10px;">
+              <span style="font-size: 13px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.4px; color: #000000;">
+                ${monthNames[month]} ${year}
+              </span>
+              <span style="font-size: 10px; font-weight: 600; color: #374151;">
+                Lunes a Domingo • ↻ = Sesión Reagendada
+              </span>
+            </div>
+            <table class="print-calendar-grid-table" style="width: 100%; table-layout: fixed; border-collapse: collapse; border: 1px solid #9ca3af;">
+              <thead>
+                <tr style="background: #f9fafb;">
+                  ${dayHeaders.map(dh => `
+                    <th style="border: 1px solid #9ca3af; padding: 5px 4px; text-align: center; font-size: 10px; font-weight: 800; text-transform: uppercase; color: #000000; width: 14.285%;">
+                      ${dh}
+                    </th>
+                  `).join('')}
+                </tr>
+              </thead>
+              <tbody>
+                ${rowsTrHtml}
+              </tbody>
+            </table>
+          </div>
+        `;
+
+        cursorMonth = new Date(year, month + 1, 1);
+      }
+
+      return monthsHtml;
+    }
+
+    function generatePrintableScheduleDocument(overrideFormat = null) {
+      const selectEl = document.getElementById('printStudentSelect');
+      const fromInp = document.getElementById('printDateFromInput');
+      const toInp = document.getElementById('printDateToInput');
+      const teacherInp = document.getElementById('printTeacherNameInput');
+
+      if (overrideFormat === 'calendar' || overrideFormat === 'table') {
+        const targetRadio = document.querySelector(`input[name="printFormatOption"][value="${overrideFormat}"]`);
+        if (targetRadio) targetRadio.checked = true;
+      }
+      syncPrintFormatRadioBorders();
+
+      const formatMode = document.querySelector('input[name="printFormatOption"]:checked')?.value || 'calendar';
+      const selectedStudentKey = selectEl?.value || 'ALL';
+      const fromDate = (fromInp?.value || toIsoDateString(scheduleCursorDate)).trim();
+      const toDate = (toInp?.value || fromDate).trim();
+      const teacherName = (teacherInp?.value || 'Profesor Titular — ELT Live').trim();
+
+      if (!fromDate || !toDate || fromDate > toDate) {
+        alert('Por favor selecciona un rango de fechas válido (la fecha "Desde" no puede ser mayor que "Hasta").');
+        return;
+      }
+
+      let allOccurrences = expandScheduleOccurrences(fromDate, toDate);
+      let studentDisplayTitle = 'Todos los estudiantes programados';
+      let studentPinDisplay = 'Múltiples PINs asignados';
+
+      if (selectedStudentKey !== 'ALL') {
+        const [targetName, targetPin] = selectedStudentKey.split('__');
+        studentDisplayTitle = targetName || 'Estudiante';
+        studentPinDisplay = `#${targetPin || '0000'}`;
+        allOccurrences = allOccurrences.filter(
+          occ =>
+            String(occ.studentName || '').trim().toLowerCase() === String(targetName || '').trim().toLowerCase() &&
+            String(occ.pin || '') === String(targetPin || '')
+        );
+      }
+
+      const totalSessions = allOccurrences.length;
+      const totalMinutes = allOccurrences.reduce((acc, s) => acc + (Number(s.durationMinutes || 60) || 60), 0);
+      const totalHoursRaw = totalMinutes / 60;
+      const totalHoursFormatted = Number.isInteger(totalHoursRaw)
+        ? `${totalHoursRaw}`
+        : totalHoursRaw.toFixed(2).replace(/\.?0+$/, '');
+
+      const expeditionDate = formatSpanishFullDate(new Date());
+      const safeTeacher = teacherName.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const safeStudentTitle = studentDisplayTitle.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const safePinDisplay = studentPinDisplay.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+      if (printableScheduleArea) {
+        if (formatMode === 'calendar') {
+          const calendarMonthsHtml = buildPrintableCalendarMonthsHtml(
+            fromDate,
+            toDate,
+            allOccurrences,
+            selectedStudentKey
+          );
+
+          printableScheduleArea.innerHTML = `
+            <div style="font-family: 'Segoe UI', Roboto, Arial, sans-serif; color: #000000; background: #ffffff;">
+              <!-- Encabezado Formal del Calendario -->
+              <div style="border-bottom: 2px solid #000000; padding-bottom: 10px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;">
+                <div>
+                  <div style="font-size: 10px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; color: #374151;">
+                    PLATAFORMA ACADÉMICA SINCRONIZADA • ELT LIVE
+                  </div>
+                  <h1 style="font-size: 18px; font-weight: 900; margin: 3px 0 5px 0; color: #000000; letter-spacing: 0.3px;">
+                    CRONOGRAMA DE CLASES - ELT LIVE
+                  </h1>
+                  <div style="font-size: 11.5px; color: #000000;">
+                    <strong>Alumno:</strong> ${safeStudentTitle} &nbsp;|&nbsp;
+                    <strong>PIN:</strong> <span style="font-family: monospace; font-weight: 800;">${safePinDisplay}</span> &nbsp;|&nbsp;
+                    <strong>Profesor:</strong> ${safeTeacher}
+                  </div>
+                </div>
+                <div style="text-align: right; font-size: 11px; color: #1f2937; shrink: 0;">
+                  <div><strong>Periodo:</strong> ${formatIsoToDdMmYyyy(fromDate)} — ${formatIsoToDdMmYyyy(toDate)}</div>
+                  <div style="font-size: 10px; color: #374151; margin-top: 2px;">
+                    <strong>Expedición:</strong> ${expeditionDate}
+                  </div>
+                </div>
+              </div>
+
+              <!-- Cuadrícula Mensual de Calendario (Lunes a Domingo) -->
+              ${calendarMonthsHtml}
+
+              <!-- Caja Resumen al Pie: Total de Sesiones, Total de Horas y Conformidad -->
+              <div class="print-avoid-break" style="border: 1.5px solid #000000; border-radius: 6px; padding: 10px 14px; margin-top: 10px; background: #ffffff;">
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #cbd5e1; padding-bottom: 8px; margin-bottom: 10px;">
+                  <div>
+                    <div style="font-size: 10px; font-weight: 800; text-transform: uppercase; color: #374151;">
+                      RESUMEN DE CARGA ACADÉMICA DEL PERIODO
+                    </div>
+                    <div style="font-size: 11px; color: #1f2937; margin-top: 1px;">
+                      Alumno: <strong>${safeStudentTitle}</strong> (${safePinDisplay})
+                    </div>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 22px;">
+                    <div style="text-align: right;">
+                      <span style="font-size: 10px; font-weight: 800; text-transform: uppercase; color: #374151; display: block;">TOTAL DE SESIONES</span>
+                      <span style="font-size: 16px; font-weight: 900; color: #000000;">${totalSessions} ${totalSessions === 1 ? 'sesión' : 'sesiones'}</span>
+                    </div>
+                    <div style="width: 1px; height: 28px; background: #9ca3af;"></div>
+                    <div style="text-align: right;">
+                      <span style="font-size: 10px; font-weight: 800; text-transform: uppercase; color: #374151; display: block;">TOTAL DE HORAS ACUMULADAS</span>
+                      <span style="font-size: 16px; font-weight: 900; color: #000000;">${totalHoursFormatted} ${Number(totalHoursRaw) === 1 ? 'hora' : 'horas'} <span style="font-size: 10.5px; font-weight: 600;">(${totalMinutes} min)</span></span>
+                    </div>
+                  </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 44px; padding: 18px 20px 2px 20px;">
+                  <div style="text-align: center;">
+                    <div style="border-top: 1px solid #000000; padding-top: 5px; font-size: 10.5px; font-weight: 700; color: #000000;">
+                      Firma / Aprobación del Estudiante (${safeStudentTitle})
+                    </div>
+                  </div>
+                  <div style="text-align: center;">
+                    <div style="border-top: 1px solid #000000; padding-top: 5px; font-size: 10.5px; font-weight: 700; color: #000000;">
+                      Firma del Docente (${safeTeacher})
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+        } else {
+          const rowsHtml = allOccurrences.length === 0
+            ? `
+              <tr>
+                <td colspan="6" style="padding: 18px; text-align: center; font-size: 12px; color: #4b5563;">
+                  No existen sesiones programadas para el filtro y periodo seleccionados (${formatIsoToDdMmYyyy(fromDate)} al ${formatIsoToDdMmYyyy(toDate)}).
+                </td>
+              </tr>
+            `
+            : allOccurrences.map((occ, idx) => {
+                const startMin = timeStrToMinutes(occ.time || '16:00');
+                const durMin = Number(occ.durationMinutes || 60) || 60;
+                const endTimeStr = minutesToTimeStr(startMin + durMin);
+                const dayName = getSpanishDayNameFromIso(occ.date);
+                const formattedDate = formatIsoToDdMmYyyy(occ.date);
+
+                const obsParts = [];
+                if (selectedStudentKey === 'ALL') {
+                  obsParts.push(`<strong>${(occ.studentName || 'Alumno').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</strong> (PIN #${occ.pin})`);
+                }
+                if (occ.isRescheduled) {
+                  obsParts.push(`<strong>↻ Reagendada (Fecha original: ${occ.originalDate || occ.date})</strong>`);
+                }
+                if (occ.notes) {
+                  obsParts.push(occ.notes.replace(/</g, '&lt;').replace(/>/g, '&gt;'));
+                } else if (!occ.isRescheduled) {
+                  obsParts.push((occ.seriesLabel || 'Sesión programada').replace(/</g, '&lt;').replace(/>/g, '&gt;'));
+                }
+
+                return `
+                  <tr style="border-bottom: 1px solid #cbd5e1;">
+                    <td style="padding: 7px 8px; text-align: center; font-size: 11px; font-weight: 700;">${idx + 1}</td>
+                    <td style="padding: 7px 8px; font-size: 11px; font-weight: 600;">${dayName}</td>
+                    <td style="padding: 7px 8px; text-align: center; font-size: 11px; font-family: monospace; font-weight: 600;">${formattedDate}</td>
+                    <td style="padding: 7px 8px; text-align: center; font-size: 11px; font-family: monospace; font-weight: 700;">${occ.time} - ${endTimeStr}</td>
+                    <td style="padding: 7px 8px; text-align: center; font-size: 11px;">${durMin} min</td>
+                    <td style="padding: 7px 10px; font-size: 11px; line-height: 1.35;">${obsParts.join(' • ')}</td>
+                  </tr>
+                `;
+              }).join('');
+
+          printableScheduleArea.innerHTML = `
+            <div style="font-family: 'Segoe UI', Roboto, Arial, sans-serif; color: #000000; background: #ffffff;">
+              <!-- Encabezado Formal -->
+              <div style="border-bottom: 2px solid #000000; padding-bottom: 12px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;">
+                <div>
+                  <div style="font-size: 10px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; color: #374151;">
+                    PLATAFORMA ACADÉMICA SINCRONIZADA • ELT LIVE
+                  </div>
+                  <h1 style="font-size: 18px; font-weight: 900; margin: 4px 0 6px 0; color: #000000; letter-spacing: 0.3px;">
+                    CRONOGRAMA DE CLASES INDIVIDUALES - ELT LIVE
+                  </h1>
+                  <p style="font-size: 11px; margin: 0; color: #1f2937;">
+                    <strong>Docente / Profesor:</strong> ${safeTeacher}
+                  </p>
+                </div>
+                <div style="text-align: right; font-size: 11px; color: #1f2937; shrink: 0;">
+                  <div><strong>Fecha de expedición:</strong></div>
+                  <div style="margin-bottom: 4px;">${expeditionDate}</div>
+                  <div style="font-size: 10px; color: #374151;">
+                    <strong>Periodo:</strong> ${formatIsoToDdMmYyyy(fromDate)} — ${formatIsoToDdMmYyyy(toDate)}
+                  </div>
+                </div>
+              </div>
+
+              <!-- Ficha del Estudiante y Resumen de Horas y Carga -->
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 18px;" class="print-avoid-break">
+                <div style="border: 1px solid #9ca3af; border-radius: 6px; padding: 10px 14px; background: #ffffff;">
+                  <div style="font-size: 10px; font-weight: 800; text-transform: uppercase; color: #374151; margin-bottom: 4px;">
+                    FICHA DEL ESTUDIANTE
+                  </div>
+                  <div style="font-size: 13px; font-weight: 800; color: #000000; margin-bottom: 3px;">
+                    Alumno: ${safeStudentTitle}
+                  </div>
+                  <div style="font-size: 12px; font-weight: 700; color: #111827; font-family: monospace;">
+                    PIN de Acceso Asignado: ${safePinDisplay}
+                  </div>
+                </div>
+
+                <div style="border: 1px solid #9ca3af; border-radius: 6px; padding: 10px 14px; background: #ffffff; display: flex; justify-content: space-around; align-items: center;">
+                  <div style="text-align: center;">
+                    <div style="font-size: 10px; font-weight: 800; text-transform: uppercase; color: #374151;">
+                      TOTAL DE SESIONES PROGRAMADAS
+                    </div>
+                    <div style="font-size: 20px; font-weight: 900; color: #000000; margin-top: 2px;">
+                      ${totalSessions} ${totalSessions === 1 ? 'sesión' : 'sesiones'}
+                    </div>
+                  </div>
+                  <div style="width: 1px; height: 34px; background: #cbd5e1;"></div>
+                  <div style="text-align: center;">
+                    <div style="font-size: 10px; font-weight: 800; text-transform: uppercase; color: #374151;">
+                      TOTAL DE HORAS ACUMULADAS
+                    </div>
+                    <div style="font-size: 20px; font-weight: 900; color: #000000; margin-top: 2px;">
+                      ${totalHoursFormatted} ${Number(totalHoursRaw) === 1 ? 'hora' : 'horas'} <span style="font-size: 11px; font-weight: 600;">(${totalMinutes} min)</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Tabla de Sesiones -->
+              <table style="width: 100%; border-collapse: collapse; margin-bottom: 22px; border: 1px solid #9ca3af;">
+                <thead>
+                  <tr style="background: #f3f4f6; border-bottom: 1.5px solid #6b7280;">
+                    <th style="padding: 8px; text-align: center; font-size: 11px; font-weight: 800; width: 38px;">#</th>
+                    <th style="padding: 8px; text-align: left; font-size: 11px; font-weight: 800; width: 92px;">Día</th>
+                    <th style="padding: 8px; text-align: center; font-size: 11px; font-weight: 800; width: 110px;">Fecha (DD/MM/YYYY)</th>
+                    <th style="padding: 8px; text-align: center; font-size: 11px; font-weight: 800; width: 125px;">Horario (Inicio - Fin)</th>
+                    <th style="padding: 8px; text-align: center; font-size: 11px; font-weight: 800; width: 95px;">Duración (min)</th>
+                    <th style="padding: 8px 10px; text-align: left; font-size: 11px; font-weight: 800;">Observaciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${rowsHtml}
+                </tbody>
+              </table>
+
+              <!-- Sección de Aprobación y Conformidad -->
+              <div class="print-avoid-break" style="margin-top: 16px; border-top: 1px solid #9ca3af; padding-top: 12px;">
+                <div style="font-size: 10.5px; line-height: 1.45; color: #1f2937; margin-bottom: 38px;">
+                  <strong>Términos de Agendamiento y Conformidad:</strong> El presente cronograma detalla las fechas, horarios y duración acordados para las sesiones académicas individuales en ELT Live. Cualquier solicitud de reagendamiento o cancelación de una sesión deberá notificarse con un mínimo de 24 horas de anticipación para programar su reposición según disponibilidad de agenda.
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 48px; padding: 0 24px; margin-top: 28px;">
+                  <div style="text-align: center;">
+                    <div style="border-top: 1px solid #000000; padding-top: 6px; font-size: 11px; font-weight: 700; color: #000000;">
+                      Firma / Aprobación del Estudiante
+                    </div>
+                    <div style="font-size: 10px; color: #374151; margin-top: 2px;">
+                      ${safeStudentTitle}
+                    </div>
+                  </div>
+
+                  <div style="text-align: center;">
+                    <div style="border-top: 1px solid #000000; padding-top: 6px; font-size: 11px; font-weight: 700; color: #000000;">
+                      Firma del Docente
+                    </div>
+                    <div style="font-size: 10px; color: #374151; margin-top: 2px;">
+                      ${safeTeacher}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+        }
+      }
+
+      closePrintScheduleModal();
+      if (printableScheduleWrapper) {
+        printableScheduleWrapper.classList.remove('hidden');
+      }
+    }
+
+    document.getElementById('btnOpenPrintModal')?.addEventListener('click', openPrintScheduleModal);
+    document.getElementById('btnClosePrintModal')?.addEventListener('click', closePrintScheduleModal);
+    document.getElementById('btnCancelPrintModal')?.addEventListener('click', closePrintScheduleModal);
+    document.getElementById('btnConfirmGeneratePrintDoc')?.addEventListener('click', () => generatePrintableScheduleDocument());
+    document.getElementById('btnPreviewSwitchCalendar')?.addEventListener('click', () => generatePrintableScheduleDocument('calendar'));
+    document.getElementById('btnPreviewSwitchTable')?.addEventListener('click', () => generatePrintableScheduleDocument('table'));
+    document.getElementById('btnClosePrintPreview')?.addEventListener('click', closePrintPreview);
+    document.getElementById('btnTriggerBrowserPrint')?.addEventListener('click', () => {
+      window.print();
     });
 
     // Inicializar Lobby de Agendamiento al cargar host.html

@@ -721,6 +721,24 @@
           </div>
         </div>
 
+        <!-- Visor en Escenario Principal (Main Stage) cuando se comparte pantalla -->
+        <div id="remoteScreenShareOverlay" class="hidden absolute inset-0 z-40 bg-slate-950 flex flex-col items-center justify-center overflow-hidden" style="z-index: 38;">
+          <div class="absolute top-3 left-3 z-10 flex items-center gap-2 bg-slate-900/90 border border-emerald-500/40 text-emerald-300 px-3 py-1.5 rounded-xl text-xs font-bold shadow-lg">
+            <i class="fa-solid fa-display animate-pulse"></i>
+            <span id="remoteScreenShareLabel">Pantalla compartida en vivo</span>
+          </div>
+          <div class="absolute top-3 right-3 z-10 flex items-center gap-2">
+            <button id="btnStopScreenShareStage" type="button" onclick="if (typeof stopScreenShare === 'function') stopScreenShare();" class="hidden bg-rose-600 hover:bg-rose-500 text-white border border-rose-400/40 px-3 py-1.5 rounded-xl text-xs font-bold shadow-lg transition cursor-pointer items-center gap-1.5">
+              <i class="fa-solid fa-stop text-[10px]"></i>
+              <span>Dejar de compartir</span>
+            </button>
+            <button type="button" onclick="document.getElementById('remoteScreenShareOverlay').classList.add('hidden'); document.getElementById('remoteScreenShareOverlay').classList.remove('flex');" class="bg-slate-900/90 hover:bg-slate-800 text-slate-200 border border-white/15 px-3 py-1.5 rounded-xl text-xs font-semibold shadow-lg transition cursor-pointer">
+              Minimizar vista
+            </button>
+          </div>
+          <video id="remoteScreenShareVideo" autoplay playsinline class="w-full h-full object-contain bg-black"></video>
+        </div>
+
         <!-- ==================== PIZARRA COLABORATIVA (SOLO VISIBLE EN MODO PIZARRA BLANCA) ==================== -->
         <div id="whiteboardView" class="hidden absolute inset-0 z-30 bg-[#eef0f4] overflow-hidden select-none pointer-events-auto">
           
@@ -1027,12 +1045,12 @@
           <div class="flex items-center gap-3">
             <div class="h-7 w-[1px] bg-slate-700/80"></div>
 
-            <!-- Share -->
-            <button id="bottomShareBtn" type="button" class="flex flex-col items-center justify-center px-2 py-1 rounded-lg hover:bg-white/10 transition" title="Compartir / Alternar Pizarra Colaborativa">
-              <div class="w-6 h-5 rounded border border-slate-300 flex items-center justify-center text-slate-100">
-                <i class="fa-solid fa-arrow-up text-[10px]"></i>
+            <!-- Share Screen with System/Tab Audio -->
+            <button id="bottomShareBtn" type="button" class="flex flex-col items-center justify-center px-2.5 py-1 rounded-lg hover:bg-white/10 transition cursor-pointer" title="Compartir pantalla con audio del sistema / pestaña">
+              <div id="bottomShareIconBox" class="w-6 h-5 rounded border border-emerald-400/80 bg-emerald-500/10 flex items-center justify-center text-emerald-400 transition">
+                <i id="bottomShareIcon" class="fa-solid fa-arrow-up text-[10px]"></i>
               </div>
-              <span class="text-[10px] text-slate-300 font-medium mt-0.5">Share</span>
+              <span id="bottomShareLabel" class="text-[10px] text-slate-300 font-medium mt-0.5">Share</span>
             </button>
 
             <!-- End -->
@@ -2060,11 +2078,11 @@
         if (typeof broadcastChatHistorySync === 'function' && zmMessages.length > 0) {
           broadcastChatHistorySync();
         }
-        if (typeof announceWebRTCPresence === 'function') {
-          announceWebRTCPresence();
-        }
         if (typeof broadcastWebRTCMediaState === 'function') {
           broadcastWebRTCMediaState();
+        }
+        if (typeof broadcastScreenShareState === 'function' && isSharingScreen) {
+          broadcastScreenShareState(true);
         }
       });
 
@@ -4845,12 +4863,44 @@
     let webrtcLocalStream = null;
     let webrtcAudioEnabled = false;
     let webrtcVideoEnabled = false;
-    const webrtcPeers = {}; // peerId -> { pc, name, stream, audioEnabled, videoEnabled }
+    let isSharingScreen = false;
+    let screenStream = null;
+    let originalVideoTrack = null;
+    let originalAudioTrack = null;
+    let screenAudioContext = null;
+    let activeScreenAudioTrack = null;
+    const webrtcPeers = {}; // peerId -> { pc, name, stream, audioEnabled, videoEnabled, isSharingScreen, videoSender, audioSender }
 
     const webrtcLocalVideoEl = document.getElementById('webrtcLocalVideo');
     const webrtcLocalPlaceholder = document.getElementById('webrtcLocalPlaceholder');
     const webrtcLocalMuteIcon = document.getElementById('webrtcLocalMuteIcon');
     const webrtcRemoteCardsContainer = document.getElementById('webrtcRemoteCards');
+
+    function updateShareButtonUI() {
+      const shareBtn = document.getElementById('bottomShareBtn');
+      const iconBox = document.getElementById('bottomShareIconBox');
+      const iconEl = document.getElementById('bottomShareIcon');
+      const labelEl = document.getElementById('bottomShareLabel');
+      if (!shareBtn) return;
+
+      if (isSharingScreen) {
+        shareBtn.className = 'flex flex-col items-center justify-center px-3 py-1 rounded-xl bg-emerald-600/25 hover:bg-rose-600/30 border border-emerald-500/60 transition cursor-pointer shadow-md';
+        if (iconBox) iconBox.className = 'w-6 h-5 rounded bg-emerald-500 border border-emerald-300 flex items-center justify-center text-slate-950 shadow-xs transition';
+        if (iconEl) iconEl.className = 'fa-solid fa-stop text-[10px]';
+        if (labelEl) {
+          labelEl.textContent = 'Dejar de compartir';
+          labelEl.className = 'text-[10px] text-emerald-300 font-bold mt-0.5';
+        }
+      } else {
+        shareBtn.className = 'flex flex-col items-center justify-center px-2.5 py-1 rounded-lg hover:bg-white/10 transition cursor-pointer';
+        if (iconBox) iconBox.className = 'w-6 h-5 rounded border border-emerald-400/80 bg-emerald-500/10 flex items-center justify-center text-emerald-400 transition';
+        if (iconEl) iconEl.className = 'fa-solid fa-arrow-up text-[10px]';
+        if (labelEl) {
+          labelEl.textContent = 'Share';
+          labelEl.className = 'text-[10px] text-slate-300 font-medium mt-0.5';
+        }
+      }
+    }
 
     function updateLocalMediaButtonsUI() {
       const audioIcon = document.getElementById('bottomAudioIcon');
@@ -4867,7 +4917,7 @@
         audioLabel.textContent = webrtcAudioEnabled ? 'Mute' : 'Audio';
       }
       if (webrtcLocalMuteIcon) {
-        webrtcLocalMuteIcon.classList.toggle('hidden', webrtcAudioEnabled);
+        webrtcLocalMuteIcon.classList.toggle('hidden', webrtcAudioEnabled || Boolean(isSharingScreen && activeScreenAudioTrack));
       }
 
       if (videoIcon) {
@@ -4880,6 +4930,10 @@
       }
 
       if (webrtcLocalVideoEl && webrtcLocalPlaceholder) {
+        webrtcLocalVideoEl.classList.add('scale-x-[-1]');
+        if (webrtcLocalStream && webrtcLocalVideoEl.srcObject !== webrtcLocalStream) {
+          webrtcLocalVideoEl.srcObject = webrtcLocalStream;
+        }
         const hasVideoTrack = webrtcLocalStream && webrtcLocalStream.getVideoTracks().some(t => t.enabled && t.readyState === 'live');
         if (webrtcVideoEnabled && hasVideoTrack) {
           webrtcLocalVideoEl.classList.remove('hidden');
@@ -4889,6 +4943,79 @@
           webrtcLocalPlaceholder.classList.remove('hidden');
         }
       }
+      updateShareButtonUI();
+    }
+
+    function syncHostScreenShareStage() {
+      const screenOverlay = document.getElementById('remoteScreenShareOverlay');
+      const screenVideo = document.getElementById('remoteScreenShareVideo');
+      const screenLabel = document.getElementById('remoteScreenShareLabel');
+      const stopStageBtn = document.getElementById('btnStopScreenShareStage');
+      if (!screenOverlay || !screenVideo) return;
+
+      if (isSharingScreen && screenStream && screenStream.getVideoTracks().some(t => t.readyState === 'live')) {
+        screenVideo.muted = true; // Evitar eco del propio audio del sistema en el Host
+        if (screenVideo.srcObject !== screenStream) {
+          screenVideo.srcObject = screenStream;
+        }
+        screenVideo.play().catch(() => {});
+        if (screenLabel) {
+          screenLabel.textContent = '🖥️ Estás compartiendo tu pantalla en vivo';
+        }
+        if (stopStageBtn) {
+          stopStageBtn.classList.remove('hidden');
+          stopStageBtn.classList.add('inline-flex');
+        }
+        screenOverlay.classList.remove('hidden');
+        screenOverlay.classList.add('flex');
+        return;
+      }
+
+      const remoteSharingId = Object.keys(webrtcPeers).find(pid => {
+        const p = webrtcPeers[pid];
+        return p && p.isSharingScreen && p.stream && p.stream.getVideoTracks().length > 0;
+      });
+
+      if (remoteSharingId) {
+        const p = webrtcPeers[remoteSharingId];
+        screenVideo.muted = false;
+        if (screenVideo.srcObject !== p.stream) {
+          screenVideo.srcObject = p.stream;
+        }
+        screenVideo.play().catch(() => {});
+        if (screenLabel) {
+          screenLabel.textContent = `🖥️ ${p.name || 'Alumno'} compartiendo pantalla`;
+        }
+        if (stopStageBtn) {
+          stopStageBtn.classList.add('hidden');
+          stopStageBtn.classList.remove('inline-flex');
+        }
+        screenOverlay.classList.remove('hidden');
+        screenOverlay.classList.add('flex');
+      } else {
+        if (screenVideo.srcObject) screenVideo.srcObject = null;
+        if (stopStageBtn) {
+          stopStageBtn.classList.add('hidden');
+          stopStageBtn.classList.remove('inline-flex');
+        }
+        screenOverlay.classList.add('hidden');
+        screenOverlay.classList.remove('flex');
+      }
+    }
+
+    function broadcastScreenShareState(sharing) {
+      if (!roomChannel) return;
+      roomChannel.send({
+        type: 'broadcast',
+        event: 'SCREEN_SHARE_STATE',
+        payload: {
+          type: 'SCREEN_SHARE_STATE',
+          isSharing: Boolean(sharing),
+          peerId: webrtcMyPeerId,
+          name: webrtcMyDisplayName,
+          role: 'host'
+        }
+      });
     }
 
     async function ensureLocalMediaStream(wantAudio, wantVideo) {
@@ -4919,18 +5046,38 @@
           }
         }
 
-        // Sincronizar pistas con todos los peers conectados y renegociar
+        // Sincronizar pistas con todos los peers conectados usando replaceTrack si ya existe sender, o addTrack solo si no existía
         for (const remotePeerId of Object.keys(webrtcPeers)) {
           const peerObj = webrtcPeers[remotePeerId];
           if (peerObj && peerObj.pc && webrtcLocalStream) {
-            const senders = peerObj.pc.getSenders();
-            webrtcLocalStream.getTracks().forEach(track => {
-              const alreadySending = senders.some(s => s.track && s.track.id === track.id);
-              if (!alreadySending) {
-                peerObj.pc.addTrack(track, webrtcLocalStream);
+            const pc = peerObj.pc;
+            const senders = pc.getSenders();
+            let needsOffer = false;
+
+            for (const track of webrtcLocalStream.getTracks()) {
+              if (track.kind === 'video' && isSharingScreen) continue;
+              if (track.kind === 'audio' && isSharingScreen && activeScreenAudioTrack) continue;
+
+              const existingSender = (track.kind === 'video' ? peerObj.videoSender : peerObj.audioSender)
+                || senders.find(s => s.track && s.track.kind === track.kind);
+
+              if (existingSender) {
+                if (track.kind === 'video') peerObj.videoSender = existingSender;
+                if (track.kind === 'audio') peerObj.audioSender = existingSender;
+                if (!existingSender.track || existingSender.track.id !== track.id) {
+                  try { await existingSender.replaceTrack(track); } catch (e) {}
+                }
+              } else {
+                const newSender = pc.addTrack(track, webrtcLocalStream);
+                if (track.kind === 'video') peerObj.videoSender = newSender;
+                if (track.kind === 'audio') peerObj.audioSender = newSender;
+                needsOffer = true;
               }
-            });
-            await createAndSendOffer(remotePeerId);
+            }
+
+            if (needsOffer && pc.signalingState === 'stable') {
+              await createAndSendOffer(remotePeerId, peerObj.name);
+            }
           }
         }
         return webrtcLocalStream;
@@ -4946,6 +5093,7 @@
         if (stream && stream.getAudioTracks().length > 0) {
           stream.getAudioTracks().forEach(t => { t.enabled = true; });
           webrtcAudioEnabled = true;
+          originalAudioTrack = stream.getAudioTracks()[0];
         }
       } else {
         if (webrtcLocalStream) {
@@ -4963,6 +5111,7 @@
         if (stream && stream.getVideoTracks().length > 0) {
           stream.getVideoTracks().forEach(t => { t.enabled = true; });
           webrtcVideoEnabled = true;
+          originalVideoTrack = stream.getVideoTracks()[0];
         }
       } else {
         if (webrtcLocalStream) {
@@ -4974,8 +5123,172 @@
       broadcastWebRTCMediaState();
     }
 
+    function mixMicAndScreenAudio(micTrack, sysAudioTrack) {
+      if (!sysAudioTrack) return micTrack || null;
+      if (!micTrack || micTrack.readyState !== 'live') return sysAudioTrack;
+      try {
+        if (screenAudioContext) {
+          try { screenAudioContext.close(); } catch (e) {}
+        }
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        screenAudioContext = new AudioCtx();
+        const dest = screenAudioContext.createMediaStreamDestination();
+        const micSource = screenAudioContext.createMediaStreamSource(new MediaStream([micTrack]));
+        const sysSource = screenAudioContext.createMediaStreamSource(new MediaStream([sysAudioTrack]));
+        micSource.connect(dest);
+        sysSource.connect(dest);
+        return dest.stream.getAudioTracks()[0] || sysAudioTrack;
+      } catch (err) {
+        console.warn('Error mezclando audio de micrófono y pantalla, usando pista de pantalla:', err);
+        return sysAudioTrack;
+      }
+    }
+
+    async function startScreenShare() {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+        alert('Tu navegador no soporta compartir pantalla (getDisplayMedia).');
+        return;
+      }
+      try {
+        screenStream = await navigator.mediaDevices.getDisplayMedia({
+          video: { cursor: 'always' },
+          audio: true
+        });
+      } catch (err) {
+        // Usuario canceló el diálogo de selección de pantalla
+        return;
+      }
+
+      const screenVideoTrack = screenStream.getVideoTracks()[0];
+      if (!screenVideoTrack) return;
+      const screenAudioTrack = screenStream.getAudioTracks()[0] || null;
+
+      originalVideoTrack = (webrtcLocalStream && webrtcLocalStream.getVideoTracks()[0]) || null;
+      originalAudioTrack = (webrtcLocalStream && webrtcLocalStream.getAudioTracks()[0]) || null;
+      isSharingScreen = true;
+
+      screenVideoTrack.onended = () => {
+        stopScreenShare();
+      };
+
+      activeScreenAudioTrack = screenAudioTrack
+        ? mixMicAndScreenAudio(originalAudioTrack, screenAudioTrack)
+        : null;
+
+      // Reemplazar pistas en todas las conexiones RTCPeerConnection activas sin reconectar (replaceTrack)
+      for (const remotePeerId of Object.keys(webrtcPeers)) {
+        const peerObj = webrtcPeers[remotePeerId];
+        if (!peerObj) continue;
+        const pc = peerObj.pc || getOrCreatePeerConnection(remotePeerId, peerObj.name);
+        if (!pc) continue;
+
+        let needsRenegotiation = false;
+        const senders = pc.getSenders();
+
+        // Video: si ya existe sender de video, usar replaceTrack sin renegociar SDP
+        let videoSender = peerObj.videoSender || senders.find(s => s.track && s.track.kind === 'video');
+        if (videoSender) {
+          peerObj.videoSender = videoSender;
+          try {
+            await videoSender.replaceTrack(screenVideoTrack);
+          } catch (e) {
+            peerObj.videoSender = pc.addTrack(screenVideoTrack, screenStream);
+            needsRenegotiation = true;
+          }
+        } else {
+          peerObj.videoSender = pc.addTrack(screenVideoTrack, screenStream);
+          needsRenegotiation = true;
+        }
+
+        // Audio: si el usuario compartió audio del sistema/pestaña, usar replaceTrack sin renegociar si ya existe sender
+        if (activeScreenAudioTrack) {
+          let audioSender = peerObj.audioSender || senders.find(s => s.track && s.track.kind === 'audio');
+          if (audioSender) {
+            peerObj.audioSender = audioSender;
+            try {
+              await audioSender.replaceTrack(activeScreenAudioTrack);
+            } catch (e) {
+              peerObj.audioSender = pc.addTrack(activeScreenAudioTrack, screenStream);
+              needsRenegotiation = true;
+            }
+          } else {
+            peerObj.audioSender = pc.addTrack(activeScreenAudioTrack, screenStream);
+            needsRenegotiation = true;
+          }
+        }
+
+        // Solo renegociar si se agregaron nuevas pistas con addTrack y la conexión está en estado 'stable'
+        if (needsRenegotiation && pc.signalingState === 'stable') {
+          await createAndSendOffer(remotePeerId, peerObj.name);
+        }
+      }
+
+      updateLocalMediaButtonsUI();
+      syncHostScreenShareStage();
+      broadcastScreenShareState(true);
+      broadcastWebRTCMediaState();
+    }
+
+    async function stopScreenShare() {
+      if (!isSharingScreen && !screenStream) return;
+      isSharingScreen = false;
+
+      if (screenStream) {
+        screenStream.getTracks().forEach(t => {
+          t.onended = null;
+          t.stop();
+        });
+        screenStream = null;
+      }
+
+      if (screenAudioContext) {
+        try { await screenAudioContext.close(); } catch (e) {}
+        screenAudioContext = null;
+      }
+      activeScreenAudioTrack = null;
+
+      const restoreVideo = (webrtcVideoEnabled && originalVideoTrack && originalVideoTrack.readyState === 'live')
+        ? originalVideoTrack
+        : ((webrtcVideoEnabled && webrtcLocalStream && webrtcLocalStream.getVideoTracks()[0]) || null);
+      const restoreAudio = (originalAudioTrack && originalAudioTrack.readyState === 'live')
+        ? originalAudioTrack
+        : ((webrtcLocalStream && webrtcLocalStream.getAudioTracks()[0]) || null);
+
+      for (const remotePeerId of Object.keys(webrtcPeers)) {
+        const peerObj = webrtcPeers[remotePeerId];
+        const pc = peerObj && peerObj.pc;
+        if (!pc) continue;
+        const senders = pc.getSenders();
+
+        const videoSender = peerObj.videoSender || senders.find(s => s.track && s.track.kind === 'video');
+        if (videoSender) {
+          try { await videoSender.replaceTrack(restoreVideo || null); } catch (e) {}
+        }
+
+        const audioSender = peerObj.audioSender || senders.find(s => s.track && s.track.kind === 'audio');
+        if (audioSender) {
+          try { await audioSender.replaceTrack(restoreAudio || null); } catch (e) {}
+        }
+      }
+
+      updateLocalMediaButtonsUI();
+      syncHostScreenShareStage();
+      broadcastScreenShareState(false);
+      broadcastWebRTCMediaState();
+    }
+
+    async function toggleScreenShare() {
+      if (isSharingScreen) {
+        await stopScreenShare();
+      } else {
+        await startScreenShare();
+      }
+    }
+
     function broadcastWebRTCMediaState() {
       if (!roomChannel) return;
+      const effectiveAudio = Boolean(webrtcAudioEnabled || (isSharingScreen && activeScreenAudioTrack));
+      const effectiveVideo = Boolean(webrtcVideoEnabled || isSharingScreen);
       roomChannel.send({
         type: 'broadcast',
         event: 'WEBRTC_MEDIA_STATE',
@@ -4983,16 +5296,19 @@
           peerId: webrtcMyPeerId,
           name: webrtcMyDisplayName,
           role: 'host',
-          audioEnabled: webrtcAudioEnabled,
-          videoEnabled: webrtcVideoEnabled,
-          audio: webrtcAudioEnabled,
-          video: webrtcVideoEnabled
+          audioEnabled: effectiveAudio,
+          videoEnabled: effectiveVideo,
+          audio: effectiveAudio,
+          video: effectiveVideo,
+          isSharingScreen: isSharingScreen
         }
       });
     }
 
     function announceWebRTCPresence() {
       if (!roomChannel) return;
+      const effectiveAudio = Boolean(webrtcAudioEnabled || (isSharingScreen && activeScreenAudioTrack));
+      const effectiveVideo = Boolean(webrtcVideoEnabled || isSharingScreen);
       roomChannel.send({
         type: 'broadcast',
         event: 'WEBRTC_JOIN',
@@ -5000,10 +5316,11 @@
           peerId: webrtcMyPeerId,
           name: webrtcMyDisplayName,
           role: 'host',
-          audioEnabled: webrtcAudioEnabled,
-          videoEnabled: webrtcVideoEnabled,
-          audio: webrtcAudioEnabled,
-          video: webrtcVideoEnabled
+          audioEnabled: effectiveAudio,
+          videoEnabled: effectiveVideo,
+          audio: effectiveAudio,
+          video: effectiveVideo,
+          isSharingScreen: isSharingScreen
         }
       });
     }
@@ -5213,10 +5530,11 @@
         if (vidEl.srcObject !== peerObj.stream) {
           vidEl.srcObject = peerObj.stream;
         }
-        const hasLiveVideo = peerObj.videoEnabled !== false && peerObj.stream.getVideoTracks().length > 0;
+        const hasLiveVideo = Boolean(peerObj.videoEnabled) && !peerObj.isSharingScreen && peerObj.stream.getVideoTracks().length > 0;
         vidEl.classList.toggle('hidden', !hasLiveVideo);
         if (phEl) phEl.classList.toggle('hidden', hasLiveVideo);
       }
+      syncHostScreenShareStage();
     }
 
     function getOrCreatePeerConnection(remotePeerId, remoteName) {
@@ -5238,14 +5556,29 @@
         name: remoteName || (webrtcPeers[remotePeerId] && webrtcPeers[remotePeerId].name) || 'Alumno',
         stream: remoteStream,
         audioEnabled: Boolean(webrtcPeers[remotePeerId] && webrtcPeers[remotePeerId].audioEnabled),
-        videoEnabled: Boolean(webrtcPeers[remotePeerId] && webrtcPeers[remotePeerId].videoEnabled)
+        videoEnabled: Boolean(webrtcPeers[remotePeerId] && webrtcPeers[remotePeerId].videoEnabled),
+        isSharingScreen: Boolean(webrtcPeers[remotePeerId] && webrtcPeers[remotePeerId].isSharingScreen),
+        videoSender: null,
+        audioSender: null,
+        isNegotiating: false
       };
 
       ensureRemotePeerCard(remotePeerId, webrtcPeers[remotePeerId].name);
 
-      if (webrtcLocalStream) {
+      if (isSharingScreen && screenStream) {
+        const sVideo = screenStream.getVideoTracks()[0];
+        if (sVideo) {
+          webrtcPeers[remotePeerId].videoSender = pc.addTrack(sVideo, screenStream);
+        }
+        const sAudio = activeScreenAudioTrack || (webrtcLocalStream && webrtcLocalStream.getAudioTracks()[0]);
+        if (sAudio) {
+          webrtcPeers[remotePeerId].audioSender = pc.addTrack(sAudio, screenStream);
+        }
+      } else if (webrtcLocalStream) {
         webrtcLocalStream.getTracks().forEach(track => {
-          pc.addTrack(track, webrtcLocalStream);
+          const sender = pc.addTrack(track, webrtcLocalStream);
+          if (track.kind === 'video') webrtcPeers[remotePeerId].videoSender = sender;
+          if (track.kind === 'audio') webrtcPeers[remotePeerId].audioSender = sender;
         });
       }
 
@@ -5266,16 +5599,24 @@
       };
 
       pc.ontrack = (evt) => {
-        if (evt.streams && evt.streams[0]) {
+        if (evt.track) {
+          remoteStream.getTracks().forEach(existing => {
+            if (existing.kind === evt.track.kind && existing.id !== evt.track.id) {
+              remoteStream.removeTrack(existing);
+            }
+          });
+          if (!remoteStream.getTracks().some(existing => existing.id === evt.track.id)) {
+            remoteStream.addTrack(evt.track);
+          }
+          evt.track.onunmute = () => {
+            updateRemotePeerCardMedia(remotePeerId);
+          };
+        } else if (evt.streams && evt.streams[0]) {
           evt.streams[0].getTracks().forEach(t => {
             if (!remoteStream.getTracks().some(existing => existing.id === t.id)) {
               remoteStream.addTrack(t);
             }
           });
-        } else if (evt.track) {
-          if (!remoteStream.getTracks().some(existing => existing.id === evt.track.id)) {
-            remoteStream.addTrack(evt.track);
-          }
         }
         updateRemotePeerCardMedia(remotePeerId);
       };
@@ -5284,6 +5625,7 @@
         const state = pc.connectionState;
         if (state === 'failed' || state === 'closed') {
           removeRemotePeerCard(remotePeerId, webrtcPeers[remotePeerId]?.name);
+          syncHostScreenShareStage();
         } else if (state === 'disconnected') {
           const vidEl = document.getElementById(`webrtc_video_${remotePeerId}`);
           const phEl = document.getElementById(`webrtc_placeholder_${remotePeerId}`);
@@ -5293,6 +5635,7 @@
             if (webrtcPeers[remotePeerId] && webrtcPeers[remotePeerId].pc === pc) {
               if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
                 removeRemotePeerCard(remotePeerId, webrtcPeers[remotePeerId]?.name);
+                syncHostScreenShareStage();
               }
             }
           }, 5000);
@@ -5304,10 +5647,18 @@
 
     async function createAndSendOffer(remotePeerId, remoteName) {
       if (!roomChannel) return;
+      const pc = getOrCreatePeerConnection(remotePeerId, remoteName);
+      const peerObj = webrtcPeers[remotePeerId];
+      if (!pc || !peerObj) return;
+      if (pc.signalingState !== 'stable' || peerObj.isNegotiating) return;
+
+      peerObj.isNegotiating = true;
       try {
-        const pc = getOrCreatePeerConnection(remotePeerId, remoteName);
         const offer = await pc.createOffer();
+        if (pc.signalingState !== 'stable') return;
         await pc.setLocalDescription(offer);
+        const effectiveAudio = Boolean(webrtcAudioEnabled || (isSharingScreen && activeScreenAudioTrack));
+        const effectiveVideo = Boolean(webrtcVideoEnabled || isSharingScreen);
         roomChannel.send({
           type: 'broadcast',
           event: 'WEBRTC_OFFER',
@@ -5320,13 +5671,18 @@
             toPeerId: remotePeerId,
             to: remotePeerId,
             sdp: pc.localDescription,
-            audioEnabled: webrtcAudioEnabled,
-            videoEnabled: webrtcVideoEnabled,
-            audio: webrtcAudioEnabled,
-            video: webrtcVideoEnabled
+            audioEnabled: effectiveAudio,
+            videoEnabled: effectiveVideo,
+            audio: effectiveAudio,
+            video: effectiveVideo,
+            isSharingScreen: isSharingScreen
           }
         });
-      } catch (e) {}
+      } catch (e) {
+        console.warn('Error creando oferta WebRTC en Host:', e);
+      } finally {
+        peerObj.isNegotiating = false;
+      }
     }
 
     function setupWebRTCSignaling(channel) {
@@ -5334,11 +5690,14 @@
         const remoteId = payload && (payload.peerId || payload.fromPeerId || payload.from);
         if (!remoteId || remoteId === webrtcMyPeerId) return;
         const remoteName = payload.name || payload.fromName || 'Alumno';
-        const pc = getOrCreatePeerConnection(remoteId, remoteName);
+        getOrCreatePeerConnection(remoteId, remoteName);
         webrtcPeers[remoteId].audioEnabled = Boolean(payload.audioEnabled ?? payload.audio);
         webrtcPeers[remoteId].videoEnabled = Boolean(payload.videoEnabled ?? payload.video);
+        webrtcPeers[remoteId].isSharingScreen = Boolean(payload.isSharingScreen);
         updateRemotePeerCardMedia(remoteId);
 
+        const effectiveAudio = Boolean(webrtcAudioEnabled || (isSharingScreen && activeScreenAudioTrack));
+        const effectiveVideo = Boolean(webrtcVideoEnabled || isSharingScreen);
         channel.send({
           type: 'broadcast',
           event: 'WEBRTC_ANNOUNCE',
@@ -5350,14 +5709,16 @@
             role: 'host',
             toPeerId: remoteId,
             to: remoteId,
-            audioEnabled: webrtcAudioEnabled,
-            videoEnabled: webrtcVideoEnabled,
-            audio: webrtcAudioEnabled,
-            video: webrtcVideoEnabled
+            audioEnabled: effectiveAudio,
+            videoEnabled: effectiveVideo,
+            audio: effectiveAudio,
+            video: effectiveVideo,
+            isSharingScreen: isSharingScreen
           }
         });
 
         broadcastWebRTCMediaState();
+        if (isSharingScreen) broadcastScreenShareState(true);
         await createAndSendOffer(remoteId, remoteName);
       });
 
@@ -5366,18 +5727,23 @@
         const remoteName = payload && (payload.name || payload.fromName);
         if (!remoteId || remoteId === webrtcMyPeerId) return;
         removeRemotePeerCard(remoteId, remoteName);
+        syncHostScreenShareStage();
       });
 
-      channel.on('broadcast', { event: 'WEBRTC_ANNOUNCE' }, ({ payload }) => {
+      channel.on('broadcast', { event: 'WEBRTC_ANNOUNCE' }, async ({ payload }) => {
         const fromId = payload && (payload.fromPeerId || payload.from || payload.peerId);
         const toId = payload && (payload.toPeerId || payload.to);
         if (!fromId || fromId === webrtcMyPeerId) return;
         if (toId && toId !== webrtcMyPeerId) return;
         const remoteName = payload.fromName || payload.name || 'Alumno';
-        getOrCreatePeerConnection(fromId, remoteName);
+        const pc = getOrCreatePeerConnection(fromId, remoteName);
         webrtcPeers[fromId].audioEnabled = Boolean(payload.audioEnabled ?? payload.audio);
         webrtcPeers[fromId].videoEnabled = Boolean(payload.videoEnabled ?? payload.video);
+        webrtcPeers[fromId].isSharingScreen = Boolean(payload.isSharingScreen);
         updateRemotePeerCardMedia(fromId);
+        if (pc && !pc.currentRemoteDescription && pc.signalingState === 'stable') {
+          await createAndSendOffer(fromId, remoteName);
+        }
       });
 
       channel.on('broadcast', { event: 'WEBRTC_OFFER' }, async ({ payload }) => {
@@ -5389,9 +5755,16 @@
           const pc = getOrCreatePeerConnection(fromId, remoteName);
           webrtcPeers[fromId].audioEnabled = Boolean(payload.audioEnabled ?? payload.audio);
           webrtcPeers[fromId].videoEnabled = Boolean(payload.videoEnabled ?? payload.video);
+          webrtcPeers[fromId].isSharingScreen = Boolean(payload.isSharingScreen);
+          if (pc.signalingState !== 'stable') {
+            updateRemotePeerCardMedia(fromId);
+            return;
+          }
           await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
+          const effectiveAudio = Boolean(webrtcAudioEnabled || (isSharingScreen && activeScreenAudioTrack));
+          const effectiveVideo = Boolean(webrtcVideoEnabled || isSharingScreen);
           channel.send({
             type: 'broadcast',
             event: 'WEBRTC_ANSWER',
@@ -5404,14 +5777,17 @@
               toPeerId: fromId,
               to: fromId,
               sdp: pc.localDescription,
-              audioEnabled: webrtcAudioEnabled,
-              videoEnabled: webrtcVideoEnabled,
-              audio: webrtcAudioEnabled,
-              video: webrtcVideoEnabled
+              audioEnabled: effectiveAudio,
+              videoEnabled: effectiveVideo,
+              audio: effectiveAudio,
+              video: effectiveVideo,
+              isSharingScreen: isSharingScreen
             }
           });
           updateRemotePeerCardMedia(fromId);
-        } catch (e) {}
+        } catch (e) {
+          console.warn('Error respondiendo oferta WebRTC en Host:', e);
+        }
       });
 
       channel.on('broadcast', { event: 'WEBRTC_ANSWER' }, async ({ payload }) => {
@@ -5423,10 +5799,15 @@
           if (peerObj && peerObj.pc) {
             peerObj.audioEnabled = Boolean(payload.audioEnabled ?? payload.audio);
             peerObj.videoEnabled = Boolean(payload.videoEnabled ?? payload.video);
-            await peerObj.pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+            peerObj.isSharingScreen = Boolean(payload.isSharingScreen);
+            if (peerObj.pc.signalingState === 'have-local-offer') {
+              await peerObj.pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+            }
             updateRemotePeerCardMedia(fromId);
           }
-        } catch (e) {}
+        } catch (e) {
+          console.warn('Error aplicando respuesta WebRTC en Host:', e);
+        }
       });
 
       channel.on('broadcast', { event: 'WEBRTC_ICE' }, async ({ payload }) => {
@@ -5435,7 +5816,7 @@
         if (!fromId || toId !== webrtcMyPeerId || fromId === webrtcMyPeerId) return;
         try {
           const peerObj = webrtcPeers[fromId];
-          if (peerObj && peerObj.pc && payload.candidate) {
+          if (peerObj && peerObj.pc && payload.candidate && peerObj.pc.remoteDescription) {
             await peerObj.pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
           }
         } catch (e) {}
@@ -5448,6 +5829,19 @@
         getOrCreatePeerConnection(remoteId, remoteName);
         webrtcPeers[remoteId].audioEnabled = Boolean(payload.audioEnabled ?? payload.audio);
         webrtcPeers[remoteId].videoEnabled = Boolean(payload.videoEnabled ?? payload.video);
+        if (typeof payload.isSharingScreen === 'boolean') {
+          webrtcPeers[remoteId].isSharingScreen = payload.isSharingScreen;
+        }
+        updateRemotePeerCardMedia(remoteId);
+      });
+
+      channel.on('broadcast', { event: 'SCREEN_SHARE_STATE' }, ({ payload }) => {
+        if (!payload) return;
+        const remoteId = payload.peerId || payload.fromPeerId || payload.from;
+        if (!remoteId || remoteId === webrtcMyPeerId) return;
+        const remoteName = payload.name || payload.fromName || 'Alumno';
+        getOrCreatePeerConnection(remoteId, remoteName);
+        webrtcPeers[remoteId].isSharingScreen = Boolean(payload.isSharing);
         updateRemotePeerCardMedia(remoteId);
       });
     }
@@ -5636,11 +6030,14 @@
     });
 
     document.getElementById('bottomShareBtn').addEventListener('click', () => {
-      toggleWhiteboardView();
+      toggleScreenShare();
     });
 
     document.getElementById('bottomEndBtn').addEventListener('click', () => {
       if (confirm('¿Finalizar o reiniciar la sesión en vivo?')) {
+        if (screenStream) {
+          screenStream.getTracks().forEach(t => t.stop());
+        }
         if (webrtcLocalStream) {
           webrtcLocalStream.getTracks().forEach(t => t.stop());
         }

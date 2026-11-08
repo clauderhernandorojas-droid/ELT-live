@@ -3756,44 +3756,81 @@
       const headerBadge = document.getElementById('headerChatUnreadBadge');
       const titlePill = document.getElementById('zmChatUnreadPill');
       if (zmUnreadCount > 0 && (zmIsMinimized || zmIsHidden)) {
-        headerBadge.textContent = zmUnreadCount;
-        headerBadge.classList.remove('hidden');
-        titlePill.textContent = zmUnreadCount;
-        titlePill.classList.remove('hidden');
+        if (headerBadge) {
+          headerBadge.textContent = zmUnreadCount;
+          headerBadge.classList.remove('hidden');
+        }
+        if (titlePill) {
+          titlePill.textContent = zmUnreadCount;
+          titlePill.classList.remove('hidden');
+        }
       } else {
-        headerBadge.classList.add('hidden');
-        titlePill.classList.add('hidden');
+        if (headerBadge) headerBadge.classList.add('hidden');
+        if (titlePill) titlePill.classList.add('hidden');
       }
 
+      const floatResizers = zmChatWindow.querySelectorAll('.zm-float-resizer');
+      const dockTopResizer = document.getElementById('zmChatDockResizeTop');
+      const liveClassroomEl = document.getElementById('hostLiveClassroomScreen') || document.body;
+
+      // Estado 1: Chat Cerrado / Oculto
       if (zmIsHidden) {
+        if (zmChatWindow.parentElement !== zmChatDockSlot) {
+          zmChatDockSlot.appendChild(zmChatWindow);
+        }
+        zmChatWindow.style.position = 'relative';
+        zmChatWindow.style.left = '';
+        zmChatWindow.style.top = '';
+        zmChatWindow.style.right = '';
+        zmChatWindow.style.bottom = '';
+        zmChatWindow.style.width = '100%';
+        zmChatWindow.style.height = '100%';
+        zmChatWindow.style.zIndex = '';
         zmChatWindow.classList.add('hidden');
         zmChatDockSlot.classList.add('hidden');
+        zmChatBody.classList.remove('hidden');
         return;
       }
 
       zmChatWindow.classList.remove('hidden');
-      const floatResizers = zmChatWindow.querySelectorAll('.zm-float-resizer');
-      const dockTopResizer = document.getElementById('zmChatDockResizeTop');
+      zmFloatingWidth = Math.max(280, Math.min(window.innerWidth - 20, Number(zmFloatingWidth) || 370));
+      zmFloatingHeight = Math.max(300, Math.min(window.innerHeight - 24, Number(zmFloatingHeight) || 520));
 
       if (zmIsFloating) {
-        // Modo Ventana Flotante Independiente Redimensionable (Pop-out)
+        // Estado 2: Modo Ventana Flotante Independiente Redimensionable (Pop-out)
         zmChatDockSlot.classList.add('hidden');
-        document.body.appendChild(zmChatWindow);
-        zmChatWindow.style.position = 'fixed';
-        if (!zmChatWindow.style.right && !zmChatWindow.style.left) {
-          zmChatWindow.style.right = '20px';
-          zmChatWindow.style.bottom = '20px';
+        if (zmChatWindow.parentElement !== liveClassroomEl) {
+          liveClassroomEl.appendChild(zmChatWindow);
         }
+        const targetHeight = zmIsMinimized ? 38 : zmFloatingHeight;
+        zmChatWindow.style.position = 'fixed';
         zmChatWindow.style.width = `${zmFloatingWidth}px`;
-        zmChatWindow.style.height = zmIsMinimized ? '38px' : `${zmFloatingHeight}px`;
+        zmChatWindow.style.height = `${targetHeight}px`;
         zmChatWindow.style.zIndex = '85';
+
+        let curLeft = parseFloat(zmChatWindow.style.left);
+        let curTop = parseFloat(zmChatWindow.style.top);
+        if (isNaN(curLeft) || isNaN(curTop)) {
+          curLeft = Math.max(12, window.innerWidth - zmFloatingWidth - 20);
+          curTop = Math.max(12, window.innerHeight - targetHeight - 70);
+        } else {
+          curLeft = Math.max(8, Math.min(window.innerWidth - zmFloatingWidth - 8, curLeft));
+          curTop = Math.max(8, Math.min(window.innerHeight - targetHeight - 8, curTop));
+        }
+        zmChatWindow.style.right = 'auto';
+        zmChatWindow.style.bottom = 'auto';
+        zmChatWindow.style.left = `${Math.round(curLeft)}px`;
+        zmChatWindow.style.top = `${Math.round(curTop)}px`;
+
         zmChatWindow.className = 'flex flex-col bg-[#1a1a1a] text-[#e4e6eb] select-none overflow-hidden rounded-2xl shadow-2xl border border-[#3a3d45]';
         zmChatTitleBar.style.cursor = 'move';
         floatResizers.forEach(el => el.classList.toggle('hidden', zmIsMinimized));
       } else {
-        // Modo Panel Fijo Acoplado Redimensionable (Docked en esquina inferior derecha)
+        // Estado 3: Modo Panel Fijo Acoplado Redimensionable (Docked en esquina inferior derecha)
         zmChatDockSlot.classList.remove('hidden');
-        zmChatDockSlot.appendChild(zmChatWindow);
+        if (zmChatWindow.parentElement !== zmChatDockSlot) {
+          zmChatDockSlot.appendChild(zmChatWindow);
+        }
         zmChatWindow.style.position = 'relative';
         zmChatWindow.style.left = '';
         zmChatWindow.style.top = '';
@@ -3803,13 +3840,37 @@
         zmChatWindow.style.height = '100%';
         zmChatWindow.style.zIndex = '';
         zmChatWindow.className = 'w-full h-full flex flex-col bg-[#1a1a1a] text-[#e4e6eb] select-none overflow-hidden relative';
-        zmChatTitleBar.style.cursor = 'default';
-        zmChatDockSlot.style.height = zmIsMinimized ? '38px' : (zmDockedHeightPx ? `${zmDockedHeightPx}px` : '54%');
+        zmChatTitleBar.style.cursor = zmIsMinimized ? 'pointer' : 'default';
+        zmChatDockSlot.style.height = zmIsMinimized ? '38px' : (zmDockedHeightPx ? `${Math.max(160, zmDockedHeightPx)}px` : '54%');
         floatResizers.forEach(el => el.classList.add('hidden'));
         if (dockTopResizer) dockTopResizer.classList.toggle('hidden', zmIsMinimized);
       }
 
       zmChatBody.classList.toggle('hidden', zmIsMinimized);
+      if (!zmIsMinimized && !zmIsHidden && zmChatMessagesEl) {
+        zmChatMessagesEl.scrollTop = zmChatMessagesEl.scrollHeight;
+      }
+    }
+
+    function toggleChatPanel() {
+      const isCurrentlyClosedOrCollapsed =
+        zmIsHidden ||
+        zmIsMinimized ||
+        zmChatWindow.classList.contains('hidden') ||
+        zmChatBody.classList.contains('hidden') ||
+        (!zmIsFloating && zmChatDockSlot.classList.contains('hidden'));
+
+      if (isCurrentlyClosedOrCollapsed) {
+        zmIsHidden = false;
+        zmIsMinimized = false;
+        zmUnreadCount = 0;
+        updateChatLayoutMode();
+        if (zmChatInput) setTimeout(() => zmChatInput.focus(), 40);
+      } else {
+        zmIsHidden = true;
+        zmIsMinimized = false;
+        updateChatLayoutMode();
+      }
     }
 
     // Redimensionamiento del panel lateral acoplado (ancho) y del chat acoplado (altura)
@@ -3924,32 +3985,50 @@
       }
     });
 
-    document.getElementById('zmChatFloatToggleBtn').addEventListener('click', () => {
-      zmIsFloating = !zmIsFloating;
-      zmIsMinimized = false;
+    document.getElementById('zmChatFloatToggleBtn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      zmIsHidden = false;
+      if (zmIsMinimized) {
+        zmIsMinimized = false;
+        zmUnreadCount = 0;
+      } else {
+        zmIsFloating = !zmIsFloating;
+        zmIsMinimized = false;
+        if (zmIsFloating) {
+          zmChatWindow.style.left = '';
+          zmChatWindow.style.top = '';
+        }
+      }
       updateChatLayoutMode();
     });
 
-    document.getElementById('zmChatMinimizeBtn').addEventListener('click', () => {
+    document.getElementById('zmChatMinimizeBtn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      zmIsHidden = false;
       zmIsMinimized = !zmIsMinimized;
       if (!zmIsMinimized) zmUnreadCount = 0;
       updateChatLayoutMode();
     });
 
-    document.getElementById('zmChatCloseBtn').addEventListener('click', () => {
+    document.getElementById('zmChatCloseBtn').addEventListener('click', (e) => {
+      e.stopPropagation();
       zmIsHidden = true;
+      zmIsMinimized = false;
+      zmIsFloating = false;
       updateChatLayoutMode();
     });
 
-    document.getElementById('headerChatToggleBtn').addEventListener('click', () => {
-      if (zmIsHidden || zmIsMinimized) {
-        zmIsHidden = false;
+    document.getElementById('headerChatToggleBtn')?.addEventListener('click', () => {
+      toggleChatPanel();
+    });
+
+    zmChatTitleBar.addEventListener('click', (e) => {
+      if (e.target.closest('button')) return;
+      if (zmIsMinimized && !zmIsFloating) {
         zmIsMinimized = false;
         zmUnreadCount = 0;
-      } else {
-        zmIsMinimized = true;
+        updateChatLayoutMode();
       }
-      updateChatLayoutMode();
     });
 
     // Hacer que la ventana flotante del chat sea arrastrable desde su barra superior
@@ -5553,14 +5632,7 @@
     });
 
     document.getElementById('bottomChatToggleBtn').addEventListener('click', () => {
-      if (zmIsHidden || zmIsMinimized) {
-        zmIsHidden = false;
-        zmIsMinimized = false;
-        zmUnreadCount = 0;
-      } else {
-        zmIsMinimized = true;
-      }
-      updateChatLayoutMode();
+      toggleChatPanel();
     });
 
     document.getElementById('bottomShareBtn').addEventListener('click', () => {

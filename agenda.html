@@ -105,32 +105,23 @@
   <!-- ==================== APLICACIÓN AUTÓNOMA DE GESTIÓN DE AGENDA COMPARTIDA ==================== -->
   <section id="agendaMainScreen" class="flex-1 flex flex-col h-full w-full bg-[#090d16] text-slate-100 overflow-hidden">
     <!-- Barra Superior de Navegación y Controles -->
-    <header class="bg-[#060911] border-b border-slate-800/90 px-6 py-3.5 flex flex-wrap items-center justify-between gap-4 flex-shrink-0">
+    <header class="bg-[#060911] border-b border-slate-800/90 px-6 py-3 flex flex-wrap items-center justify-between gap-4 flex-shrink-0">
       <div class="flex items-center gap-3">
         <span class="bg-indigo-600 text-white text-xs font-black px-2.5 py-1 rounded-lg tracking-wider shadow-sm">ELT LIVE</span>
-        <div>
-          <h1 class="text-sm font-bold text-white flex items-center gap-2">
-            <span>Administración Compartida de Agenda</span>
-            <span id="scheduleSyncBadge" class="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-950/90 text-emerald-400 border border-emerald-800/60">
-              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-              Realtime Sync
-            </span>
-          </h1>
-          <p class="text-[11px] text-slate-400">Gestión de Citas, Series Recurrentes (L-M-V) y Excepciones • Sincronizado en Vivo con el Profesor</p>
-        </div>
+        <h1 class="text-base font-bold text-white tracking-tight">Agenda de Clases</h1>
       </div>
 
-      <!-- Controles de Vistas, Navegación de Fechas y Acciones -->
-      <div class="flex flex-wrap items-center gap-3">
+      <!-- Controles de Vistas, Navegación de Fechas, Filtro por Alumno y Acciones -->
+      <div class="flex flex-wrap items-center gap-2.5">
         <!-- Selector de Vistas: [ Día ] [ Semana ] [ Bimestre ] -->
         <div class="bg-slate-900 p-1 rounded-xl border border-slate-800 flex items-center gap-1">
-          <button type="button" data-sched-view="day" class="sched-view-btn bg-indigo-600 text-white text-xs font-bold px-3.5 py-1.5 rounded-lg transition shadow-xs">
+          <button type="button" data-sched-view="day" class="sched-view-btn text-slate-400 hover:text-white text-xs font-bold px-3.5 py-1.5 rounded-lg transition">
             Día
           </button>
           <button type="button" data-sched-view="week" class="sched-view-btn text-slate-400 hover:text-white text-xs font-bold px-3.5 py-1.5 rounded-lg transition">
             Semana
           </button>
-          <button type="button" data-sched-view="bimester" class="sched-view-btn text-slate-400 hover:text-white text-xs font-bold px-3.5 py-1.5 rounded-lg transition">
+          <button type="button" data-sched-view="bimester" class="sched-view-btn bg-indigo-600 text-white text-xs font-bold px-3.5 py-1.5 rounded-lg transition shadow-xs">
             Bimestre
           </button>
         </div>
@@ -149,9 +140,14 @@
         </div>
 
         <!-- Etiqueta de Periodo / Fecha Activa -->
-        <div id="schedActiveDateLabel" class="text-xs font-bold text-slate-200 bg-slate-900/90 border border-slate-800 px-3.5 py-2 rounded-xl min-w-[210px] text-center capitalize">
+        <div id="schedActiveDateLabel" class="text-xs font-bold text-slate-200 bg-slate-900/90 border border-slate-800 px-3.5 py-2 rounded-xl min-w-[200px] text-center capitalize">
           Cargando fecha...
         </div>
+
+        <!-- Selector Desplegable de Filtro por Estudiante -->
+        <select id="agendaStudentFilter" class="bg-slate-900 hover:bg-slate-800/90 text-slate-200 border border-slate-700/90 rounded-xl px-3 py-2 text-xs font-bold focus:outline-none focus:border-indigo-500 transition cursor-pointer min-w-[185px]" title="Filtrar clases por estudiante">
+          <option value="ALL">👤 Todos los alumnos</option>
+        </select>
 
         <!-- Botón de Impresión / PDF del Cronograma -->
         <button id="btnOpenPrintModal" type="button" class="bg-slate-900 hover:bg-slate-800 text-slate-200 hover:text-white border border-slate-700/90 active:scale-95 text-xs font-bold px-3.5 py-2 rounded-xl shadow-sm flex items-center gap-1.5 transition" title="Imprimir o exportar cronograma a PDF">
@@ -167,9 +163,9 @@
     </header>
 
     <!-- Cuerpo Principal de la Agenda -->
-    <main class="flex-1 overflow-y-auto p-6 space-y-6">
-      <!-- Contenedor Vista 1: [ Día ] (Activa por defecto) -->
-      <div id="schedDayViewContainer" class="max-w-5xl mx-auto space-y-5">
+    <main class="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+      <!-- Contenedor Vista 1: [ Día ] -->
+      <div id="schedDayViewContainer" class="hidden max-w-5xl mx-auto space-y-4">
         <div class="flex items-center justify-between">
           <div>
             <h2 class="text-base font-bold text-white flex items-center gap-2">
@@ -185,51 +181,47 @@
 
         <!-- Lista de tarjetas del día -->
         <div id="schedDayCardsGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
-
-        <!-- Directorio de Alumnos Registrados con PIN Fijo -->
-        <div class="pt-4 border-t border-slate-800/80">
-          <div class="flex items-center justify-between mb-3">
-            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-              <i class="fa-solid fa-users text-indigo-400"></i>
-              <span>Directorio de Alumnos y PINs Asignados</span>
-            </h3>
-            <span id="schedStudentsDirectoryCount" class="text-[11px] text-slate-500">0 alumnos</span>
-          </div>
-          <div id="schedStudentsDirectoryGrid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3"></div>
-        </div>
       </div>
 
       <!-- Contenedor Vista 2: [ Semana ] -->
-      <div id="schedWeekViewContainer" class="hidden max-w-6xl mx-auto space-y-4">
+      <div id="schedWeekViewContainer" class="hidden w-full max-w-[1750px] mx-auto space-y-3">
         <div class="flex items-center justify-between">
-          <h2 class="text-base font-bold text-white flex items-center gap-2">
-            <i class="fa-solid fa-calendar-week text-indigo-400"></i>
-            <span>Vista Semanal de Clases</span>
-          </h2>
+          <div>
+            <h2 class="text-sm font-bold text-white flex items-center gap-2">
+              <i class="fa-solid fa-calendar-week text-indigo-400"></i>
+              <span>Vista Semanal de Clases</span>
+            </h2>
+            <p class="text-[11px] text-slate-400">Haz clic en un espacio vacío para agendar o arrastra y suelta una clase hacia otro día para reagendarla.</p>
+          </div>
         </div>
         <div id="schedWeekGrid" class="grid grid-cols-1 md:grid-cols-7 gap-3"></div>
       </div>
 
-      <!-- Contenedor Vista 3: [ Bimestre ] (Cuadrícula Bimestral Vertical de 2 Meses) -->
-      <div id="schedBimesterViewContainer" class="hidden max-w-6xl mx-auto space-y-4">
-        <div class="flex items-center justify-between">
-          <div>
-            <h2 class="text-base font-bold text-white flex items-center gap-2">
+      <!-- Contenedor Vista 3: [ Bimestre ] (Activa por defecto - 2 Columnas Paralelas) -->
+      <div id="schedBimesterViewContainer" class="w-full max-w-[1850px] mx-auto space-y-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-3">
+            <h2 class="text-sm font-bold text-white flex items-center gap-2">
               <i class="fa-regular fa-calendar-days text-indigo-400"></i>
-              <span>Vista Bimestral (2 Meses Consecutivos en Vertical)</span>
+              <span>Vista Bimestral (2 Meses en Paralelo)</span>
             </h2>
-            <p class="text-xs text-slate-400">Haz clic sobre cualquier clase para revisar su PIN, editar la regla, reagendar solo esa ocurrencia o cancelarla.</p>
+            <span class="text-[11px] text-slate-400 hidden sm:inline">• Clic en día vacío para agendar • Arrastra una clase a otra fecha para reagendar</span>
           </div>
           <div class="flex items-center gap-3 text-[11px] text-slate-400">
             <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-xs bg-indigo-600/80 border border-indigo-400"></span> Recurrente / Única</span>
             <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-xs bg-amber-600/80 border border-amber-300"></span> ↻ Reagendada</span>
           </div>
         </div>
-        <!-- Apilados en vertical (grid-cols-1) ocupando el ancho completo -->
-        <div id="schedBimesterTwoMonthsGrid" class="grid grid-cols-1 gap-6"></div>
+        <!-- 2 Columnas en Paralelo en pantallas grandes (grid-cols-1 xl:grid-cols-2) -->
+        <div id="schedBimesterTwoMonthsGrid" class="grid grid-cols-1 xl:grid-cols-2 gap-4 w-full"></div>
       </div>
     </main>
   </section>
+
+  <!-- Notificación Flotante Toast (Colisiones Drag & Drop y Confirmaciones) -->
+  <div id="agendaToastNotification" class="hidden fixed bottom-5 right-5 z-[220] max-w-md bg-slate-900/95 border border-slate-700 text-white px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-3 transition-all duration-200 no-print">
+    <span id="agendaToastText" class="text-xs font-bold leading-snug"></span>
+  </div>
 
   <!-- Modal "+ Nuevo Alumno / Clase" (#scheduleModal) con Soporte de Recurrencia Semanal y Edición -->
   <div id="scheduleModal" class="hidden fixed inset-0 z-[120] bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 no-print">
@@ -548,16 +540,78 @@
 
     const SCHEDULE_CACHE_KEY = 'elt_live_schedule_backup_v1';
     let scheduleRecords = [];
-    let scheduleActiveView = 'day'; // 'day' | 'week' | 'bimester'
+    let scheduleActiveView = 'bimester'; // 'day' | 'week' | 'bimester' (Bimestre por defecto)
     let scheduleCursorDate = new Date();
+    let selectedStudentFilter = 'ALL'; // Filtro activo por alumno ('ALL' o nombre del estudiante)
     let selectedModalDaysOfWeek = new Set([1, 3, 5]); // Por defecto L-M-V
     let activeOccurrenceContext = null; // Ocurrencia seleccionada en el modal de detalle
     let editingSeriesId = null; // ID de la serie en modo edición completa (null = modo creación)
     let editingSingleId = null; // ID de la sesión única en modo edición (null = modo creación)
+    let toastTimeoutId = null;
 
     const scheduleModal = document.getElementById('scheduleModal');
     const scheduleOccurrenceModal = document.getElementById('scheduleOccurrenceModal');
     const schedActiveDateLabel = document.getElementById('schedActiveDateLabel');
+    const agendaStudentFilter = document.getElementById('agendaStudentFilter');
+
+    function showAgendaToast(message, isError = false) {
+      const toastEl = document.getElementById('agendaToastNotification');
+      const textEl = document.getElementById('agendaToastText');
+      if (!toastEl || !textEl) return;
+      if (toastTimeoutId) clearTimeout(toastTimeoutId);
+
+      textEl.textContent = message;
+      toastEl.className = isError
+        ? 'fixed bottom-5 right-5 z-[220] max-w-md bg-red-950/95 border border-red-500/80 text-red-100 px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-3 transition-all duration-200 no-print'
+        : 'fixed bottom-5 right-5 z-[220] max-w-md bg-emerald-950/95 border border-emerald-500/80 text-emerald-100 px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-3 transition-all duration-200 no-print';
+      toastEl.classList.remove('hidden');
+
+      toastTimeoutId = setTimeout(() => {
+        toastEl.classList.add('hidden');
+      }, 4500);
+    }
+
+    function populateAgendaStudentFilter() {
+      if (!agendaStudentFilter) return;
+      const previousVal = agendaStudentFilter.value || selectedStudentFilter || 'ALL';
+      const uniqueNamesSet = new Set();
+
+      scheduleRecords.forEach(r => {
+        if (r.type === 'exception') return;
+        const sName = String(r.studentName || r.name || '').trim();
+        if (sName) uniqueNamesSet.add(sName);
+      });
+
+      const sortedNames = Array.from(uniqueNamesSet).sort((a, b) => a.localeCompare(b, 'es'));
+      let html = `<option value="ALL">👤 Todos los alumnos</option>`;
+      sortedNames.forEach(name => {
+        const safeVal = name.replace(/"/g, '&quot;');
+        const safeLabel = name.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        html += `<option value="${safeVal}">🎓 ${safeLabel}</option>`;
+      });
+
+      agendaStudentFilter.innerHTML = html;
+      if (previousVal !== 'ALL' && uniqueNamesSet.has(previousVal)) {
+        agendaStudentFilter.value = previousVal;
+        selectedStudentFilter = previousVal;
+      } else {
+        agendaStudentFilter.value = 'ALL';
+        selectedStudentFilter = 'ALL';
+      }
+    }
+
+    function filterOccurrencesBySelectedStudent(occurrences) {
+      if (!selectedStudentFilter || selectedStudentFilter === 'ALL') {
+        return occurrences;
+      }
+      const targetLower = selectedStudentFilter.trim().toLowerCase();
+      return occurrences.filter(occ => String(occ.studentName || '').trim().toLowerCase() === targetLower);
+    }
+
+    agendaStudentFilter?.addEventListener('change', () => {
+      selectedStudentFilter = agendaStudentFilter.value || 'ALL';
+      renderScheduleLobby();
+    });
 
     function toIsoDateString(d) {
       const year = d.getFullYear();
@@ -1201,16 +1255,129 @@
       fetchScheduleFromSupabase();
     });
 
-    // ==================== VISTAS DE LA AGENDA: DÍA, SEMANA Y BIMESTRE VERTICAL ====================
+    // ==================== DRAG & DROP ENTRE DÍAS (REAGENDAMIENTO RÁPIDO CON VALIDACIÓN ANTICOLISIÓN) ====================
+    let draggedOccurrenceKey = null;
+
+    window.handleOccDragStart = function(event, occKey) {
+      draggedOccurrenceKey = occKey;
+      const occ = occurrencesCacheByKey[occKey];
+      if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', JSON.stringify({
+          occurrenceKey: occKey,
+          originalDate: occ ? occ.date : '',
+          time: occ ? occ.time : '16:00',
+          durationMinutes: occ ? (occ.durationMinutes || 60) : 60,
+          studentName: occ ? occ.studentName : 'Alumno'
+        }));
+      }
+      if (event.currentTarget) {
+        event.currentTarget.classList.add('opacity-50', 'scale-95');
+      }
+    };
+
+    window.handleOccDragEnd = function(event) {
+      draggedOccurrenceKey = null;
+      if (event.currentTarget) {
+        event.currentTarget.classList.remove('opacity-50', 'scale-95');
+      }
+      document.querySelectorAll('.drop-zone-active').forEach(el => {
+        el.classList.remove('drop-zone-active', 'border-indigo-500', 'ring-2', 'ring-indigo-500/60', 'bg-indigo-950/50');
+      });
+    };
+
+    window.handleDayCellDragOver = function(event) {
+      event.preventDefault();
+      if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = 'move';
+      }
+      const cell = event.currentTarget;
+      if (cell && !cell.classList.contains('drop-zone-active')) {
+        cell.classList.add('drop-zone-active', 'border-indigo-500', 'ring-2', 'ring-indigo-500/60', 'bg-indigo-950/50');
+      }
+    };
+
+    window.handleDayCellDragLeave = function(event) {
+      const cell = event.currentTarget;
+      if (cell && !cell.contains(event.relatedTarget)) {
+        cell.classList.remove('drop-zone-active', 'border-indigo-500', 'ring-2', 'ring-indigo-500/60', 'bg-indigo-950/50');
+      }
+    };
+
+    window.handleDayCellDrop = async function(event, targetDateIso) {
+      event.preventDefault();
+      event.stopPropagation();
+      const cell = event.currentTarget;
+      if (cell) {
+        cell.classList.remove('drop-zone-active', 'border-indigo-500', 'ring-2', 'ring-indigo-500/60', 'bg-indigo-950/50');
+      }
+
+      let occKey = draggedOccurrenceKey;
+      if (!occKey && event.dataTransfer) {
+        try {
+          const parsed = JSON.parse(event.dataTransfer.getData('text/plain') || '{}');
+          if (parsed.occurrenceKey) occKey = parsed.occurrenceKey;
+        } catch (e) {}
+      }
+      draggedOccurrenceKey = null;
+
+      if (!occKey) return;
+      const occ = occurrencesCacheByKey[occKey];
+      if (!occ || !targetDateIso) return;
+
+      // Si se suelta en la misma fecha actual, no hacer nada
+      if (targetDateIso === occ.date) return;
+
+      const dur = Number(occ.durationMinutes || 60) || 60;
+      const collisionResult = checkScheduleCollision(targetDateIso, occ.time, dur, occ.occId);
+
+      if (collisionResult.conflict) {
+        showAgendaToast(
+          `⚠️ Conflicto de horario: El espacio en la nueva fecha choca con ${collisionResult.conflictingWith.studentName} (${collisionResult.conflictingWith.startTime} - ${collisionResult.conflictingWith.endTime})`,
+          true
+        );
+        return;
+      }
+
+      const exceptionPayload = {
+        seriesId: occ.seriesId,
+        originalDate: occ.originalDate || occ.date,
+        newDate: targetDateIso,
+        newTime: occ.time,
+        newDurationMinutes: dur,
+        studentName: occ.studentName,
+        pin: occ.pin,
+        status: 'rescheduled'
+      };
+
+      const saved = await insertRecordIntoScheduleTable(
+        'exception',
+        exceptionPayload,
+        occ.studentName,
+        occ.pin,
+        JSON.stringify(Object.assign({ type: 'exception' }, exceptionPayload))
+      );
+
+      scheduleRecords = scheduleRecords.filter(
+        r => !(r.type === 'exception' && r.seriesId === exceptionPayload.seriesId && r.originalDate === exceptionPayload.originalDate)
+      );
+      scheduleRecords.push(saved);
+      saveScheduleToLocalBackup(scheduleRecords);
+
+      renderScheduleLobby();
+      showAgendaToast(`✓ Clase de ${occ.studentName} (${occ.time}) reagendada al ${targetDateIso}`, false);
+      fetchScheduleFromSupabase();
+    };
+
+    // ==================== VISTAS DE LA AGENDA: DÍA, SEMANA Y BIMESTRE EN 2 COLUMNAS ====================
     function renderScheduleDayView() {
       const targetIso = toIsoDateString(scheduleCursorDate);
       const dayCardsGrid = document.getElementById('schedDayCardsGrid');
       const countBadge = document.getElementById('schedDayCountBadge');
-      const dirGrid = document.getElementById('schedStudentsDirectoryGrid');
-      const dirCount = document.getElementById('schedStudentsDirectoryCount');
       if (!dayCardsGrid) return;
 
-      const dayClasses = expandScheduleOccurrences(targetIso, targetIso);
+      const allDayClasses = expandScheduleOccurrences(targetIso, targetIso);
+      const dayClasses = filterOccurrencesBySelectedStudent(allDayClasses);
 
       if (countBadge) {
         countBadge.textContent = `${dayClasses.length} ${dayClasses.length === 1 ? 'Clase' : 'Clases'}`;
@@ -1224,12 +1391,12 @@
             </div>
             <div>
               <p class="text-sm font-bold text-white">No hay clases agendadas para esta fecha (${targetIso})</p>
-              <p class="text-xs text-slate-400 mt-1">Puedes agendar un nuevo alumno (sesión única o serie semanal L-M-V) desde el botón superior.</p>
+              <p class="text-xs text-slate-400 mt-1">Haz clic en el botón para programar una sesión en esta fecha (${targetIso}).</p>
             </div>
             <div class="flex flex-wrap items-center justify-center gap-2.5 mt-2">
-              <button type="button" onclick="document.getElementById('btnOpenScheduleModal').click()" class="bg-[#0e72ed] hover:bg-[#0b5ed7] text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg transition flex items-center gap-2">
+              <button type="button" onclick="window.openScheduleModalForDate('${targetIso}')" class="bg-[#0e72ed] hover:bg-[#0b5ed7] text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg transition flex items-center gap-2">
                 <i class="fa-solid fa-plus"></i>
-                <span>+ Nuevo Alumno / Clase</span>
+                <span>+ Agendar Clase en ${targetIso}</span>
               </button>
             </div>
           </div>
@@ -1287,45 +1454,6 @@
           `;
         }).join('');
       }
-
-      // Renderizar Directorio de Alumnos Únicos (agrupados por Nombre + PIN)
-      if (dirGrid) {
-        const uniqueMap = new Map();
-        scheduleRecords.forEach(r => {
-          if (r.type === 'exception') return;
-          const key = `${r.studentName || r.name}__${r.pin}`;
-          if (!uniqueMap.has(key)) {
-            uniqueMap.set(key, r);
-          }
-        });
-        const studentsList = Array.from(uniqueMap.values());
-        if (dirCount) dirCount.textContent = `${studentsList.length} alumnos`;
-        if (studentsList.length === 0) {
-          dirGrid.innerHTML = `<p class="col-span-full text-xs text-slate-500 italic">Aún no hay alumnos registrados en elt_live_schedule.</p>`;
-        } else {
-          dirGrid.innerHTML = studentsList.map(st => {
-            const safeName = (st.studentName || st.name || 'Alumno').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-            const jsSafeId = String(st.id).replace(/'/g, "\\'");
-            const subInfo = st.type === 'series'
-              ? `${formatDaysOfWeekShort(st.daysOfWeek)} • ${st.startTime || st.time}`
-              : `${st.date || ''} • ${st.time || '16:00'}`;
-            const editCall = st.type === 'series'
-              ? `openScheduleModalForEditSeries('${jsSafeId}')`
-              : `openScheduleModalForEditSingle('${jsSafeId}')`;
-            return `
-              <div class="bg-slate-900/70 border border-slate-800/90 rounded-xl p-3 flex items-center justify-between gap-2 hover:border-slate-700 transition">
-                <div class="min-w-0">
-                  <p class="text-xs font-bold text-slate-200 truncate">${safeName}</p>
-                  <p class="text-[10px] text-slate-400 font-mono">PIN: <span class="text-indigo-400 font-bold">#${st.pin}</span> • ${subInfo}</p>
-                </div>
-                <button type="button" onclick="${editCall}" class="bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white border border-indigo-500/40 text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition shrink-0" title="Editar programación de este alumno">
-                  ✏️ Editar
-                </button>
-              </div>
-            `;
-          }).join('');
-        }
-      }
     }
 
     function renderScheduleWeekView() {
@@ -1339,7 +1467,11 @@
       const sunday = new Date(monday);
       sunday.setDate(monday.getDate() + 6);
 
-      const weekOccurrences = expandScheduleOccurrences(toIsoDateString(monday), toIsoDateString(sunday));
+      const allWeekOccurrences = expandScheduleOccurrences(toIsoDateString(monday), toIsoDateString(sunday));
+      allWeekOccurrences.forEach(occ => {
+        occurrencesCacheByKey[occ.occId] = occ;
+      });
+      const weekOccurrences = filterOccurrencesBySelectedStudent(allWeekOccurrences);
       const dayNames = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
       let html = '';
 
@@ -1351,20 +1483,33 @@
         const items = weekOccurrences.filter(occ => occ.date === iso);
 
         html += `
-          <div class="bg-slate-900/90 border ${isToday ? 'border-indigo-500' : 'border-slate-800'} rounded-xl p-3 flex flex-col gap-2 min-h-[240px]">
+          <div
+            onclick="window.openScheduleModalForDate('${iso}')"
+            ondragover="window.handleDayCellDragOver(event)"
+            ondragleave="window.handleDayCellDragLeave(event)"
+            ondrop="window.handleDayCellDrop(event, '${iso}')"
+            class="bg-slate-900/90 hover:bg-slate-800/60 border ${isToday ? 'border-indigo-500' : 'border-slate-800 hover:border-slate-700'} rounded-xl p-3 flex flex-col gap-2 min-h-[300px] cursor-pointer transition-colors"
+            title="Clic en espacio vacío para agendar en ${iso} o suelta aquí una clase para reagendar"
+          >
             <div class="flex items-center justify-between border-b border-slate-800 pb-1.5">
               <span class="text-xs font-bold ${isToday ? 'text-indigo-400' : 'text-slate-300'}">${dayNames[i]} ${d.getDate()}</span>
-              <span class="text-[10px] text-slate-500">${items.length}</span>
+              <span class="text-[10px] text-slate-500">${items.length} ${items.length === 1 ? 'clase' : 'clases'}</span>
             </div>
             <div class="space-y-1.5 flex-1">
               ${items.length === 0
-                ? '<p class="text-[10px] text-slate-600 text-center py-6">Sin clases</p>'
+                ? '<p class="text-[10px] text-slate-600 text-center py-8 pointer-events-none">Sin clases • Clic para agendar</p>'
                 : items.map(it => {
-                    occurrencesCacheByKey[it.occId] = it;
                     const safeName = (it.studentName || 'Alumno').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                     const jsSafeOccId = String(it.occId).replace(/'/g, "\\'");
                     return `
-                      <div onclick="window.openOccurrenceDetailByKey('${jsSafeOccId}')" class="cursor-pointer bg-slate-950 hover:bg-indigo-950/60 border ${it.isRescheduled ? 'border-amber-500/60' : 'border-slate-800 hover:border-indigo-500/50'} rounded-lg p-2 transition">
+                      <div
+                        draggable="true"
+                        ondragstart="window.handleOccDragStart(event, '${jsSafeOccId}')"
+                        ondragend="window.handleOccDragEnd(event)"
+                        onclick="event.stopPropagation(); window.openOccurrenceDetailByKey('${jsSafeOccId}')"
+                        class="cursor-grab active:cursor-grabbing bg-slate-950 hover:bg-indigo-950/60 border ${it.isRescheduled ? 'border-amber-500/60' : 'border-slate-800 hover:border-indigo-500/50'} rounded-lg p-2 transition shadow-xs"
+                        title="${it.time} (${it.durationMinutes || 60}m) ${safeName} — Clic para detalles o arrastra a otro día"
+                      >
                         <div class="flex items-center justify-between text-[10px]">
                           <span class="font-bold ${it.isRescheduled ? 'text-amber-400' : 'text-emerald-400'}">${it.isRescheduled ? '↻ ' : ''}${it.time} <span class="text-slate-400 font-normal">(${it.durationMinutes || 60}m)</span></span>
                           <span class="font-mono text-indigo-400 font-bold">#${it.pin}</span>
@@ -1385,7 +1530,7 @@
       const container = document.getElementById('schedBimesterTwoMonthsGrid');
       if (!container) return;
       const monthNames = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-      const dayHeaders = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+      const dayHeaders = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 
       // Calcular el rango global de los 2 meses (incluyendo días de relleno de semanas limítrofes)
       const firstMonthStart = new Date(scheduleCursorDate.getFullYear(), scheduleCursorDate.getMonth(), 1);
@@ -1396,11 +1541,15 @@
       rangeEnd.setDate(rangeEnd.getDate() + 7);
 
       const allOccurrences = expandScheduleOccurrences(toIsoDateString(rangeStart), toIsoDateString(rangeEnd));
-      const occByDate = {};
       allOccurrences.forEach(occ => {
+        occurrencesCacheByKey[occ.occId] = occ;
+      });
+      const filteredOccurrences = filterOccurrencesBySelectedStudent(allOccurrences);
+
+      const occByDate = {};
+      filteredOccurrences.forEach(occ => {
         if (!occByDate[occ.date]) occByDate[occ.date] = [];
         occByDate[occ.date].push(occ);
-        occurrencesCacheByKey[occ.occId] = occ;
       });
 
       const todayIso = toIsoDateString(new Date());
@@ -1434,7 +1583,14 @@
               ? 'bg-amber-500/20 hover:bg-amber-500/35 border-amber-400/60 text-amber-200'
               : 'bg-indigo-600/25 hover:bg-indigo-600/45 border-indigo-500/50 text-indigo-100';
             return `
-              <div onclick="event.stopPropagation(); window.openOccurrenceDetailByKey('${jsSafeOccId}')" class="cursor-pointer px-2 py-1 rounded-md border ${badgeColors} text-[11px] font-semibold truncate flex items-center justify-between gap-1 transition shadow-2xs" title="${sess.time} (${sess.durationMinutes || 60}m) ${safeStudent} (PIN #${sess.pin}) — Clic para gestionar o reagendar">
+              <div
+                draggable="true"
+                ondragstart="window.handleOccDragStart(event, '${jsSafeOccId}')"
+                ondragend="window.handleOccDragEnd(event)"
+                onclick="event.stopPropagation(); window.openOccurrenceDetailByKey('${jsSafeOccId}')"
+                class="cursor-grab active:cursor-grabbing px-1.5 py-0.5 rounded-md border ${badgeColors} text-[10px] font-semibold truncate flex items-center justify-between gap-1 transition shadow-2xs"
+                title="${sess.time} (${sess.durationMinutes || 60}m) ${safeStudent} (PIN #${sess.pin}) — Clic para detalles o arrastra a otra fecha"
+              >
                 <span class="truncate">${sess.isRescheduled ? '↻ ' : ''}<b class="font-mono">${sess.time}</b> ${safeStudent}</span>
                 <span class="text-[9px] opacity-80 shrink-0">${sess.durationMinutes || 60}m</span>
               </div>
@@ -1442,26 +1598,33 @@
           }).join('');
 
           const moreBadgeHtml = overflowCount > 0
-            ? `<div onclick="event.stopPropagation(); window.selectBimesterDay('${iso}')" class="cursor-pointer text-[10px] font-bold text-indigo-400 hover:text-indigo-300 px-1.5 py-0.5 rounded bg-slate-900/90 text-center">
+            ? `<div onclick="event.stopPropagation(); window.selectBimesterDay('${iso}')" class="cursor-pointer text-[9.5px] font-bold text-indigo-400 hover:text-indigo-300 px-1 py-0.5 rounded bg-slate-900/90 text-center">
                  +${overflowCount} más (ver día)
                </div>`
             : '';
 
           cellsHtml += `
-            <div onclick="window.selectBimesterDay('${iso}')" class="min-h-[104px] rounded-xl p-2 border flex flex-col justify-between transition cursor-pointer ${
-              !isCurrentMonth
-                ? 'bg-slate-950/35 border-slate-900/70 opacity-45 hover:opacity-75'
-                : isToday
-                ? 'bg-indigo-950/40 border-indigo-500 ring-1 ring-indigo-500/50'
-                : isSelected
-                ? 'bg-slate-900 border-indigo-500/70'
-                : 'bg-slate-950/85 border-slate-800/90 hover:border-slate-700'
-            }">
+            <div
+              onclick="window.openScheduleModalForDate('${iso}')"
+              ondragover="window.handleDayCellDragOver(event)"
+              ondragleave="window.handleDayCellDragLeave(event)"
+              ondrop="window.handleDayCellDrop(event, '${iso}')"
+              title="Clic para agendar en ${iso} o suelta aquí una clase para reagendar"
+              class="min-h-[88px] rounded-xl p-1.5 border flex flex-col justify-between cursor-pointer hover:bg-slate-800/60 transition-colors ${
+                !isCurrentMonth
+                  ? 'bg-slate-950/35 border-slate-900/70 opacity-45 hover:opacity-80'
+                  : isToday
+                  ? 'bg-indigo-950/40 border-indigo-500 ring-1 ring-indigo-500/50'
+                  : isSelected
+                  ? 'bg-slate-900 border-indigo-500/70'
+                  : 'bg-slate-950/85 border-slate-800/90 hover:border-slate-700'
+              }"
+            >
               <div class="flex items-center justify-between mb-1">
-                <span class="text-xs font-bold ${
+                <span class="text-[11px] font-bold ${
                   !isCurrentMonth ? 'text-slate-600' : isToday ? 'bg-indigo-600 text-white px-1.5 py-0.2 rounded-md' : 'text-slate-300'
                 }">${cellDate.getDate()}</span>
-                ${daySessions.length > 0 ? `<span class="text-[10px] text-slate-500 font-semibold">${daySessions.length} ${daySessions.length === 1 ? 'clase' : 'clases'}</span>` : ''}
+                ${daySessions.length > 0 ? `<span class="text-[9.5px] text-slate-500 font-semibold">${daySessions.length}</span>` : ''}
               </div>
               <div class="space-y-1 flex-1 flex flex-col justify-start">
                 ${badgesHtml}
@@ -1472,20 +1635,20 @@
         }
 
         html += `
-          <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 space-y-3 shadow-xl">
-            <div class="flex items-center justify-between border-b border-slate-800 pb-2.5">
-              <div class="flex items-center gap-2.5">
+          <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 space-y-2.5 shadow-xl flex flex-col">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+              <div class="flex items-center gap-2">
                 <span class="w-2.5 h-2.5 rounded-full bg-indigo-500"></span>
-                <h3 class="text-base font-bold text-white">${monthNames[month]} ${year}</h3>
+                <h3 class="text-sm font-bold text-white">${monthNames[month]} ${year}</h3>
               </div>
-              <span class="text-xs font-semibold text-slate-400 bg-slate-950 px-3 py-1 rounded-full border border-slate-800">
+              <span class="text-[11px] font-semibold text-slate-400 bg-slate-950 px-2.5 py-0.5 rounded-full border border-slate-800">
                 Mes ${mOffset + 1} de 2
               </span>
             </div>
-            <div class="grid grid-cols-7 gap-2 text-center text-[11px] font-bold text-slate-400 uppercase tracking-wider py-1">
+            <div class="grid grid-cols-7 gap-1.5 text-center text-[10px] font-bold text-slate-400 uppercase tracking-wider py-0.5">
               ${dayHeaders.map(dh => `<span>${dh}</span>`).join('')}
             </div>
-            <div class="grid grid-cols-7 gap-2">
+            <div class="grid grid-cols-7 gap-1.5">
               ${cellsHtml}
             </div>
           </div>
@@ -1501,6 +1664,7 @@
     };
 
     function renderScheduleLobby() {
+      populateAgendaStudentFilter();
       if (schedActiveDateLabel) {
         if (scheduleActiveView === 'bimester') {
           const m1 = scheduleCursorDate.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
@@ -1532,7 +1696,7 @@
 
     document.querySelectorAll('.sched-view-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        setScheduleView(btn.getAttribute('data-sched-view') || 'day');
+        setScheduleView(btn.getAttribute('data-sched-view') || 'bimester');
       });
     });
 
@@ -1633,7 +1797,7 @@
       document.getElementById(id)?.addEventListener('change', hideScheduleModalCollisionAlert);
     });
 
-    function openScheduleModal() {
+    function openScheduleModal(prefilledDateIso = null) {
       if (!scheduleModal) return;
       editingSeriesId = null;
       editingSingleId = null;
@@ -1666,11 +1830,15 @@
       if (notesInput) notesInput.value = '';
       selectedModalDaysOfWeek = new Set([1, 3, 5]);
 
-      const baseIso = toIsoDateString(scheduleCursorDate);
+      const baseIso = (typeof prefilledDateIso === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(prefilledDateIso))
+        ? prefilledDateIso
+        : toIsoDateString(scheduleCursorDate);
+      const baseDateObj = parseIsoDateLocal(baseIso);
+
       if (dateInput) dateInput.value = baseIso;
       if (startInput) startInput.value = baseIso;
       if (endInput) {
-        const endD = new Date(scheduleCursorDate.getFullYear(), scheduleCursorDate.getMonth() + 2, 0);
+        const endD = new Date(baseDateObj.getFullYear(), baseDateObj.getMonth() + 2, 0);
         endInput.value = toIsoDateString(endD);
       }
 
@@ -1679,6 +1847,10 @@
       scheduleModal.classList.remove('hidden');
       nameInput?.focus();
     }
+
+    window.openScheduleModalForDate = function(isoDate) {
+      openScheduleModal(isoDate);
+    };
 
     function openScheduleModalForEditSingle(singleId) {
       if (!scheduleModal) return;

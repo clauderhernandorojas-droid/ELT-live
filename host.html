@@ -609,9 +609,13 @@
             ● Diapositiva <span id="currentSlideLabel" class="font-bold">1</span>
           </span>
         </div>
-        <p class="text-[11px] text-slate-400">
-          Session Title with PIN: <span id="roomPinDisplay" class="font-mono font-bold text-slate-200">#----</span>
-        </p>
+        <div class="flex items-center gap-1.5 text-[11px] text-slate-400">
+          <span>Session Title with PIN:</span>
+          <span id="roomPinDisplay" onclick="window.copyRoomPinToClipboard()" class="font-mono font-bold text-slate-200 hover:text-indigo-300 cursor-pointer transition" title="Clic para copiar el PIN de 4 dígitos">#----</span>
+          <button id="btnCopyRoomPin" type="button" onclick="window.copyRoomPinToClipboard()" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-800/90 hover:bg-indigo-600 border border-slate-700 hover:border-indigo-400 text-slate-200 hover:text-white text-[10px] font-bold transition cursor-pointer" title="Copiar PIN al portapapeles">
+            <span id="copyRoomPinBtnLabel">📋</span>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -652,21 +656,49 @@
     <!-- COLUMNA IZQUIERDA/CENTRAL: Área de Trabajo Unificada + Tira de Cámaras WebRTC + Barra Inferior de Reunión -->
     <div id="leftWorkspaceColumn" class="flex-1 min-w-0 h-full flex flex-col relative overflow-hidden bg-white">
 
-      <!-- Tira Superior Flotante de Cámaras Web (WebRTC P2P 16:9) -->
-      <div id="webrtcVideoStrip" class="absolute top-1.5 left-1/2 -translate-x-1/2 z-50 bg-[#18191b]/95 border-2 border-[#2e323b] rounded-2xl p-1.5 shadow-2xl flex items-center gap-2 max-w-[82%] overflow-x-auto select-none">
-        <!-- Miniatura Local (Host) -->
-        <div id="webrtcLocalCard" class="relative w-36 h-20 rounded-xl overflow-hidden bg-[#111317] border border-white/10 flex-shrink-0 flex items-center justify-center group">
-          <video id="webrtcLocalVideo" autoplay playsinline muted class="w-full h-full object-cover transform scale-x-[-1] hidden"></video>
-          <div id="webrtcLocalPlaceholder" class="flex flex-col items-center justify-center text-slate-400">
-            <div class="w-8 h-8 rounded-full bg-indigo-600/30 border border-indigo-400/40 flex items-center justify-center text-xs font-bold text-indigo-200 mb-0.5">H</div>
-          </div>
-          <span id="webrtcLocalNameTag" class="absolute bottom-1 left-1.5 bg-black/65 backdrop-blur-xs text-white text-[10px] font-medium px-1.5 py-0.5 rounded leading-tight truncate max-w-[90%]">Profesor (Host)</span>
-          <span id="webrtcLocalMuteIcon" class="hidden absolute top-1 right-1.5 bg-rose-600/90 text-white text-[9px] w-4 h-4 rounded-full flex items-center justify-center">
-            <i class="fa-solid fa-microphone-slash"></i>
-          </span>
+      <!-- Contenedor Flotante Arrastrable y Minimizable de Cámaras Web (WebRTC P2P 16:9) -->
+      <div id="webrtcVideoStrip" class="absolute bottom-14 right-3 z-50 bg-[#18191b]/95 border-2 border-[#2e323b] rounded-2xl p-1.5 shadow-2xl flex items-center gap-1.5 max-w-[85%] select-none cursor-move" title="Arrastra para mover las cámaras a cualquier esquina">
+        <!-- Agarre de arrastre discreto -->
+        <div id="webrtcDragHandle" class="flex flex-col items-center justify-center px-1 text-slate-500 hover:text-slate-300 cursor-move shrink-0" title="Arrastrar miniatura de video">
+          <i class="fa-solid fa-grip-vertical text-[11px]"></i>
         </div>
-        <!-- Contenedor Dinámico para Miniaturas Remotas (Alumnos) -->
-        <div id="webrtcRemoteCards" class="flex items-center gap-2"></div>
+
+        <!-- Vista Expandida Normal (Miniaturas de Video) -->
+        <div id="webrtcStripExpandedBody" class="relative flex items-center gap-2 overflow-x-auto pr-5">
+          <!-- Miniatura Local (Host) -->
+          <div id="webrtcLocalCard" class="relative w-36 h-20 rounded-xl overflow-hidden bg-[#111317] border border-white/10 flex-shrink-0 flex items-center justify-center group">
+            <video id="webrtcLocalVideo" autoplay playsinline muted class="w-full h-full object-cover transform scale-x-[-1] hidden"></video>
+            <div id="webrtcLocalPlaceholder" class="flex flex-col items-center justify-center text-slate-400">
+              <div class="w-8 h-8 rounded-full bg-indigo-600/30 border border-indigo-400/40 flex items-center justify-center text-xs font-bold text-indigo-200 mb-0.5">H</div>
+            </div>
+            <span id="webrtcLocalNameTag" class="absolute bottom-1 left-1.5 bg-black/65 backdrop-blur-xs text-white text-[10px] font-medium px-1.5 py-0.5 rounded leading-tight truncate max-w-[90%]">Profesor (Host)</span>
+            <span id="webrtcLocalMuteIcon" class="hidden absolute top-1 right-1.5 bg-rose-600/90 text-white text-[9px] w-4 h-4 rounded-full flex items-center justify-center">
+              <i class="fa-solid fa-microphone-slash"></i>
+            </span>
+          </div>
+          <!-- Contenedor Dinámico para Miniaturas Remotas (Alumnos) -->
+          <div id="webrtcRemoteCards" class="flex items-center gap-2"></div>
+
+          <!-- Botón de Minimizar en la esquina superior derecha del contenedor -->
+          <button id="btnMinimizeVideoStrip" type="button" class="absolute top-0.5 right-0.5 w-5 h-5 rounded-md bg-slate-800/90 hover:bg-slate-700 text-slate-200 hover:text-white border border-white/15 flex items-center justify-center text-[11px] font-bold leading-none shadow cursor-pointer transition z-10" title="Minimizar miniatura de video">
+            —
+          </button>
+        </div>
+
+        <!-- Vista Minimizada (Píldora Compacta con Avatar de 32px y Botón Restaurar) -->
+        <div id="webrtcStripMinimizedPill" class="hidden items-center gap-2 pr-1">
+          <div class="w-8 h-8 rounded-full bg-indigo-600/30 border border-indigo-400/50 flex items-center justify-center text-xs font-bold text-indigo-200 shrink-0">
+            H
+          </div>
+          <div class="flex flex-col leading-tight mr-1">
+            <span id="webrtcMinimizedLabel" class="text-[11px] font-bold text-white whitespace-nowrap">Profesor (Host)</span>
+            <span id="webrtcMinimizedSubLabel" class="text-[9px] text-emerald-400 font-medium whitespace-nowrap">Cámaras activas</span>
+          </div>
+          <button id="btnRestoreVideoStrip" type="button" class="px-2 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-bold flex items-center gap-1 shadow cursor-pointer transition shrink-0" title="Restaurar tamaño de cámaras">
+            <i class="fa-regular fa-window-restore text-[10px]"></i>
+            <span>Restaurar</span>
+          </button>
+        </div>
       </div>
 
       <!-- Área Didáctica Unificada (Lecciones Interactivas + Lienzo de Pizarra Colaborativa) -->
@@ -4881,6 +4913,9 @@
       }
       const nameTag = document.getElementById(`webrtc_name_${peerId}`);
       if (nameTag && peerName) nameTag.textContent = peerName;
+      if (typeof updateMinimizedVideoStripSummary === 'function') {
+        updateMinimizedVideoStripSummary();
+      }
       return card;
     }
 
@@ -5102,6 +5137,154 @@
     }
 
     updateLocalMediaButtonsUI();
+
+    // ==================== COPIAR PIN DE LA SESIÓN AL PORTAPAPELES ====================
+    let copyPinFeedbackTimer = null;
+    window.copyRoomPinToClipboard = async function() {
+      const rawPin = String(roomPin || document.getElementById('roomPinDisplay')?.textContent || '').replace(/\D/g, '');
+      if (!rawPin || rawPin.length < 4) return;
+
+      try {
+        await navigator.clipboard.writeText(rawPin);
+      } catch (err) {
+        const tmp = document.createElement('textarea');
+        tmp.value = rawPin;
+        document.body.appendChild(tmp);
+        tmp.select();
+        try { document.execCommand('copy'); } catch (e) {}
+        document.body.removeChild(tmp);
+      }
+
+      const btn = document.getElementById('btnCopyRoomPin');
+      const label = document.getElementById('copyRoomPinBtnLabel');
+      if (label) label.textContent = '✓ ¡Copiado!';
+      if (btn) {
+        btn.className = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-600 border border-emerald-400 text-white text-[10px] font-bold transition cursor-pointer shadow-sm';
+      }
+
+      if (copyPinFeedbackTimer) clearTimeout(copyPinFeedbackTimer);
+      copyPinFeedbackTimer = setTimeout(() => {
+        if (label) label.textContent = '📋';
+        if (btn) {
+          btn.className = 'inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-800/90 hover:bg-indigo-600 border border-slate-700 hover:border-indigo-400 text-slate-200 hover:text-white text-[10px] font-bold transition cursor-pointer';
+        }
+      }, 2000);
+    };
+
+    // ==================== MINIATURA DE VIDEO FLOTANTE ARRASTRABLE Y MINIMIZABLE (#webrtcVideoStrip) ====================
+    const webrtcVideoStripEl = document.getElementById('webrtcVideoStrip');
+    const webrtcStripExpandedBody = document.getElementById('webrtcStripExpandedBody');
+    const webrtcStripMinimizedPill = document.getElementById('webrtcStripMinimizedPill');
+    const btnMinimizeVideoStrip = document.getElementById('btnMinimizeVideoStrip');
+    const btnRestoreVideoStrip = document.getElementById('btnRestoreVideoStrip');
+
+    let isVideoStripMinimized = false;
+    let isDraggingVideoStrip = false;
+    let videoStripDragOffsetX = 0;
+    let videoStripDragOffsetY = 0;
+
+    function updateMinimizedVideoStripSummary() {
+      const subLabel = document.getElementById('webrtcMinimizedSubLabel');
+      if (!subLabel) return;
+      const remoteCount = Object.keys(webrtcPeers).length;
+      subLabel.textContent = remoteCount > 0
+        ? `Host + ${remoteCount} ${remoteCount === 1 ? 'alumno' : 'alumnos'}`
+        : 'Cámaras minimizadas';
+    }
+
+    function setVideoStripMinimized(minimized) {
+      isVideoStripMinimized = Boolean(minimized);
+      if (webrtcStripExpandedBody && webrtcStripMinimizedPill) {
+        webrtcStripExpandedBody.classList.toggle('hidden', isVideoStripMinimized);
+        webrtcStripMinimizedPill.classList.toggle('hidden', !isVideoStripMinimized);
+        webrtcStripMinimizedPill.classList.toggle('flex', isVideoStripMinimized);
+      }
+      updateMinimizedVideoStripSummary();
+      clampVideoStripIntoBounds();
+    }
+
+    function clampVideoStripIntoBounds() {
+      const parentEl = document.getElementById('leftWorkspaceColumn');
+      if (!webrtcVideoStripEl || !parentEl) return;
+      if (!webrtcVideoStripEl.style.left && !webrtcVideoStripEl.style.top) return;
+
+      const parentRect = parentEl.getBoundingClientRect();
+      const stripRect = webrtcVideoStripEl.getBoundingClientRect();
+      if (parentRect.width === 0 || parentRect.height === 0) return;
+
+      const maxLeft = Math.max(8, parentRect.width - stripRect.width - 8);
+      const maxTop = Math.max(8, parentRect.height - stripRect.height - 8);
+      const currentLeft = parseFloat(webrtcVideoStripEl.style.left) || 8;
+      const currentTop = parseFloat(webrtcVideoStripEl.style.top) || 8;
+
+      webrtcVideoStripEl.style.left = `${Math.max(8, Math.min(maxLeft, currentLeft))}px`;
+      webrtcVideoStripEl.style.top = `${Math.max(8, Math.min(maxTop, currentTop))}px`;
+    }
+
+    btnMinimizeVideoStrip?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setVideoStripMinimized(true);
+    });
+
+    btnRestoreVideoStrip?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setVideoStripMinimized(false);
+    });
+
+    webrtcVideoStripEl?.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      if (e.target.closest('button')) return;
+
+      const parentEl = document.getElementById('leftWorkspaceColumn');
+      if (!parentEl) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      const parentRect = parentEl.getBoundingClientRect();
+      const stripRect = webrtcVideoStripEl.getBoundingClientRect();
+
+      isDraggingVideoStrip = true;
+      videoStripDragOffsetX = e.clientX - stripRect.left;
+      videoStripDragOffsetY = e.clientY - stripRect.top;
+
+      // Convertir posicionamiento inicial (bottom/right) a coordenadas explícitas (left/top) dentro del contenedor
+      webrtcVideoStripEl.style.right = 'auto';
+      webrtcVideoStripEl.style.bottom = 'auto';
+      webrtcVideoStripEl.style.left = `${Math.round(stripRect.left - parentRect.left)}px`;
+      webrtcVideoStripEl.style.top = `${Math.round(stripRect.top - parentRect.top)}px`;
+      document.body.style.userSelect = 'none';
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isDraggingVideoStrip || !webrtcVideoStripEl) return;
+      const parentEl = document.getElementById('leftWorkspaceColumn');
+      if (!parentEl) return;
+
+      const parentRect = parentEl.getBoundingClientRect();
+      const stripRect = webrtcVideoStripEl.getBoundingClientRect();
+
+      const rawLeft = e.clientX - parentRect.left - videoStripDragOffsetX;
+      const rawTop = e.clientY - parentRect.top - videoStripDragOffsetY;
+
+      const maxLeft = Math.max(8, parentRect.width - stripRect.width - 8);
+      const maxTop = Math.max(8, parentRect.height - stripRect.height - 8);
+
+      const clampedLeft = Math.max(8, Math.min(maxLeft, rawLeft));
+      const clampedTop = Math.max(8, Math.min(maxTop, rawTop));
+
+      webrtcVideoStripEl.style.left = `${Math.round(clampedLeft)}px`;
+      webrtcVideoStripEl.style.top = `${Math.round(clampedTop)}px`;
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (isDraggingVideoStrip) {
+        isDraggingVideoStrip = false;
+        document.body.style.userSelect = '';
+      }
+    });
+
+    window.addEventListener('resize', clampVideoStripIntoBounds);
 
     // Controles de la Barra Inferior de Reunión y Navegación (#zmBottomMeetingBar)
     document.getElementById('bottomPrevSlideBtn').addEventListener('click', () => {

@@ -189,21 +189,51 @@
       <!-- COLUMNA IZQUIERDA/CENTRAL: Área de Trabajo + Tira Superior WebRTC + Barra Inferior de Reunión -->
       <div id="leftWorkspaceColumn" class="flex-1 min-w-0 h-full flex flex-col relative overflow-hidden bg-white">
 
-        <!-- Tira Superior Flotante de Cámaras Web (WebRTC P2P 16:9) -->
-        <div id="webrtcVideoStrip" class="absolute top-1.5 left-1/2 -translate-x-1/2 z-50 bg-[#18191b]/95 border-2 border-[#2e323b] rounded-2xl p-1.5 shadow-2xl flex items-center gap-2 max-w-[82%] overflow-x-auto select-none">
-          <!-- Miniatura Local (Estudiante) -->
-          <div id="webrtcLocalCard" class="relative w-36 h-20 rounded-xl overflow-hidden bg-[#111317] border border-white/10 flex-shrink-0 flex items-center justify-center group">
-            <video id="webrtcLocalVideo" autoplay playsinline muted class="w-full h-full object-cover transform scale-x-[-1] hidden"></video>
-            <div id="webrtcLocalPlaceholder" class="flex flex-col items-center justify-center text-slate-400">
-              <div id="webrtcLocalAvatarInitial" class="w-8 h-8 rounded-full bg-indigo-600/30 border border-indigo-400/40 flex items-center justify-center text-xs font-bold text-indigo-200 mb-0.5">A</div>
+        <!-- Miniatura Flotante de Cámaras Web (WebRTC P2P 16:9 - Arrastrable y Minimizable) -->
+        <div id="webrtcVideoStrip" class="absolute bottom-14 right-3 z-50 bg-[#18191b]/95 border-2 border-[#2e323b] rounded-2xl p-1.5 shadow-2xl flex items-center gap-2 max-w-[82%] select-none cursor-move transition-shadow hover:border-indigo-500/40" title="Arrastra para mover las cámaras a cualquier esquina">
+          <!-- Indicador de arrastre lateral + Cuerpo Expandido de Cámaras -->
+          <div id="webrtcStripExpandedBody" class="flex items-center gap-2 overflow-x-auto">
+            <div id="webrtcDragHandle" class="flex flex-col items-center justify-center px-1 py-2 text-slate-500 hover:text-slate-300 cursor-move shrink-0" title="Arrastrar cámaras">
+              <i class="fa-solid fa-grip-vertical text-xs"></i>
             </div>
-            <span id="webrtcLocalNameTag" class="absolute bottom-1 left-1.5 bg-black/65 backdrop-blur-xs text-white text-[10px] font-medium px-1.5 py-0.5 rounded leading-tight truncate max-w-[90%]">Alumno</span>
-            <span id="webrtcLocalMuteIcon" class="hidden absolute top-1 right-1.5 bg-rose-600/90 text-white text-[9px] w-4 h-4 rounded-full flex items-center justify-center">
-              <i class="fa-solid fa-microphone-slash"></i>
-            </span>
+            <!-- Miniatura Local (Estudiante) -->
+            <div id="webrtcLocalCard" class="relative w-36 h-20 rounded-xl overflow-hidden bg-[#111317] border border-white/10 flex-shrink-0 flex items-center justify-center group">
+              <video id="webrtcLocalVideo" autoplay playsinline muted class="w-full h-full object-cover transform scale-x-[-1] hidden"></video>
+              <div id="webrtcLocalPlaceholder" class="flex flex-col items-center justify-center text-slate-400">
+                <div id="webrtcLocalAvatarInitial" class="w-8 h-8 rounded-full bg-indigo-600/30 border border-indigo-400/40 flex items-center justify-center text-xs font-bold text-indigo-200 mb-0.5">A</div>
+              </div>
+              <span id="webrtcLocalNameTag" class="absolute bottom-1 left-1.5 bg-black/65 backdrop-blur-xs text-white text-[10px] font-medium px-1.5 py-0.5 rounded leading-tight truncate max-w-[90%]">Alumno</span>
+              <span id="webrtcLocalMuteIcon" class="hidden absolute top-1 right-1.5 bg-rose-600/90 text-white text-[9px] w-4 h-4 rounded-full flex items-center justify-center">
+                <i class="fa-solid fa-microphone-slash"></i>
+              </span>
+            </div>
+            <!-- Contenedor Dinámico para Miniaturas Remotas (Profesor y compañeros) -->
+            <div id="webrtcRemoteCards" class="flex items-center gap-2"></div>
+            <!-- Botón Minimizar Cámaras -->
+            <button id="btnMinimizeVideoStrip" type="button" onclick="event.stopPropagation(); setVideoStripMinimized(true)" class="self-start -mt-0.5 ml-0.5 w-6 h-6 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-slate-300 hover:text-white border border-white/10 flex items-center justify-center text-xs font-bold transition shrink-0 cursor-pointer" title="Minimizar recuadro de cámaras">
+              —
+            </button>
           </div>
-          <!-- Contenedor Dinámico para Miniaturas Remotas (Profesor y compañeros) -->
-          <div id="webrtcRemoteCards" class="flex items-center gap-2"></div>
+
+          <!-- Píldora Compacta Flotante (Vista Minimizada) -->
+          <div id="webrtcStripMinimizedPill" class="hidden items-center gap-2.5 px-2.5 py-1">
+            <i class="fa-solid fa-grip-vertical text-[11px] text-slate-500"></i>
+            <span class="relative flex h-2 w-2">
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            <div id="webrtcMinimizedAvatar" class="w-6 h-6 rounded-full bg-indigo-600/40 border border-indigo-400/40 flex items-center justify-center text-[10px] font-bold text-indigo-200">
+              P
+            </div>
+            <div class="flex flex-col leading-tight pr-1">
+              <span id="webrtcMinimizedLabel" class="text-[11px] font-bold text-white truncate max-w-[130px]">Cámaras activas</span>
+              <span id="webrtcMinimizedSubLabel" class="text-[9px] text-slate-400">Miniatura minimizada</span>
+            </div>
+            <button id="btnRestoreVideoStrip" type="button" onclick="event.stopPropagation(); setVideoStripMinimized(false)" class="px-2 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-bold transition flex items-center gap-1 cursor-pointer shadow" title="Restaurar cámaras">
+              <i class="fa-solid fa-expand text-[9px]"></i>
+              <span>Restaurar</span>
+            </button>
+          </div>
         </div>
 
         <!-- Área Didáctica Unificada (Lección Interactiva + Lienzo de Pizarra Colaborativa) -->
@@ -1710,32 +1740,67 @@
         if (!isAdmittedToClass) return;
         const state = myChannel.presenceState();
         const peers = ['Profesor (Host)'];
+        const activeParticipantKeys = new Set();
+        const myCleanName = String(myName || '').trim().toLowerCase();
+
         Object.keys(state).forEach(key => {
-          state[key].forEach(u => {
-            if (!u) return;
-            if (key === 'host' || u.role === 'host') {
-              const hostPeerId = u.peerId || 'host_presence';
-              if (typeof ensureRemoteVideoCard === 'function') {
-                const entry = ensureRemoteVideoCard(hostPeerId, u.name || 'Profesor (Host)', 'host');
-                if (entry && entry.micIconEl) {
-                  entry.micIconEl.classList.toggle('hidden', Boolean(u.audioEnabled ?? u.audio));
-                }
-              }
-            } else {
-              if (u.name && u.name !== myName && !peers.includes(u.name)) {
-                peers.push(u.name);
-              }
-              if (u.peerId && u.peerId !== webrtcPeerId && typeof ensureRemoteVideoCard === 'function') {
-                const entry = ensureRemoteVideoCard(u.peerId, u.name, 'student');
-                if (entry && entry.micIconEl) {
-                  entry.micIconEl.classList.toggle('hidden', Boolean(u.audioEnabled ?? u.audio));
-                }
+          const presences = Array.isArray(state[key]) ? state[key].filter(Boolean) : [];
+          if (presences.length === 0) return;
+
+          const sorted = presences.slice().sort((a, b) => {
+            const ta = a.joinedAt ? new Date(a.joinedAt).getTime() : 0;
+            const tb = b.joinedAt ? new Date(b.joinedAt).getTime() : 0;
+            return ta - tb;
+          });
+          const u = sorted[sorted.length - 1];
+          if (!u) return;
+
+          if (key === 'host' || u.role === 'host') {
+            activeParticipantKeys.add('__host__');
+            const hostPeerId = (window.__studentLatestPeerByKey && window.__studentLatestPeerByKey['__host__']) || u.peerId || 'host_presence';
+            if (typeof ensureRemoteVideoCard === 'function') {
+              const entry = ensureRemoteVideoCard(hostPeerId, u.name || 'Profesor (Host)', 'host');
+              if (entry && entry.micIconEl) {
+                entry.micIconEl.classList.toggle('hidden', Boolean(u.audioEnabled ?? u.audio));
               }
             }
-          });
+          } else {
+            const uCleanName = String(u.name || '').trim().toLowerCase();
+            // Ignorar presencias propias (incluyendo sesiones fantasma al recargar la página)
+            if (!uCleanName || uCleanName === myCleanName || u.peerId === webrtcPeerId) return;
+
+            activeParticipantKeys.add(uCleanName);
+            if (u.name && !peers.includes(u.name)) {
+              peers.push(u.name);
+            }
+            const stuPeerId = (window.__studentLatestPeerByKey && window.__studentLatestPeerByKey[uCleanName]) || u.peerId;
+            if (stuPeerId && typeof ensureRemoteVideoCard === 'function') {
+              const entry = ensureRemoteVideoCard(stuPeerId, u.name, 'student');
+              if (entry && entry.micIconEl) {
+                entry.micIconEl.classList.toggle('hidden', Boolean(u.audioEnabled ?? u.audio));
+              }
+            }
+          }
         });
+
+        if (typeof cleanupOrphanStudentVideoCards === 'function') {
+          cleanupOrphanStudentVideoCards(activeParticipantKeys);
+        }
         window.__studentKnownPeers = peers;
         if (typeof renderChatParticipantsDropdown === 'function') renderChatParticipantsDropdown();
+      });
+
+      myChannel.on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
+        if (!isAdmittedToClass) return;
+        const state = myChannel.presenceState();
+        const remaining = Array.isArray(state[key]) ? state[key].filter(Boolean) : [];
+        if (remaining.length === 0 && Array.isArray(leftPresences)) {
+          leftPresences.forEach(lp => {
+            if (lp && typeof removeStudentRemoteVideoCard === 'function') {
+              removeStudentRemoteVideoCard(lp.peerId, lp.name, key === 'host' || lp.role === 'host' ? 'host' : 'student');
+            }
+          });
+        }
       });
 
       // Eventos de Sala de Espera (Waiting Room)
@@ -4515,26 +4580,196 @@
       });
     }
 
+    window.__studentLatestPeerByKey = window.__studentLatestPeerByKey || {};
+
+    function getParticipantDedupKey(name, role) {
+      if (role === 'host') return '__host__';
+      return String(name || '').trim().toLowerCase();
+    }
+
+    function removeStudentRemoteVideoCard(peerId, name, role) {
+      const strip = document.getElementById('webrtcVideoStrip');
+      const entry = peerId ? webrtcPeers[peerId] : null;
+      const inferredRole = role || (entry && entry.role) || 'student';
+      const resolvedName = name || (entry && entry.name) || '';
+      const dedupKey = getParticipantDedupKey(resolvedName, inferredRole);
+
+      if (peerId && webrtcPeers[peerId]) {
+        if (webrtcPeers[peerId].pc) {
+          try {
+            webrtcPeers[peerId].pc.onconnectionstatechange = null;
+            webrtcPeers[peerId].pc.close();
+          } catch (e) {}
+        }
+        delete webrtcPeers[peerId];
+      }
+
+      if (peerId) {
+        const cardById = document.getElementById(`webrtcCard_${peerId}`);
+        if (cardById) cardById.remove();
+        if (strip) {
+          strip.querySelectorAll(`[data-peer-id="${peerId}"]`).forEach(el => el.remove());
+        }
+      }
+
+      if (dedupKey && strip) {
+        const hasAnotherActive = Object.keys(webrtcPeers).some(
+          pid => pid !== peerId && getParticipantDedupKey(webrtcPeers[pid]?.name, webrtcPeers[pid]?.role) === dedupKey
+        );
+        if (!hasAnotherActive) {
+          strip.querySelectorAll('[data-student-name]').forEach(el => {
+            if (el.getAttribute('data-student-name') === dedupKey) el.remove();
+          });
+          if (window.__studentLatestPeerByKey && window.__studentLatestPeerByKey[dedupKey] === peerId) {
+            delete window.__studentLatestPeerByKey[dedupKey];
+          }
+        }
+      }
+
+      if (typeof updateMinimizedVideoStripSummary === 'function') {
+        updateMinimizedVideoStripSummary();
+      }
+    }
+
+    function cleanupOrphanStudentVideoCards(activeParticipantKeys) {
+      const strip = document.getElementById('webrtcVideoStrip');
+      Object.keys(webrtcPeers).forEach(pid => {
+        const p = webrtcPeers[pid];
+        if (!p) return;
+        const dedupKey = getParticipantDedupKey(p.name, p.role);
+        const latestPid = dedupKey && window.__studentLatestPeerByKey ? window.__studentLatestPeerByKey[dedupKey] : null;
+        if (latestPid && latestPid !== pid) {
+          if (p.pc) {
+            try { p.pc.onconnectionstatechange = null; p.pc.close(); } catch (e) {}
+          }
+          delete webrtcPeers[pid];
+          return;
+        }
+        if (activeParticipantKeys && dedupKey && !activeParticipantKeys.has(dedupKey)) {
+          const connState = p.pc ? p.pc.connectionState : 'closed';
+          if (connState !== 'connected' && connState !== 'connecting') {
+            removeStudentRemoteVideoCard(pid, p.name, p.role);
+          }
+        }
+      });
+
+      if (strip) {
+        const seenKeys = new Set();
+        strip.querySelectorAll('[data-student-name]').forEach(cardEl => {
+          const dKey = cardEl.getAttribute('data-student-name') || '';
+          const pId = cardEl.getAttribute('data-peer-id') || '';
+          if (!dKey) return;
+          if (seenKeys.has(dKey)) {
+            cardEl.remove();
+            return;
+          }
+          if (activeParticipantKeys && activeParticipantKeys.size > 0 && !activeParticipantKeys.has(dKey)) {
+            const peerObj = pId ? webrtcPeers[pId] : null;
+            const connState = peerObj && peerObj.pc ? peerObj.pc.connectionState : 'closed';
+            if (connState !== 'connected' && connState !== 'connecting') {
+              cardEl.remove();
+              return;
+            }
+          }
+          seenKeys.add(dKey);
+        });
+      }
+
+      if (typeof updateMinimizedVideoStripSummary === 'function') {
+        updateMinimizedVideoStripSummary();
+      }
+    }
+
     function ensureRemoteVideoCard(remotePeerId, name, role) {
       const strip = document.getElementById('webrtcVideoStrip');
       const remoteContainer = document.getElementById('webrtcRemoteCards') || strip;
-      if (!strip || !remoteContainer) return null;
+      if (!strip || !remoteContainer || !remotePeerId) return null;
 
-      // Si había una tarjeta provisional 'host_presence' y ahora llega el peerId real del Host, reutilizarla
-      if (role === 'host' && remotePeerId !== 'host_presence' && webrtcPeers['host_presence'] && webrtcPeers['host_presence'].cardEl) {
-        webrtcPeers[remotePeerId] = webrtcPeers['host_presence'];
-        delete webrtcPeers['host_presence'];
-        webrtcPeers[remotePeerId].cardEl.id = `webrtcCard_${remotePeerId}`;
+      const resolvedRole = role || ((name && name.includes('Profesor')) || String(remotePeerId).startsWith('host_') || String(remotePeerId).startsWith('peer_host_') ? 'host' : 'student');
+      const resolvedName = (name || (resolvedRole === 'host' ? 'Profesor (Host)' : 'Participante')).trim();
+      const dedupKey = getParticipantDedupKey(resolvedName, resolvedRole);
+      const myCleanName = String(myName || '').trim().toLowerCase();
+
+      // Nunca crear tarjeta remota para el propio alumno (ej. sesión fantasma tras recargar)
+      if (resolvedRole !== 'host' && dedupKey && dedupKey === myCleanName) {
+        return null;
       }
 
-      if (webrtcPeers[remotePeerId] && webrtcPeers[remotePeerId].cardEl) {
-        const entry = webrtcPeers[remotePeerId];
-        if (name && entry.nameTagEl) entry.nameTagEl.textContent = name;
-        return entry;
+      if (dedupKey) {
+        if (remotePeerId !== 'host_presence') {
+          window.__studentLatestPeerByKey[dedupKey] = remotePeerId;
+        }
+        // Si existe otro peerId antiguo para el mismo participante (ej. Host o compañero que recargó), migrar y cerrar el antiguo
+        Object.keys(webrtcPeers).forEach(otherId => {
+          if (otherId !== remotePeerId && getParticipantDedupKey(webrtcPeers[otherId]?.name, webrtcPeers[otherId]?.role) === dedupKey) {
+            const oldEntry = webrtcPeers[otherId];
+            if (oldEntry && oldEntry.pc) {
+              try {
+                oldEntry.pc.onconnectionstatechange = null;
+                oldEntry.pc.close();
+              } catch (e) {}
+            }
+            if (oldEntry && oldEntry.cardEl && (!webrtcPeers[remotePeerId] || !webrtcPeers[remotePeerId].cardEl)) {
+              webrtcPeers[remotePeerId] = Object.assign({}, webrtcPeers[remotePeerId] || {}, {
+                name: resolvedName,
+                role: resolvedRole,
+                cardEl: oldEntry.cardEl,
+                videoEl: oldEntry.videoEl,
+                placeholderEl: oldEntry.placeholderEl,
+                nameTagEl: oldEntry.nameTagEl,
+                micIconEl: oldEntry.micIconEl
+              });
+            }
+            delete webrtcPeers[otherId];
+          }
+        });
+      }
+
+      // Buscar tarjeta existente en el DOM por data-peer-id o por data-student-name
+      let existingCard = document.getElementById(`webrtcCard_${remotePeerId}`)
+        || strip.querySelector(`[data-peer-id="${remotePeerId}"]`);
+
+      if (!existingCard && dedupKey) {
+        const matches = Array.from(strip.querySelectorAll('[data-student-name]'))
+          .filter(el => el.getAttribute('data-student-name') === dedupKey);
+        if (matches.length > 0) {
+          existingCard = matches[0];
+          for (let i = 1; i < matches.length; i++) {
+            matches[i].remove();
+          }
+        }
+      }
+
+      if (existingCard) {
+        existingCard.id = `webrtcCard_${remotePeerId}`;
+        existingCard.setAttribute('data-peer-id', remotePeerId);
+        if (dedupKey) existingCard.setAttribute('data-student-name', dedupKey);
+
+        const videoEl = existingCard.querySelector('video');
+        const placeholderEl = existingCard.querySelector('[data-role="placeholder"]') || existingCard.querySelectorAll('div')[0];
+        const nameTagEl = existingCard.querySelector('[data-role="name"]') || existingCard.querySelectorAll('div')[2];
+        const micIconEl = existingCard.querySelector('[data-role="mute"]') || existingCard.querySelectorAll('div')[3];
+
+        if (nameTagEl && resolvedName) nameTagEl.textContent = resolvedName;
+
+        if (!webrtcPeers[remotePeerId]) webrtcPeers[remotePeerId] = {};
+        Object.assign(webrtcPeers[remotePeerId], {
+          name: resolvedName,
+          role: resolvedRole,
+          cardEl: existingCard,
+          videoEl: videoEl || webrtcPeers[remotePeerId].videoEl,
+          placeholderEl: placeholderEl || webrtcPeers[remotePeerId].placeholderEl,
+          nameTagEl: nameTagEl || webrtcPeers[remotePeerId].nameTagEl,
+          micIconEl: micIconEl || webrtcPeers[remotePeerId].micIconEl
+        });
+        updateMinimizedVideoStripSummary();
+        return webrtcPeers[remotePeerId];
       }
 
       const card = document.createElement('div');
       card.id = `webrtcCard_${remotePeerId}`;
+      card.setAttribute('data-peer-id', remotePeerId);
+      if (dedupKey) card.setAttribute('data-student-name', dedupKey);
       card.className = 'relative w-36 h-20 rounded-xl overflow-hidden bg-[#111317] border border-white/10 shrink-0 flex items-center justify-center';
 
       const video = document.createElement('video');
@@ -4543,18 +4778,21 @@
       video.className = 'w-full h-full object-cover hidden';
 
       const placeholder = document.createElement('div');
+      placeholder.setAttribute('data-role', 'placeholder');
       placeholder.className = 'flex flex-col items-center justify-center text-slate-400';
-      const initial = (name || 'P').trim().charAt(0).toUpperCase();
-      const avatarColor = role === 'host'
+      const initial = (resolvedName || 'P').trim().charAt(0).toUpperCase();
+      const avatarColor = resolvedRole === 'host'
         ? 'bg-emerald-600/30 border-emerald-400/40 text-emerald-200'
         : 'bg-[#0e72ed]/30 border-[#0e72ed]/60 text-white';
       placeholder.innerHTML = `<div class="w-8 h-8 rounded-full ${avatarColor} border flex items-center justify-center font-bold text-xs mb-0.5">${initial}</div>`;
 
       const nameTag = document.createElement('div');
+      nameTag.setAttribute('data-role', 'name');
       nameTag.className = 'absolute bottom-1 left-1.5 bg-black/65 backdrop-blur-xs text-white text-[10px] font-medium px-1.5 py-0.5 rounded leading-tight truncate max-w-[90%]';
-      nameTag.textContent = name || (role === 'host' ? 'Profesor (Host)' : 'Participante');
+      nameTag.textContent = resolvedName;
 
       const micIcon = document.createElement('div');
+      micIcon.setAttribute('data-role', 'mute');
       micIcon.className = 'absolute top-1 right-1.5 bg-rose-600/90 text-white text-[9px] w-4 h-4 rounded-full flex items-center justify-center';
       micIcon.innerHTML = '<i class="fa-solid fa-microphone-slash"></i>';
 
@@ -4563,30 +4801,37 @@
       card.appendChild(nameTag);
       card.appendChild(micIcon);
 
-      if (role === 'host') {
-        strip.insertBefore(card, strip.firstChild);
+      const expandedBody = document.getElementById('webrtcStripExpandedBody') || strip;
+      const localCard = document.getElementById('webrtcLocalCard');
+      if (resolvedRole === 'host') {
+        expandedBody.insertBefore(card, localCard || expandedBody.firstChild);
       } else {
         remoteContainer.appendChild(card);
       }
 
       if (!webrtcPeers[remotePeerId]) webrtcPeers[remotePeerId] = {};
       Object.assign(webrtcPeers[remotePeerId], {
-        name: name || (role === 'host' ? 'Profesor (Host)' : 'Participante'),
-        role: role || 'student',
+        name: resolvedName,
+        role: resolvedRole,
         cardEl: card,
         videoEl: video,
         placeholderEl: placeholder,
         nameTagEl: nameTag,
         micIconEl: micIcon
       });
+      updateMinimizedVideoStripSummary();
       return webrtcPeers[remotePeerId];
     }
 
     function getOrCreatePeerConnection(remotePeerId, name, role) {
-      const inferredRole = role || ((name && name.includes('Profesor')) || String(remotePeerId).startsWith('host_') ? 'host' : 'student');
+      const inferredRole = role || ((name && name.includes('Profesor')) || String(remotePeerId).startsWith('host_') || String(remotePeerId).startsWith('peer_host_') ? 'host' : 'student');
       const entry = ensureRemoteVideoCard(remotePeerId, name, inferredRole);
       if (!entry) return null;
-      if (entry.pc) return entry.pc;
+      if (entry.pc) {
+        const st = entry.pc.connectionState;
+        if (st !== 'closed' && st !== 'failed') return entry.pc;
+        try { entry.pc.close(); } catch (e) {}
+      }
 
       const pc = new RTCPeerConnection(WEBRTC_ICE_SERVERS);
       entry.pc = pc;
@@ -4623,9 +4868,25 @@
       };
 
       pc.onconnectionstatechange = () => {
-        if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+        if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+          if (entry.role !== 'host') {
+            removeStudentRemoteVideoCard(remotePeerId, entry.name, entry.role);
+          } else {
+            if (entry.videoEl) entry.videoEl.classList.add('hidden');
+            if (entry.placeholderEl) entry.placeholderEl.classList.remove('hidden');
+          }
+        } else if (pc.connectionState === 'disconnected') {
           if (entry.videoEl) entry.videoEl.classList.add('hidden');
           if (entry.placeholderEl) entry.placeholderEl.classList.remove('hidden');
+          if (entry.role !== 'host') {
+            setTimeout(() => {
+              if (webrtcPeers[remotePeerId] && webrtcPeers[remotePeerId].pc === pc) {
+                if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+                  removeStudentRemoteVideoCard(remotePeerId, entry.name, entry.role);
+                }
+              }
+            }, 5000);
+          }
         }
       };
 
@@ -4683,7 +4944,7 @@
         const remoteId = payload && (payload.peerId || payload.fromPeerId || payload.from);
         if (!remoteId || remoteId === webrtcPeerId) return;
         const remoteName = payload.name || payload.fromName || 'Participante';
-        const remoteRole = payload.role || (String(remoteId).startsWith('host_') ? 'host' : 'student');
+        const remoteRole = payload.role || (String(remoteId).startsWith('host_') || String(remoteId).startsWith('peer_host_') ? 'host' : 'student');
         const pc = getOrCreatePeerConnection(remoteId, remoteName, remoteRole);
         if (!pc) return;
         const entry = webrtcPeers[remoteId];
@@ -4714,19 +4975,28 @@
         await createAndSendOffer(remoteId);
       });
 
+      channel.on('broadcast', { event: 'WEBRTC_LEAVE' }, ({ payload }) => {
+        const remoteId = payload && (payload.peerId || payload.fromPeerId || payload.from);
+        const remoteName = payload && (payload.name || payload.fromName);
+        const remoteRole = payload && payload.role;
+        if (!remoteId || remoteId === webrtcPeerId) return;
+        removeStudentRemoteVideoCard(remoteId, remoteName, remoteRole);
+      });
+
       channel.on('broadcast', { event: 'WEBRTC_ANNOUNCE' }, ({ payload }) => {
         const fromId = payload && (payload.fromPeerId || payload.from || payload.peerId);
         const toId = payload && (payload.toPeerId || payload.to);
         if (!fromId || fromId === webrtcPeerId) return;
         if (toId && toId !== webrtcPeerId) return;
         const remoteName = payload.fromName || payload.name || 'Profesor (Host)';
-        const remoteRole = payload.role || (String(fromId).startsWith('host_') ? 'host' : 'student');
+        const remoteRole = payload.role || (String(fromId).startsWith('host_') || String(fromId).startsWith('peer_host_') ? 'host' : 'student');
         getOrCreatePeerConnection(fromId, remoteName, remoteRole);
         const entry = webrtcPeers[fromId];
+        if (!entry) return;
         const isAudioOn = Boolean(payload.audioEnabled ?? payload.audio);
         const isVideoOn = Boolean(payload.videoEnabled ?? payload.video);
-        if (entry && entry.micIconEl) entry.micIconEl.classList.toggle('hidden', isAudioOn);
-        if (entry && entry.videoEl && entry.placeholderEl) {
+        if (entry.micIconEl) entry.micIconEl.classList.toggle('hidden', isAudioOn);
+        if (entry.videoEl && entry.placeholderEl) {
           entry.videoEl.classList.toggle('hidden', !isVideoOn);
           entry.placeholderEl.classList.toggle('hidden', isVideoOn);
         }
@@ -4737,7 +5007,7 @@
         const toId = payload && (payload.toPeerId || payload.to);
         if (!fromId || toId !== webrtcPeerId || fromId === webrtcPeerId) return;
         const remoteName = payload.fromName || payload.name || 'Profesor (Host)';
-        const remoteRole = payload.role || (String(fromId).startsWith('host_') ? 'host' : 'student');
+        const remoteRole = payload.role || (String(fromId).startsWith('host_') || String(fromId).startsWith('peer_host_') ? 'host' : 'student');
         const pc = getOrCreatePeerConnection(fromId, remoteName, remoteRole);
         if (!pc) return;
         try {
@@ -4810,7 +5080,7 @@
         const remoteId = payload && (payload.peerId || payload.fromPeerId || payload.from);
         if (!remoteId || remoteId === webrtcPeerId) return;
         const remoteName = payload.name || payload.fromName || 'Profesor (Host)';
-        const remoteRole = payload.role || (String(remoteId).startsWith('host_') ? 'host' : 'student');
+        const remoteRole = payload.role || (String(remoteId).startsWith('host_') || String(remoteId).startsWith('peer_host_') ? 'host' : 'student');
         const entry = ensureRemoteVideoCard(remoteId, remoteName, remoteRole);
         if (!entry) return;
         const isAudioOn = Boolean(payload.audioEnabled ?? payload.audio);
@@ -4823,8 +5093,149 @@
       });
     }
 
+    window.addEventListener('beforeunload', () => {
+      if (myChannel) {
+        try {
+          myChannel.send({
+            type: 'broadcast',
+            event: 'WEBRTC_LEAVE',
+            payload: { peerId: webrtcPeerId, name: getMyDisplayNameForWebRTC(), role: 'student' }
+          });
+        } catch (e) {}
+      }
+    });
+
     // Inicializar estado visual de los botones Audio/Video en rojo tachado (apagados al inicio)
     updateLocalMediaUI();
+
+    // ==================== MINIATURA DE VIDEO FLOTANTE: ARRASTRABLE (DRAGGABLE) Y MINIMIZABLE ====================
+    let isVideoStripMinimized = false;
+
+    function updateMinimizedVideoStripSummary() {
+      const labelEl = document.getElementById('webrtcMinimizedLabel');
+      const subLabelEl = document.getElementById('webrtcMinimizedSubLabel');
+      const avatarEl = document.getElementById('webrtcMinimizedAvatar');
+      if (!labelEl || !subLabelEl || !avatarEl) return;
+
+      const peerIds = Object.keys(webrtcPeers).filter(id => webrtcPeers[id] && webrtcPeers[id].cardEl);
+      if (peerIds.length > 0) {
+        const hostPeer = peerIds.map(id => webrtcPeers[id]).find(p => p.role === 'host') || webrtcPeers[peerIds[0]];
+        const peerName = (hostPeer && hostPeer.name) ? hostPeer.name : 'Profesor (Host)';
+        labelEl.textContent = peerIds.length === 1 ? peerName : `${peerName} +${peerIds.length - 1}`;
+        subLabelEl.textContent = 'En llamada · Minimizado';
+        avatarEl.textContent = peerName.trim().charAt(0).toUpperCase() || 'P';
+      } else {
+        const stuName = getMyDisplayNameForWebRTC();
+        labelEl.textContent = stuName;
+        subLabelEl.textContent = 'Cámara minimizada';
+        avatarEl.textContent = stuName.trim().charAt(0).toUpperCase() || 'A';
+      }
+    }
+
+    window.setVideoStripMinimized = function(minimized) {
+      isVideoStripMinimized = Boolean(minimized);
+      const expandedBody = document.getElementById('webrtcStripExpandedBody');
+      const minimizedPill = document.getElementById('webrtcStripMinimizedPill');
+      if (!expandedBody || !minimizedPill) return;
+
+      updateMinimizedVideoStripSummary();
+
+      if (isVideoStripMinimized) {
+        expandedBody.classList.add('hidden');
+        minimizedPill.classList.remove('hidden');
+        minimizedPill.classList.add('flex');
+      } else {
+        minimizedPill.classList.add('hidden');
+        minimizedPill.classList.remove('flex');
+        expandedBody.classList.remove('hidden');
+      }
+
+      requestAnimationFrame(() => clampVideoStripIntoBounds());
+    };
+
+    function clampVideoStripIntoBounds() {
+      const strip = document.getElementById('webrtcVideoStrip');
+      const container = document.getElementById('leftWorkspaceColumn');
+      if (!strip || !container) return;
+      if (strip.style.left === '' && strip.style.top === '') return;
+
+      const cRect = container.getBoundingClientRect();
+      const sRect = strip.getBoundingClientRect();
+      if (cRect.width === 0 || cRect.height === 0) return;
+
+      const pad = 8;
+      const maxLeft = Math.max(pad, cRect.width - sRect.width - pad);
+      const maxTop = Math.max(pad, cRect.height - sRect.height - pad);
+
+      let curLeft = parseFloat(strip.style.left);
+      let curTop = parseFloat(strip.style.top);
+      if (isNaN(curLeft) || isNaN(curTop)) return;
+
+      curLeft = Math.min(Math.max(pad, curLeft), maxLeft);
+      curTop = Math.min(Math.max(pad, curTop), maxTop);
+
+      strip.style.left = `${Math.round(curLeft)}px`;
+      strip.style.top = `${Math.round(curTop)}px`;
+    }
+
+    (function initDraggableVideoStrip() {
+      const strip = document.getElementById('webrtcVideoStrip');
+      const container = document.getElementById('leftWorkspaceColumn');
+      if (!strip || !container) return;
+
+      let isDragging = false;
+      let dragOffsetX = 0;
+      let dragOffsetY = 0;
+
+      strip.addEventListener('mousedown', (e) => {
+        if (e.button !== 0) return;
+        if (e.target.closest('button')) return;
+
+        const cRect = container.getBoundingClientRect();
+        const sRect = strip.getBoundingClientRect();
+
+        strip.style.bottom = 'auto';
+        strip.style.right = 'auto';
+        strip.style.transform = 'none';
+        strip.style.left = `${Math.round(sRect.left - cRect.left)}px`;
+        strip.style.top = `${Math.round(sRect.top - cRect.top)}px`;
+
+        isDragging = true;
+        dragOffsetX = e.clientX - sRect.left;
+        dragOffsetY = e.clientY - sRect.top;
+        strip.classList.add('ring-2', 'ring-indigo-500/60', 'shadow-indigo-950/60');
+        e.preventDefault();
+      });
+
+      window.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        const cRect = container.getBoundingClientRect();
+        const sRect = strip.getBoundingClientRect();
+
+        const pad = 8;
+        const maxLeft = Math.max(pad, cRect.width - sRect.width - pad);
+        const maxTop = Math.max(pad, cRect.height - sRect.height - pad);
+
+        let nextLeft = e.clientX - cRect.left - dragOffsetX;
+        let nextTop = e.clientY - cRect.top - dragOffsetY;
+
+        nextLeft = Math.min(Math.max(pad, nextLeft), maxLeft);
+        nextTop = Math.min(Math.max(pad, nextTop), maxTop);
+
+        strip.style.left = `${Math.round(nextLeft)}px`;
+        strip.style.top = `${Math.round(nextTop)}px`;
+      });
+
+      window.addEventListener('mouseup', () => {
+        if (!isDragging) return;
+        isDragging = false;
+        strip.classList.remove('ring-2', 'ring-indigo-500/60', 'shadow-indigo-950/60');
+      });
+
+      window.addEventListener('resize', () => {
+        clampVideoStripIntoBounds();
+      });
+    })();
 
     // ==================== EVENTOS DE LA BARRA INFERIOR DE REUNIÓN Y AUTO-OCULTAMIENTO ====================
     document.getElementById('bottomPrevSlideBtn')?.addEventListener('click', () => {
@@ -4856,8 +5267,18 @@
       toggleWhiteboardView();
     });
 
-    document.getElementById('bottomEndBtn')?.addEventListener('click', () => {
+    document.getElementById('bottomEndBtn')?.addEventListener('click', async () => {
       if (confirm('¿Deseas salir de la sesión en vivo?')) {
+        if (myChannel) {
+          try {
+            await myChannel.send({
+              type: 'broadcast',
+              event: 'WEBRTC_LEAVE',
+              payload: { peerId: webrtcPeerId, name: getMyDisplayNameForWebRTC(), role: 'student' }
+            });
+            await myChannel.untrack();
+          } catch (e) {}
+        }
         if (webrtcLocalStream) {
           webrtcLocalStream.getTracks().forEach(t => t.stop());
         }

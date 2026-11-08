@@ -1920,33 +1920,70 @@
 
       roomChannel.on('presence', { event: 'sync' }, () => {
         const state = roomChannel.presenceState();
+        const activeStudentNames = new Set();
+        const activePeerIds = new Set();
+
         Object.keys(state).forEach(key => {
           if (key !== 'host') {
-            state[key].forEach(user => {
-              if (!studentsState[user.name]) {
-                studentsState[user.name] = { joined: true, slide: currentSlide, answers: [], slideHistory: {} };
-              } else if (!studentsState[user.name].slideHistory) {
-                studentsState[user.name].slideHistory = {};
-              }
-              if (user.peerId && typeof ensureRemotePeerCard === 'function') {
-                if (!webrtcPeers[user.peerId]) {
-                  webrtcPeers[user.peerId] = {
-                    pc: null,
-                    name: user.name,
-                    role: 'student',
-                    stream: new MediaStream(),
-                    audioEnabled: Boolean(user.audioEnabled),
-                    videoEnabled: Boolean(user.videoEnabled)
-                  };
-                }
-                ensureRemotePeerCard(user.peerId, user.name);
-                updateRemotePeerCardMedia(user.peerId);
-              }
+            const presences = Array.isArray(state[key]) ? state[key].filter(Boolean) : [];
+            if (presences.length === 0) return;
+
+            // Si un mismo alumno recargó la página, tomar únicamente su presencia más reciente
+            const sorted = presences.slice().sort((a, b) => {
+              const ta = a.joinedAt ? new Date(a.joinedAt).getTime() : 0;
+              const tb = b.joinedAt ? new Date(b.joinedAt).getTime() : 0;
+              return ta - tb;
             });
+            const user = sorted[sorted.length - 1];
+            if (!user || !user.name) return;
+
+            const cleanName = String(user.name).trim().toLowerCase();
+            activeStudentNames.add(cleanName);
+
+            if (!studentsState[user.name]) {
+              studentsState[user.name] = { joined: true, slide: currentSlide, answers: [], slideHistory: {} };
+            } else if (!studentsState[user.name].slideHistory) {
+              studentsState[user.name].slideHistory = {};
+            }
+
+            // Preferir el peerId más reciente registrado por broadcast si ya reconectó
+            const effectivePeerId = (window.__latestPeerIdByStudent && window.__latestPeerIdByStudent[cleanName]) || user.peerId;
+            if (effectivePeerId && typeof ensureRemotePeerCard === 'function') {
+              activePeerIds.add(effectivePeerId);
+              if (!webrtcPeers[effectivePeerId]) {
+                webrtcPeers[effectivePeerId] = {
+                  pc: null,
+                  name: user.name,
+                  role: 'student',
+                  stream: new MediaStream(),
+                  audioEnabled: Boolean(user.audioEnabled),
+                  videoEnabled: Boolean(user.videoEnabled)
+                };
+              }
+              ensureRemotePeerCard(effectivePeerId, user.name);
+              updateRemotePeerCardMedia(effectivePeerId);
+            }
           }
         });
+
+        if (typeof cleanupOrphanRemotePeerCards === 'function') {
+          cleanupOrphanRemotePeerCards(activePeerIds, activeStudentNames);
+        }
         renderStudentsDashboard();
         if (typeof renderChatParticipantsDropdown === 'function') renderChatParticipantsDropdown();
+      });
+
+      roomChannel.on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
+        if (key === 'host') return;
+        const state = roomChannel.presenceState();
+        const remainingForKey = Array.isArray(state[key]) ? state[key].filter(Boolean) : [];
+        if (remainingForKey.length === 0 && Array.isArray(leftPresences)) {
+          leftPresences.forEach(lp => {
+            if (lp && lp.peerId && typeof removeRemotePeerCard === 'function') {
+              removeRemotePeerCard(lp.peerId, lp.name);
+            }
+          });
+        }
       });
 
       roomChannel.on('broadcast', { event: 'WAITING_ROOM_JOIN' }, ({ payload }) => {
@@ -4892,27 +4929,191 @@
       });
     }
 
+    window.__latestPeerIdByStudent = window.__latestPeerIdByStudent || {};
+
+    function normalizeStudentPeerKey(name) {
+      return String(name || '').trim().toLowerCase();
+    }
+
+    function removeRemotePeerCard(peerId, studentName) {
+      const cleanName = normalizeStudentPeerKey(studentName || (peerId && webrtcPeers[peerId] && webrtcPeers[peerId].name) || '');
+      if (peerId && webrtcPeers[peerId]) {
+        if (webrtcPeers[peerId].pc) {
+          try {
+            webrtcPeers[peerId].pc.onconnectionstatechange = null;
+            webrtcPeers[peerId].pc.close();
+          } catch (e) {}
+        }
+        delete webrtcPeers[peerId];
+      }
+      if (peerId) {
+        const cardById = document.getElementById(`webrtc_card_${peerId}`);
+        if (cardById) cardById.remove();
+        if (webrtcRemoteCardsContainer) {
+          webrtcRemoteCardsContainer.querySelectorAll(`[data-peer-id="${peerId}"]`).forEach(el => el.remove());
+        }
+      }
+      if (cleanName && webrtcRemoteCardsContainer) {
+        // Solo remover por nombre si no existe otro peer activo para ese mismo alumno
+        const hasAnotherActivePeer = Object.keys(webrtcPeers).some(
+          pid => pid !== peerId && normalizeStudentPeerKey(webrtcPeers[pid]?.name) === cleanName
+        );
+        if (!hasAnotherActivePeer) {
+          webrtcRemoteCardsContainer.querySelectorAll('[data-student-name]').forEach(el => {
+            if (el.getAttribute('data-student-name') === cleanName) el.remove();
+          });
+          if (window.__latestPeerIdByStudent && window.__latestPeerIdByStudent[cleanName] === peerId) {
+            delete window.__latestPeerIdByStudent[cleanName];
+          }
+        }
+      }
+      if (typeof updateMinimizedVideoStripSummary === 'function') {
+        updateMinimizedVideoStripSummary();
+      }
+    }
+
+    function cleanupOrphanRemotePeerCards(activePeerIds, activeStudentNames) {
+      // Cerrar peers cuyos alumnos ya no están en presenceState y no tienen conexión activa
+      Object.keys(webrtcPeers).forEach(pid => {
+        const p = webrtcPeers[pid];
+        const cleanName = normalizeStudentPeerKey(p && p.name);
+        const latestForStudent = cleanName && window.__latestPeerIdByStudent ? window.__latestPeerIdByStudent[cleanName] : null;
+
+        // Si existe un peerId más reciente para el mismo alumno, eliminar el antiguo
+        if (latestForStudent && latestForStudent !== pid) {
+          if (p && p.pc) {
+            try { p.pc.onconnectionstatechange = null; p.pc.close(); } catch (e) {}
+          }
+          delete webrtcPeers[pid];
+          return;
+        }
+
+        // Si el alumno ya no aparece en presenceState y su conexión WebRTC no está conectada, removerlo
+        if (activeStudentNames && cleanName && !activeStudentNames.has(cleanName)) {
+          const connState = p && p.pc ? p.pc.connectionState : 'closed';
+          if (connState !== 'connected' && connState !== 'connecting') {
+            removeRemotePeerCard(pid, p.name);
+          }
+        }
+      });
+
+      // Deduplicar nodos en el DOM por data-student-name para garantizar máximo 1 tarjeta por alumno
+      if (webrtcRemoteCardsContainer) {
+        const seenNames = new Set();
+        const cards = Array.from(webrtcRemoteCardsContainer.children);
+        cards.forEach(cardEl => {
+          const sName = cardEl.getAttribute('data-student-name') || '';
+          const pId = cardEl.getAttribute('data-peer-id') || '';
+          if (sName) {
+            if (seenNames.has(sName)) {
+              cardEl.remove();
+              return;
+            }
+            if (activeStudentNames && activeStudentNames.size > 0 && !activeStudentNames.has(sName)) {
+              const peerObj = pId ? webrtcPeers[pId] : null;
+              const connState = peerObj && peerObj.pc ? peerObj.pc.connectionState : 'closed';
+              if (connState !== 'connected' && connState !== 'connecting') {
+                cardEl.remove();
+                return;
+              }
+            }
+            seenNames.add(sName);
+          }
+        });
+      }
+
+      if (typeof updateMinimizedVideoStripSummary === 'function') {
+        updateMinimizedVideoStripSummary();
+      }
+    }
+
     function ensureRemotePeerCard(peerId, peerName) {
-      let card = document.getElementById(`webrtc_card_${peerId}`);
-      if (!card) {
+      if (!webrtcRemoteCardsContainer || !peerId) return null;
+      const resolvedName = (peerName || (webrtcPeers[peerId] && webrtcPeers[peerId].name) || 'Alumno').trim();
+      const cleanName = normalizeStudentPeerKey(resolvedName);
+
+      if (cleanName) {
+        window.__latestPeerIdByStudent[cleanName] = peerId;
+        // Cerrar y limpiar cualquier peer antiguo del mismo alumno que haya quedado de una recarga previa
+        Object.keys(webrtcPeers).forEach(otherId => {
+          if (otherId !== peerId && normalizeStudentPeerKey(webrtcPeers[otherId]?.name) === cleanName) {
+            if (webrtcPeers[otherId].pc) {
+              try {
+                webrtcPeers[otherId].pc.onconnectionstatechange = null;
+                webrtcPeers[otherId].pc.close();
+              } catch (e) {}
+            }
+            delete webrtcPeers[otherId];
+          }
+        });
+      }
+
+      // 1. Buscar tarjeta existente por ID/data-peer-id o por data-student-name (deduplicación en el DOM)
+      let card = document.getElementById(`webrtc_card_${peerId}`)
+        || webrtcRemoteCardsContainer.querySelector(`[data-peer-id="${peerId}"]`);
+
+      if (!card && cleanName) {
+        const matchingByName = Array.from(webrtcRemoteCardsContainer.querySelectorAll('[data-student-name]'))
+          .filter(el => el.getAttribute('data-student-name') === cleanName);
+        if (matchingByName.length > 0) {
+          card = matchingByName[0];
+          // Si había duplicados residuales, eliminarlos del DOM
+          for (let i = 1; i < matchingByName.length; i++) {
+            matchingByName[i].remove();
+          }
+        }
+      }
+
+      const initials = (resolvedName || 'A').charAt(0).toUpperCase();
+
+      if (card) {
+        // Reutilizar la tarjeta existente en el DOM actualizando sus atributos al peerId actual
+        card.id = `webrtc_card_${peerId}`;
+        card.setAttribute('data-peer-id', peerId);
+        if (cleanName) card.setAttribute('data-student-name', cleanName);
+
+        const vidEl = card.querySelector('video');
+        if (vidEl) vidEl.id = `webrtc_video_${peerId}`;
+
+        const phEl = card.querySelector('[data-role="placeholder"]') || card.querySelector('div');
+        if (phEl) {
+          phEl.id = `webrtc_placeholder_${peerId}`;
+          const initBadge = phEl.querySelector('div');
+          if (initBadge) initBadge.textContent = initials;
+        }
+
+        const spans = card.querySelectorAll('span');
+        const nameEl = card.querySelector('[data-role="name"]') || spans[0];
+        if (nameEl) {
+          nameEl.id = `webrtc_name_${peerId}`;
+          nameEl.textContent = resolvedName;
+        }
+        const muteEl = card.querySelector('[data-role="mute"]') || spans[1];
+        if (muteEl) {
+          muteEl.id = `webrtc_mute_${peerId}`;
+        }
+      } else {
+        // Crear la tarjeta por primera vez si no existe en el DOM
         card = document.createElement('div');
         card.id = `webrtc_card_${peerId}`;
+        card.setAttribute('data-peer-id', peerId);
+        if (cleanName) card.setAttribute('data-student-name', cleanName);
         card.className = 'relative w-36 h-20 rounded-xl overflow-hidden bg-[#111317] border border-white/10 flex-shrink-0 flex items-center justify-center';
-        const initials = (peerName || 'A').trim().charAt(0).toUpperCase();
         card.innerHTML = `
           <video id="webrtc_video_${peerId}" autoplay playsinline class="w-full h-full object-cover hidden"></video>
-          <div id="webrtc_placeholder_${peerId}" class="flex flex-col items-center justify-center text-slate-400">
+          <div id="webrtc_placeholder_${peerId}" data-role="placeholder" class="flex flex-col items-center justify-center text-slate-400">
             <div class="w-8 h-8 rounded-full bg-emerald-600/30 border border-emerald-400/40 flex items-center justify-center text-xs font-bold text-emerald-200 mb-0.5">${initials}</div>
           </div>
-          <span id="webrtc_name_${peerId}" class="absolute bottom-1 left-1.5 bg-black/65 backdrop-blur-xs text-white text-[10px] font-medium px-1.5 py-0.5 rounded leading-tight truncate max-w-[90%]"></span>
-          <span id="webrtc_mute_${peerId}" class="absolute top-1 right-1.5 bg-rose-600/90 text-white text-[9px] w-4 h-4 rounded-full flex items-center justify-center">
+          <span id="webrtc_name_${peerId}" data-role="name" class="absolute bottom-1 left-1.5 bg-black/65 backdrop-blur-xs text-white text-[10px] font-medium px-1.5 py-0.5 rounded leading-tight truncate max-w-[90%]"></span>
+          <span id="webrtc_mute_${peerId}" data-role="mute" class="absolute top-1 right-1.5 bg-rose-600/90 text-white text-[9px] w-4 h-4 rounded-full flex items-center justify-center">
             <i class="fa-solid fa-microphone-slash"></i>
           </span>
         `;
         webrtcRemoteCardsContainer.appendChild(card);
+        const nameTag = document.getElementById(`webrtc_name_${peerId}`);
+        if (nameTag) nameTag.textContent = resolvedName;
       }
-      const nameTag = document.getElementById(`webrtc_name_${peerId}`);
-      if (nameTag && peerName) nameTag.textContent = peerName;
+
       if (typeof updateMinimizedVideoStripSummary === 'function') {
         updateMinimizedVideoStripSummary();
       }
@@ -4941,13 +5142,17 @@
 
     function getOrCreatePeerConnection(remotePeerId, remoteName) {
       if (webrtcPeers[remotePeerId] && webrtcPeers[remotePeerId].pc) {
-        if (remoteName) webrtcPeers[remotePeerId].name = remoteName;
-        ensureRemotePeerCard(remotePeerId, webrtcPeers[remotePeerId].name);
-        return webrtcPeers[remotePeerId].pc;
+        const st = webrtcPeers[remotePeerId].pc.connectionState;
+        if (st !== 'closed' && st !== 'failed') {
+          if (remoteName) webrtcPeers[remotePeerId].name = remoteName;
+          ensureRemotePeerCard(remotePeerId, webrtcPeers[remotePeerId].name);
+          return webrtcPeers[remotePeerId].pc;
+        }
+        try { webrtcPeers[remotePeerId].pc.close(); } catch (e) {}
       }
 
       const pc = new RTCPeerConnection(WEBRTC_ICE_SERVERS);
-      const remoteStream = (webrtcPeers[remotePeerId] && webrtcPeers[remotePeerId].stream) || new MediaStream();
+      const remoteStream = new MediaStream();
 
       webrtcPeers[remotePeerId] = {
         pc,
@@ -4983,11 +5188,36 @@
 
       pc.ontrack = (evt) => {
         if (evt.streams && evt.streams[0]) {
-          evt.streams[0].getTracks().forEach(t => remoteStream.addTrack(t));
+          evt.streams[0].getTracks().forEach(t => {
+            if (!remoteStream.getTracks().some(existing => existing.id === t.id)) {
+              remoteStream.addTrack(t);
+            }
+          });
         } else if (evt.track) {
-          remoteStream.addTrack(evt.track);
+          if (!remoteStream.getTracks().some(existing => existing.id === evt.track.id)) {
+            remoteStream.addTrack(evt.track);
+          }
         }
         updateRemotePeerCardMedia(remotePeerId);
+      };
+
+      pc.onconnectionstatechange = () => {
+        const state = pc.connectionState;
+        if (state === 'failed' || state === 'closed') {
+          removeRemotePeerCard(remotePeerId, webrtcPeers[remotePeerId]?.name);
+        } else if (state === 'disconnected') {
+          const vidEl = document.getElementById(`webrtc_video_${remotePeerId}`);
+          const phEl = document.getElementById(`webrtc_placeholder_${remotePeerId}`);
+          if (vidEl) vidEl.classList.add('hidden');
+          if (phEl) phEl.classList.remove('hidden');
+          setTimeout(() => {
+            if (webrtcPeers[remotePeerId] && webrtcPeers[remotePeerId].pc === pc) {
+              if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+                removeRemotePeerCard(remotePeerId, webrtcPeers[remotePeerId]?.name);
+              }
+            }
+          }, 5000);
+        }
       };
 
       return pc;
@@ -5050,6 +5280,13 @@
 
         broadcastWebRTCMediaState();
         await createAndSendOffer(remoteId, remoteName);
+      });
+
+      channel.on('broadcast', { event: 'WEBRTC_LEAVE' }, ({ payload }) => {
+        const remoteId = payload && (payload.peerId || payload.fromPeerId || payload.from);
+        const remoteName = payload && (payload.name || payload.fromName);
+        if (!remoteId || remoteId === webrtcMyPeerId) return;
+        removeRemotePeerCard(remoteId, remoteName);
       });
 
       channel.on('broadcast', { event: 'WEBRTC_ANNOUNCE' }, ({ payload }) => {
@@ -5135,6 +5372,18 @@
         updateRemotePeerCardMedia(remoteId);
       });
     }
+
+    window.addEventListener('beforeunload', () => {
+      if (roomChannel) {
+        try {
+          roomChannel.send({
+            type: 'broadcast',
+            event: 'WEBRTC_LEAVE',
+            payload: { peerId: webrtcMyPeerId, name: webrtcMyDisplayName, role: 'host' }
+          });
+        } catch (e) {}
+      }
+    });
 
     updateLocalMediaButtonsUI();
 

@@ -5242,6 +5242,18 @@
       } catch (e) {}
     }
 
+    window.addEventListener('storage', (e) => {
+      if (e.key === SCHEDULE_CACHE_KEY && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed)) {
+            scheduleRecords = parsed;
+            renderScheduleLobby();
+          }
+        } catch (err) {}
+      }
+    });
+
     function normalizeScheduleRow(row) {
       const meta = (row && typeof row.metadata === 'object' && row.metadata) ? row.metadata : {};
       let dataObj = {};

@@ -1001,6 +1001,17 @@
         <!-- ==================== FIN PIZARRA COLABORATIVA ==================== -->
       </div>
 
+      <!-- Indicador Flotante de Push-to-Talk (Barra Espaciadora) -->
+      <div id="pushToTalkToast" class="hidden absolute bottom-16 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 border border-emerald-500/60 text-white px-4 py-2 rounded-2xl shadow-2xl items-center gap-2.5 pointer-events-none select-none">
+        <span class="w-7 h-7 rounded-full bg-emerald-500/20 border border-emerald-400/50 flex items-center justify-center text-emerald-400">
+          <i class="fa-solid fa-microphone animate-pulse text-xs"></i>
+        </span>
+        <div class="flex flex-col leading-tight">
+          <span class="text-xs font-bold text-emerald-300">Micrófono activado temporalmente</span>
+          <span class="text-[10px] text-slate-400">Suelta la barra espaciadora para volver a silenciar</span>
+        </div>
+      </div>
+
       <!-- Zona Sensible Inferior + Barra Inferior de Controles de Reunión y Navegación (Acotada al Área de Trabajo) -->
       <div id="zmBottomBarHoverZone" class="w-full bg-[#090d16] border-t border-slate-800/90 flex-shrink-0 z-40 transition-all duration-300">
         <div id="zmBottomMeetingBar" class="w-full h-[54px] px-3 flex items-center justify-between bg-[#090d16] text-slate-200 select-none">
@@ -8087,6 +8098,203 @@
     document.getElementById('btnClosePrintPreview')?.addEventListener('click', closePrintPreview);
     document.getElementById('btnTriggerBrowserPrint')?.addEventListener('click', () => {
       window.print();
+    });
+
+    // ==================== ATAJOS DE TECLADO: ENTER, ESCAPE Y BARRA ESPACIADORA (PUSH-TO-TALK) ====================
+    let isHostPushToTalkActive = false;
+
+    function isHostEditableElementFocused(targetEl) {
+      const el = targetEl || document.activeElement;
+      if (!el) return false;
+      const tag = (el.tagName || '').toUpperCase();
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+      if (el.isContentEditable || (el.closest && el.closest('[contenteditable="true"]'))) return true;
+      return false;
+    }
+
+    function setHostPushToTalkVisualState(active) {
+      const toast = document.getElementById('pushToTalkToast');
+      const audioBtn = document.getElementById('bottomAudioBtn');
+      const audioLabel = document.getElementById('bottomAudioLabel');
+      if (toast) {
+        toast.classList.toggle('hidden', !active);
+        toast.classList.toggle('flex', active);
+      }
+      if (audioBtn) {
+        audioBtn.classList.toggle('ring-2', active);
+        audioBtn.classList.toggle('ring-emerald-400', active);
+        audioBtn.classList.toggle('bg-emerald-500/20', active);
+      }
+      if (active && audioLabel) {
+        audioLabel.textContent = 'Hablando...';
+      }
+    }
+
+    async function activateHostPushToTalk() {
+      if (isHostPushToTalkActive || webrtcAudioEnabled) return;
+      isHostPushToTalkActive = true;
+      if (typeof showBottomMeetingBar === 'function') showBottomMeetingBar();
+      setHostPushToTalkVisualState(true);
+
+      if (webrtcLocalStream && webrtcLocalStream.getAudioTracks().length > 0) {
+        webrtcLocalStream.getAudioTracks().forEach(t => { t.enabled = true; });
+        webrtcAudioEnabled = true;
+        updateLocalMediaButtonsUI();
+        setHostPushToTalkVisualState(true);
+        broadcastWebRTCMediaState();
+      } else {
+        const stream = await ensureLocalMediaStream(true, webrtcVideoEnabled);
+        if (!isHostPushToTalkActive) {
+          if (stream) stream.getAudioTracks().forEach(t => { t.enabled = false; });
+          webrtcAudioEnabled = false;
+          updateLocalMediaButtonsUI();
+          setHostPushToTalkVisualState(false);
+          broadcastWebRTCMediaState();
+          return;
+        }
+        if (stream && stream.getAudioTracks().length > 0) {
+          stream.getAudioTracks().forEach(t => { t.enabled = true; });
+          webrtcAudioEnabled = true;
+          originalAudioTrack = stream.getAudioTracks()[0];
+          updateLocalMediaButtonsUI();
+          setHostPushToTalkVisualState(true);
+          broadcastWebRTCMediaState();
+        } else {
+          isHostPushToTalkActive = false;
+          setHostPushToTalkVisualState(false);
+        }
+      }
+    }
+
+    function deactivateHostPushToTalk() {
+      if (!isHostPushToTalkActive) return;
+      isHostPushToTalkActive = false;
+      if (webrtcLocalStream) {
+        webrtcLocalStream.getAudioTracks().forEach(t => { t.enabled = false; });
+      }
+      webrtcAudioEnabled = false;
+      setHostPushToTalkVisualState(false);
+      updateLocalMediaButtonsUI();
+      broadcastWebRTCMediaState();
+    }
+
+    // 1. Guardar con Enter dentro del formulario #scheduleModalForm, modal de ocurrencia y modal de impresión
+    document.getElementById('scheduleModalForm')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        const tag = (e.target && e.target.tagName || '').toUpperCase();
+        if (tag === 'BUTTON' && e.target.type !== 'submit') return;
+        e.preventDefault();
+        const form = document.getElementById('scheduleModalForm');
+        if (form && typeof form.requestSubmit === 'function') {
+          form.requestSubmit();
+        } else {
+          document.getElementById('btnSaveScheduleStudent')?.click();
+        }
+      }
+    });
+
+    ['occRescheduleDateInput', 'occRescheduleTimeInput', 'occRescheduleDurationInput'].forEach(id => {
+      document.getElementById(id)?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          document.getElementById('btnOccConfirmReschedule')?.click();
+        }
+      });
+    });
+
+    ['printStudentSelect', 'printDateFromInput', 'printDateToInput', 'printTeacherNameInput'].forEach(id => {
+      document.getElementById(id)?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          document.getElementById('btnConfirmGeneratePrintDoc')?.click();
+        }
+      });
+    });
+
+    // 2. Manejadores globales para Escape y Barra Espaciadora (Push-to-Talk)
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        const printWrapper = document.getElementById('printableScheduleWrapper');
+        if (printWrapper && !printWrapper.classList.contains('hidden')) {
+          closePrintPreview();
+          return;
+        }
+        const printModal = document.getElementById('printScheduleModal');
+        if (printModal && !printModal.classList.contains('hidden')) {
+          closePrintScheduleModal();
+          return;
+        }
+        const occModal = document.getElementById('scheduleOccurrenceModal');
+        if (occModal && !occModal.classList.contains('hidden')) {
+          closeOccurrenceModal();
+          return;
+        }
+        const schedModal = document.getElementById('scheduleModal');
+        if (schedModal && !schedModal.classList.contains('hidden')) {
+          closeScheduleModal();
+          return;
+        }
+        const screenOverlay = document.getElementById('remoteScreenShareOverlay');
+        if (screenOverlay && !screenOverlay.classList.contains('hidden') && !isSharingScreen) {
+          screenOverlay.classList.add('hidden');
+          screenOverlay.classList.remove('flex');
+          return;
+        }
+        const stylePop = document.getElementById('wbStylePopover');
+        const shapesPop = document.getElementById('wbShapesPopover');
+        const reactPop = document.getElementById('wbReactionsPopover');
+        const zoomMenu = document.getElementById('wbZoomMenu');
+        let closedPopover = false;
+        [stylePop, shapesPop, reactPop, zoomMenu].forEach(pop => {
+          if (pop && !pop.classList.contains('hidden')) {
+            pop.classList.add('hidden');
+            closedPopover = true;
+          }
+        });
+        if (closedPopover) return;
+
+        if (typeof zmChatOpen !== 'undefined' && zmChatOpen) {
+          const chatWin = document.getElementById('zmChatFloatingWindow');
+          if (zmChatMode === 'floating' || (chatWin && chatWin.contains(document.activeElement))) {
+            toggleChatPanel(false);
+          }
+        }
+        return;
+      }
+
+      if (e.code === 'Space') {
+        if (isHostEditableElementFocused(e.target)) return;
+        const liveMain = document.getElementById('liveClassMain');
+        if (!liveMain || liveMain.classList.contains('hidden')) return;
+        const schedModal = document.getElementById('scheduleModal');
+        const occModal = document.getElementById('scheduleOccurrenceModal');
+        const printModal = document.getElementById('printScheduleModal');
+        if (
+          (schedModal && !schedModal.classList.contains('hidden')) ||
+          (occModal && !occModal.classList.contains('hidden')) ||
+          (printModal && !printModal.classList.contains('hidden'))
+        ) {
+          return;
+        }
+        e.preventDefault();
+        if (e.repeat) return;
+        if (!webrtcAudioEnabled) {
+          activateHostPushToTalk();
+        }
+      }
+    });
+
+    window.addEventListener('keyup', (e) => {
+      if (e.code === 'Space' && isHostPushToTalkActive) {
+        e.preventDefault();
+        deactivateHostPushToTalk();
+      }
+    });
+
+    window.addEventListener('blur', () => {
+      if (isHostPushToTalkActive) {
+        deactivateHostPushToTalk();
+      }
     });
 
     // Inicializar Lobby de Agendamiento al cargar host.html

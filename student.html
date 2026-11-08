@@ -527,6 +527,17 @@
           <!-- ==================== FIN PIZARRA COLABORATIVA ==================== -->
         </main>
 
+        <!-- Indicador Flotante de Push-to-Talk (Barra Espaciadora) -->
+        <div id="pushToTalkToast" class="hidden absolute bottom-16 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 border border-emerald-500/60 text-white px-4 py-2 rounded-2xl shadow-2xl items-center gap-2.5 pointer-events-none select-none">
+          <span class="w-7 h-7 rounded-full bg-emerald-500/20 border border-emerald-400/50 flex items-center justify-center text-emerald-400">
+            <i class="fa-solid fa-microphone animate-pulse text-xs"></i>
+          </span>
+          <div class="flex flex-col leading-tight">
+            <span class="text-xs font-bold text-emerald-300">Micrófono activado temporalmente</span>
+            <span class="text-[10px] text-slate-400">Suelta la barra espaciadora para volver a silenciar</span>
+          </div>
+        </div>
+
         <!-- Barra Inferior de Controles de Reunión y Navegación (Acotada al Área de Trabajo) -->
         <div id="zmBottomBarHoverZone" class="w-full bg-[#090d16] border-t border-slate-800/90 flex-shrink-0 z-40 transition-all duration-300">
           <div id="zmBottomMeetingBar" class="w-full h-[54px] px-3 flex items-center justify-between bg-[#090d16] text-slate-200 select-none">
@@ -5820,6 +5831,150 @@
       });
       zmBottomMeetingBar.addEventListener('mouseleave', showBottomMeetingBarTemporarily);
     }
+
+    // ==================== ATAJOS DE TECLADO: ENTER, ESCAPE Y BARRA ESPACIADORA (PUSH-TO-TALK) ====================
+    let isPushToTalkActive = false;
+
+    function isEditableElementFocused(targetEl) {
+      const el = targetEl || document.activeElement;
+      if (!el) return false;
+      const tag = (el.tagName || '').toUpperCase();
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+      if (el.isContentEditable || (el.closest && el.closest('[contenteditable="true"]'))) return true;
+      return false;
+    }
+
+    function setPushToTalkVisualState(active) {
+      const toast = document.getElementById('pushToTalkToast');
+      const audioBtn = document.getElementById('bottomAudioBtn');
+      const audioLabel = document.getElementById('bottomAudioLabel');
+      if (toast) {
+        toast.classList.toggle('hidden', !active);
+        toast.classList.toggle('flex', active);
+      }
+      if (audioBtn) {
+        audioBtn.classList.toggle('ring-2', active);
+        audioBtn.classList.toggle('ring-emerald-400', active);
+        audioBtn.classList.toggle('bg-emerald-500/20', active);
+      }
+      if (active && audioLabel) {
+        audioLabel.textContent = 'Hablando...';
+      }
+    }
+
+    async function activateStudentPushToTalk() {
+      if (isPushToTalkActive || webrtcAudioEnabled) return;
+      isPushToTalkActive = true;
+      showBottomMeetingBarTemporarily();
+      setPushToTalkVisualState(true);
+
+      if (webrtcLocalStream && webrtcLocalStream.getAudioTracks().length > 0) {
+        webrtcLocalStream.getAudioTracks().forEach(t => { t.enabled = true; });
+        webrtcAudioEnabled = true;
+        updateLocalMediaUI();
+        setPushToTalkVisualState(true);
+        broadcastWebRTCMediaState();
+      } else {
+        const s = await ensureLocalMediaStream(true, webrtcVideoEnabled);
+        if (!isPushToTalkActive) {
+          if (s) s.getAudioTracks().forEach(t => { t.enabled = false; });
+          webrtcAudioEnabled = false;
+          updateLocalMediaUI();
+          setPushToTalkVisualState(false);
+          broadcastWebRTCMediaState();
+          return;
+        }
+        if (s && s.getAudioTracks().length > 0) {
+          s.getAudioTracks().forEach(t => { t.enabled = true; });
+          webrtcAudioEnabled = true;
+          originalAudioTrack = s.getAudioTracks()[0];
+          updateLocalMediaUI();
+          setPushToTalkVisualState(true);
+          broadcastWebRTCMediaState();
+        } else {
+          isPushToTalkActive = false;
+          setPushToTalkVisualState(false);
+        }
+      }
+    }
+
+    function deactivateStudentPushToTalk() {
+      if (!isPushToTalkActive) return;
+      isPushToTalkActive = false;
+      if (webrtcLocalStream) {
+        webrtcLocalStream.getAudioTracks().forEach(t => { t.enabled = false; });
+      }
+      webrtcAudioEnabled = false;
+      setPushToTalkVisualState(false);
+      updateLocalMediaUI();
+      broadcastWebRTCMediaState();
+    }
+
+    // 1. Acceso con tecla Enter en Login de Estudiante (#studentNameInput y #roomPinInput)
+    ['studentNameInput', 'roomPinInput'].forEach(inputId => {
+      document.getElementById(inputId)?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          document.getElementById('joinBtn')?.click();
+        }
+      });
+    });
+
+    // 2. Manejadores globales para Escape y Barra Espaciadora (Push-to-Talk)
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        const screenOverlay = document.getElementById('remoteScreenShareOverlay');
+        if (screenOverlay && !screenOverlay.classList.contains('hidden') && !isSharingScreen) {
+          screenOverlay.classList.add('hidden');
+          screenOverlay.classList.remove('flex');
+          return;
+        }
+        const stylePop = document.getElementById('wbStylePopover');
+        const shapesPop = document.getElementById('wbShapesPopover');
+        const reactPop = document.getElementById('wbReactionsPopover');
+        const zoomMenu = document.getElementById('wbZoomMenu');
+        let closedPopover = false;
+        [stylePop, shapesPop, reactPop, zoomMenu].forEach(pop => {
+          if (pop && !pop.classList.contains('hidden')) {
+            pop.classList.add('hidden');
+            closedPopover = true;
+          }
+        });
+        if (closedPopover) return;
+
+        if (typeof zmChatOpen !== 'undefined' && zmChatOpen) {
+          const chatWin = document.getElementById('zmChatWindow');
+          if (zmChatMode === 'floating' || (chatWin && chatWin.contains(document.activeElement))) {
+            toggleChatPanel(false);
+          }
+        }
+        return;
+      }
+
+      if (e.code === 'Space') {
+        if (isEditableElementFocused(e.target)) return;
+        const liveScreenEl = document.getElementById('liveScreen');
+        if (!isAdmittedToClass || !liveScreenEl || liveScreenEl.classList.contains('hidden')) return;
+        e.preventDefault();
+        if (e.repeat) return;
+        if (!webrtcAudioEnabled) {
+          activateStudentPushToTalk();
+        }
+      }
+    });
+
+    window.addEventListener('keyup', (e) => {
+      if (e.code === 'Space' && isPushToTalkActive) {
+        e.preventDefault();
+        deactivateStudentPushToTalk();
+      }
+    });
+
+    window.addEventListener('blur', () => {
+      if (isPushToTalkActive) {
+        deactivateStudentPushToTalk();
+      }
+    });
 
     // Inicializar estado de la capa de anotación superpuesta
     centerWhiteboardView(1);

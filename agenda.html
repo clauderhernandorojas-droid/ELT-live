@@ -2607,6 +2607,64 @@
       window.print();
     });
 
+    // Atajos de teclado en agenda.html: Enter para guardar en formularios y Escape para cerrar modales
+    document.getElementById('scheduleModalForm')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        const tag = (e.target && e.target.tagName || '').toUpperCase();
+        if (tag === 'BUTTON' && e.target.type !== 'submit') return;
+        e.preventDefault();
+        const form = document.getElementById('scheduleModalForm');
+        if (form && typeof form.requestSubmit === 'function') {
+          form.requestSubmit();
+        } else {
+          document.getElementById('btnSaveScheduleStudent')?.click();
+        }
+      }
+    });
+
+    ['occRescheduleDateInput', 'occRescheduleTimeInput', 'occRescheduleDurationInput'].forEach(id => {
+      document.getElementById(id)?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          document.getElementById('btnOccConfirmReschedule')?.click();
+        }
+      });
+    });
+
+    ['printStudentSelect', 'printDateFromInput', 'printDateToInput', 'printTeacherNameInput'].forEach(id => {
+      document.getElementById(id)?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          document.getElementById('btnConfirmGeneratePrintDoc')?.click();
+        }
+      });
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        const printWrapper = document.getElementById('printableScheduleWrapper');
+        if (printWrapper && !printWrapper.classList.contains('hidden')) {
+          closePrintPreview();
+          return;
+        }
+        const printModal = document.getElementById('printScheduleModal');
+        if (printModal && !printModal.classList.contains('hidden')) {
+          closePrintScheduleModal();
+          return;
+        }
+        const occModal = document.getElementById('scheduleOccurrenceModal');
+        if (occModal && !occModal.classList.contains('hidden')) {
+          closeOccurrenceModal();
+          return;
+        }
+        const schedModal = document.getElementById('scheduleModal');
+        if (schedModal && !schedModal.classList.contains('hidden')) {
+          closeScheduleModal();
+          return;
+        }
+      }
+    });
+
     // Inicializar Agenda Compartida al cargar agenda.html
     loadScheduleFromLocalBackup();
     renderScheduleLobby();

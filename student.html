@@ -1759,6 +1759,14 @@
         return;
       }
 
+      // Persistir nombre y PIN de la sala en localStorage para recordar la sesión
+      try {
+        localStorage.setItem('elt_student_name', myName);
+        localStorage.setItem('elt_student_pin', pin);
+      } catch (err) {
+        console.warn('No se pudo guardar en localStorage:', err);
+      }
+
       isAdmittedToClass = false;
       document.getElementById('displayStudentName').textContent = myName;
       const pinHeaderEl = document.getElementById('studentHeaderPinLabel');
@@ -6141,6 +6149,25 @@
     // Inicializar estado de la capa de anotación superpuesta
     centerWhiteboardView(1);
     updateWbOverlayInteractivity();
+
+    // Autorrellenar nombre y PIN si están guardados en localStorage
+    (function restoreStudentCredentials() {
+      try {
+        const savedName = localStorage.getItem('elt_student_name');
+        const savedPin = localStorage.getItem('elt_student_pin');
+        const nameInput = document.getElementById('studentNameInput');
+        const pinInput = document.getElementById('roomPinInput');
+
+        if (savedName && nameInput && !nameInput.value) {
+          nameInput.value = savedName;
+        }
+        if (savedPin && pinInput && !pinInput.value) {
+          pinInput.value = savedPin;
+        }
+      } catch (err) {
+        console.warn('No se pudo leer de localStorage:', err);
+      }
+    })();
   </script>
 </body>
 </html>

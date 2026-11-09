@@ -562,6 +562,31 @@
     </div>
   </div>
 
+  <!-- Modal Selector de Pantallas y Ventanas en Electron (#electronScreenSourceModal) -->
+  <div id="electronScreenSourceModal" class="hidden fixed inset-0 z-[160] bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-[#111622] border border-slate-700/90 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden text-slate-100 animate-in fade-in zoom-in-95 duration-150">
+      <div class="bg-[#090d16] px-5 py-3.5 border-b border-slate-800 flex items-center justify-between">
+        <h3 class="text-sm font-bold text-white flex items-center gap-2">
+          <i class="fa-solid fa-desktop text-indigo-400"></i>
+          <span>Seleccionar Pantalla o Ventana para Compartir</span>
+        </h3>
+        <button id="btnCloseScreenSourceModal" type="button" class="text-slate-400 hover:text-white w-7 h-7 rounded-lg hover:bg-slate-800 flex items-center justify-center transition">✕</button>
+      </div>
+      <div class="p-4 flex-1 overflow-y-auto">
+        <p class="text-xs text-slate-400 mb-3">Elige qué pantalla completa o ventana de aplicación deseas transmitir a los alumnos:</p>
+        <div id="electronScreenSourcesGrid" class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <!-- Cargado dinámicamente con miniaturas y nombres -->
+        </div>
+      </div>
+      <div class="bg-[#090d16] px-5 py-3 border-t border-slate-800 flex items-center justify-between">
+        <span class="text-[11px] text-slate-400"><i class="fa-solid fa-volume-high text-emerald-400 mr-1"></i> Audio del sistema incluido</span>
+        <button id="btnCancelScreenSourceModal" type="button" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold px-4 py-2 rounded-xl transition">
+          Cancelar
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Contenedor de Vista Previa e Impresión del Cronograma (#printableScheduleWrapper / #printableScheduleArea) -->
   <div id="printableScheduleWrapper" class="hidden fixed inset-0 z-[150] bg-slate-950/95 overflow-y-auto flex flex-col items-center">
     <!-- Barra Flotante Superior (NO se imprime gracias a @media print y .no-print) -->
@@ -721,6 +746,12 @@
           </div>
         </div>
 
+        <!-- Botón flotante para restaurar la vista de pantalla compartida si fue minimizada -->
+        <button id="btnRestoreScreenShareStage" type="button" onclick="restoreScreenShareStage()" class="hidden absolute top-3 right-3 z-30 bg-[#0e72ed] hover:bg-[#0b5ed7] text-white border border-white/20 px-3.5 py-2 rounded-xl text-xs font-bold shadow-2xl transition cursor-pointer flex items-center gap-2 animate-bounce">
+          <i class="fa-solid fa-expand text-[11px]"></i>
+          <span>Restaurar pantalla compartida</span>
+        </button>
+
         <!-- Visor en Escenario Principal (Main Stage) cuando se comparte pantalla -->
         <div id="remoteScreenShareOverlay" class="hidden absolute inset-0 z-40 bg-slate-950 flex flex-col items-center justify-center overflow-hidden" style="z-index: 38;">
           <div class="absolute top-3 left-3 z-10 flex items-center gap-2 bg-slate-900/90 border border-emerald-500/40 text-emerald-300 px-3 py-1.5 rounded-xl text-xs font-bold shadow-lg">
@@ -732,8 +763,9 @@
               <i class="fa-solid fa-stop text-[10px]"></i>
               <span>Dejar de compartir</span>
             </button>
-            <button type="button" onclick="document.getElementById('remoteScreenShareOverlay').classList.add('hidden'); document.getElementById('remoteScreenShareOverlay').classList.remove('flex');" class="bg-slate-900/90 hover:bg-slate-800 text-slate-200 border border-white/15 px-3 py-1.5 rounded-xl text-xs font-semibold shadow-lg transition cursor-pointer">
-              Minimizar vista
+            <button id="btnMinimizeScreenShareStage" type="button" onclick="minimizeScreenShareStage()" class="bg-slate-900/90 hover:bg-slate-800 text-slate-200 border border-white/15 px-3 py-1.5 rounded-xl text-xs font-semibold shadow-lg transition cursor-pointer flex items-center gap-1.5">
+              <i class="fa-solid fa-compress text-[10px]"></i>
+              <span>Minimizar vista</span>
             </button>
           </div>
           <video id="remoteScreenShareVideo" autoplay playsinline class="w-full h-full object-contain bg-black"></video>
@@ -4962,7 +4994,10 @@
       const screenVideo = document.getElementById('remoteScreenShareVideo');
       const screenLabel = document.getElementById('remoteScreenShareLabel');
       const stopStageBtn = document.getElementById('btnStopScreenShareStage');
+      const restoreStageBtn = document.getElementById('btnRestoreScreenShareStage');
       if (!screenOverlay || !screenVideo) return;
+
+      const isMinStage = screenOverlay.classList.contains('hidden') && restoreStageBtn && !restoreStageBtn.classList.contains('hidden');
 
       if (isSharingScreen && screenStream && screenStream.getVideoTracks().some(t => t.readyState === 'live')) {
         screenVideo.muted = true; // Evitar eco del propio audio del sistema en el Host
@@ -4977,8 +5012,11 @@
           stopStageBtn.classList.remove('hidden');
           stopStageBtn.classList.add('inline-flex');
         }
-        screenOverlay.classList.remove('hidden');
-        screenOverlay.classList.add('flex');
+        if (!isMinStage) {
+          screenOverlay.classList.remove('hidden');
+          screenOverlay.classList.add('flex');
+          if (restoreStageBtn) restoreStageBtn.classList.add('hidden');
+        }
         return;
       }
 
@@ -5001,8 +5039,11 @@
           stopStageBtn.classList.add('hidden');
           stopStageBtn.classList.remove('inline-flex');
         }
-        screenOverlay.classList.remove('hidden');
-        screenOverlay.classList.add('flex');
+        if (!isMinStage) {
+          screenOverlay.classList.remove('hidden');
+          screenOverlay.classList.add('flex');
+          if (restoreStageBtn) restoreStageBtn.classList.add('hidden');
+        }
       } else {
         if (screenVideo.srcObject) screenVideo.srcObject = null;
         if (stopStageBtn) {
@@ -5011,8 +5052,32 @@
         }
         screenOverlay.classList.add('hidden');
         screenOverlay.classList.remove('flex');
+        if (restoreStageBtn) restoreStageBtn.classList.add('hidden');
       }
     }
+
+    window.minimizeScreenShareStage = function() {
+      const overlay = document.getElementById('remoteScreenShareOverlay');
+      const restoreBtn = document.getElementById('btnRestoreScreenShareStage');
+      if (overlay) {
+        overlay.classList.add('hidden');
+        overlay.classList.remove('flex');
+      }
+      const hasSharing = Boolean((isSharingScreen && screenStream) || Object.values(webrtcPeers).some(p => p.isSharingScreen && p.stream));
+      if (restoreBtn && hasSharing) {
+        restoreBtn.classList.remove('hidden');
+      }
+    };
+
+    window.restoreScreenShareStage = function() {
+      const overlay = document.getElementById('remoteScreenShareOverlay');
+      const restoreBtn = document.getElementById('btnRestoreScreenShareStage');
+      if (restoreBtn) restoreBtn.classList.add('hidden');
+      if (overlay) {
+        overlay.classList.remove('hidden');
+        overlay.classList.add('flex');
+      }
+    };
 
     function broadcastScreenShareState(sharing) {
       if (!roomChannel) return;
@@ -5155,11 +5220,81 @@
       }
     }
 
+    async function selectElectronScreenSource() {
+      if (!window.electronAPI || typeof window.electronAPI.getDesktopSources !== 'function') {
+        return null;
+      }
+      const modal = document.getElementById('electronScreenSourceModal');
+      const grid = document.getElementById('electronScreenSourcesGrid');
+      const closeBtn = document.getElementById('btnCloseScreenSourceModal');
+      const cancelBtn = document.getElementById('btnCancelScreenSourceModal');
+      if (!modal || !grid) return null;
+
+      try {
+        const sources = await window.electronAPI.getDesktopSources();
+        if (!sources || sources.length === 0) return null;
+
+        return new Promise((resolve) => {
+          let resolved = false;
+
+          const finish = (sourceId) => {
+            if (resolved) return;
+            resolved = true;
+            modal.classList.add('hidden');
+            grid.innerHTML = '';
+            closeBtn?.removeEventListener('click', handleCancel);
+            cancelBtn?.removeEventListener('click', handleCancel);
+            resolve(sourceId || null);
+          };
+
+          const handleCancel = () => finish(null);
+
+          closeBtn?.addEventListener('click', handleCancel);
+          cancelBtn?.addEventListener('click', handleCancel);
+
+          grid.innerHTML = '';
+          sources.forEach(src => {
+            const isScreen = src.id.startsWith('screen:');
+            const card = document.createElement('div');
+            card.className = 'group flex flex-col bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 hover:border-indigo-500 rounded-xl p-2 cursor-pointer transition shadow-md hover:shadow-indigo-500/10 text-left';
+            card.innerHTML = `
+              <div class="relative w-full aspect-video bg-black/70 rounded-lg overflow-hidden border border-slate-800 flex items-center justify-center mb-2">
+                <img src="${src.thumbnail}" alt="${src.name}" class="w-full h-full object-contain" />
+                <span class="absolute top-1 left-1 px-1.5 py-0.5 rounded text-[9px] font-bold ${isScreen ? 'bg-indigo-600/90 text-white' : 'bg-slate-800/90 text-slate-300'}">
+                  ${isScreen ? '🖥️ Pantalla' : '🪟 Ventana'}
+                </span>
+              </div>
+              <span class="text-xs font-semibold text-white truncate w-full title="${src.name}">${src.name}</span>
+            `;
+            card.onclick = () => finish(src.id);
+            grid.appendChild(card);
+          });
+
+          modal.classList.remove('hidden');
+        });
+      } catch (err) {
+        console.warn('Error obteniendo fuentes de pantalla en Electron:', err);
+        return null;
+      }
+    }
+
     async function startScreenShare() {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
         alert('Tu navegador no soporta compartir pantalla (getDisplayMedia).');
         return;
       }
+
+      // Si corre en Electron, mostrar selector visual de pantallas/ventanas
+      if (window.electronAPI?.isElectron && typeof window.electronAPI.getDesktopSources === 'function') {
+        const chosenSourceId = await selectElectronScreenSource();
+        if (!chosenSourceId) {
+          return; // Usuario canceló la selección
+        }
+        if (typeof window.electronAPI.setSelectedDesktopSource === 'function') {
+          await window.electronAPI.setSelectedDesktopSource(chosenSourceId);
+        }
+      }
+
       try {
         screenStream = await navigator.mediaDevices.getDisplayMedia({
           video: { cursor: 'always' },

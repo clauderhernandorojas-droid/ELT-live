@@ -23,6 +23,30 @@ function createWindow() {
   // Cargar por defecto host.html
   mainWindow.loadFile(path.join(__dirname, 'host.html'));
 
+  // Habilitar captura de pantalla para Chromium/Electron en la ventana principal
+  mainWindow.webContents.session.setDisplayMediaRequestHandler(async (request, callback) => {
+    try {
+      const sources = await desktopCapturer.getSources({ types: ['screen', 'window'] });
+      // Si el usuario seleccionó una fuente específica previamente
+      if (global.__selectedDesktopSourceId) {
+        const found = sources.find(s => s.id === global.__selectedDesktopSourceId);
+        if (found) {
+          callback({ video: found, audio: 'loopback' });
+          return;
+        }
+      }
+      // Por defecto seleccionar la pantalla completa principal
+      if (sources.length > 0) {
+        callback({ video: sources[0], audio: 'loopback' });
+      } else {
+        callback({});
+      }
+    } catch (err) {
+      console.error('Error al capturar pantalla en Electron:', err);
+      callback({});
+    }
+  });
+
   // Manejo de eventos de ventana para IPC
   mainWindow.on('maximize', () => {
     mainWindow?.webContents.send('window:stateChange', 'maximized');
@@ -70,18 +94,19 @@ function configureMediaPermissions() {
   });
 
   // Selección automática de fuente de pantalla para getDisplayMedia si Electron lo solicita
-  ses.setDisplayMediaRequestHandler((request, callback) => {
-    desktopCapturer.getSources({ types: ['screen', 'window'] }).then((sources) => {
-      // Por defecto seleccionar la pantalla principal o la primera fuente disponible
+  ses.setDisplayMediaRequestHandler(async (request, callback) => {
+    try {
+      const sources = await desktopCapturer.getSources({ types: ['screen', 'window'] });
+      // Por defecto seleccionar la pantalla principal con audio loopback
       if (sources.length > 0) {
-        callback({ video: sources[0] });
+        callback({ video: sources[0], audio: 'loopback' });
       } else {
         callback({});
       }
-    }).catch((err) => {
+    } catch (err) {
       console.error('Error al obtener fuentes de pantalla:', err);
       callback({});
-    });
+    }
   });
 }
 
@@ -113,6 +138,31 @@ function setupIPCHandlers() {
 
   ipcMain.handle('window:isMaximized', () => {
     return mainWindow && !mainWindow.isDestroyed() ? mainWindow.isMaximized() : false;
+  });
+
+  // Listar ventanas y pantallas con miniaturas para el selector del Host
+  ipcMain.handle('get-desktop-sources', async () => {
+    try {
+      const sources = await desktopCapturer.getSources({
+        types: ['screen', 'window'],
+        thumbnailSize: { width: 320, height: 180 },
+        fetchWindowIcons: true
+      });
+      return sources.map(s => ({
+        id: s.id,
+        name: s.name,
+        thumbnail: s.thumbnail.toDataURL()
+      }));
+    } catch (err) {
+      console.error('Error obteniendo fuentes en main.js:', err);
+      return [];
+    }
+  });
+
+  // Registrar la fuente elegida para alimentar setDisplayMediaRequestHandler
+  ipcMain.handle('set-selected-desktop-source', (event, sourceId) => {
+    global.__selectedDesktopSourceId = sourceId || null;
+    return true;
   });
 
   ipcMain.handle('screen:getSources', async (event, opts) => {

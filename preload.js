@@ -10,7 +10,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   closeWindow: () => ipcRenderer.invoke('window:close'),
   isMaximized: () => ipcRenderer.invoke('window:isMaximized'),
 
-  // Fuentes para compartir pantalla (si se requiere enumeración vía desktopCapturer)
+  // Fuentes para compartir pantalla (desktopCapturer)
+  getDesktopSources: () => ipcRenderer.invoke('get-desktop-sources'),
+  setSelectedDesktopSource: (sourceId) => ipcRenderer.invoke('set-selected-desktop-source', sourceId),
   getScreenSources: (opts) => ipcRenderer.invoke('screen:getSources', opts),
 
   // Escuchar eventos desde el proceso principal

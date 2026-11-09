@@ -249,6 +249,12 @@
             </button>
           </div>
 
+          <!-- Botón flotante para restaurar la vista de pantalla compartida si fue minimizada -->
+          <button id="btnRestoreScreenShareStage" type="button" onclick="restoreStudentScreenShareStage()" class="hidden absolute top-3 right-3 z-30 bg-[#0e72ed] hover:bg-[#0b5ed7] text-white border border-white/20 px-3.5 py-2 rounded-xl text-xs font-bold shadow-2xl transition cursor-pointer flex items-center gap-2 animate-bounce">
+            <i class="fa-solid fa-expand text-[11px]"></i>
+            <span>Restaurar pantalla compartida</span>
+          </button>
+
           <!-- Visor en Escenario Principal (Main Stage) cuando el Profesor o un compañero comparte su pantalla -->
           <div id="remoteScreenShareOverlay" class="hidden absolute inset-0 z-40 bg-slate-950 flex flex-col items-center justify-center overflow-hidden" style="z-index: 38;">
             <div class="absolute top-3 left-3 z-10 flex items-center gap-2 bg-slate-900/90 border border-emerald-500/40 text-emerald-300 px-3 py-1.5 rounded-xl text-xs font-bold shadow-lg">
@@ -256,12 +262,21 @@
               <span id="remoteScreenShareLabel">Profesor compartiendo pantalla en vivo</span>
             </div>
             <div class="absolute top-3 right-3 z-10 flex items-center gap-2">
+              <!-- Control de Audio de la Pantalla Compartida (Silenciado por defecto para evitar acople acústico) -->
+              <div class="flex items-center gap-1.5 bg-slate-900/90 border border-white/15 px-2.5 py-1 rounded-xl shadow-lg">
+                <button id="btnToggleScreenShareAudio" type="button" class="text-slate-300 hover:text-white transition cursor-pointer flex items-center justify-center w-6 h-6" title="Activar / Silenciar sonido de la pantalla">
+                  <i id="screenShareAudioIcon" class="fa-solid fa-volume-xmark text-rose-400 text-xs"></i>
+                </button>
+                <input id="screenShareAudioVolume" type="range" min="0" max="1" step="0.05" value="0" class="w-16 h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-[#0e72ed]" title="Volumen de pantalla">
+                <span id="screenShareAudioPercent" class="text-[10px] text-slate-400 font-mono w-7 text-right">0%</span>
+              </div>
               <button id="btnStopScreenShareStage" type="button" onclick="if (typeof stopScreenShare === 'function') stopScreenShare();" class="hidden bg-rose-600 hover:bg-rose-500 text-white border border-rose-400/40 px-3 py-1.5 rounded-xl text-xs font-bold shadow-lg transition cursor-pointer items-center gap-1.5">
                 <i class="fa-solid fa-stop text-[10px]"></i>
                 <span>Dejar de compartir</span>
               </button>
-              <button type="button" onclick="document.getElementById('remoteScreenShareOverlay').classList.add('hidden'); document.getElementById('remoteScreenShareOverlay').classList.remove('flex');" class="bg-slate-900/90 hover:bg-slate-800 text-slate-200 border border-white/15 px-3 py-1.5 rounded-xl text-xs font-semibold shadow-lg transition cursor-pointer">
-                Minimizar vista
+              <button id="btnMinimizeScreenShareStage" type="button" onclick="minimizeStudentScreenShareStage()" class="bg-slate-900/90 hover:bg-slate-800 text-slate-200 border border-white/15 px-3 py-1.5 rounded-xl text-xs font-semibold shadow-lg transition cursor-pointer flex items-center gap-1.5">
+                <i class="fa-solid fa-compress text-[10px]"></i>
+                <span>Minimizar vista</span>
               </button>
             </div>
             <video id="remoteScreenShareVideo" autoplay playsinline class="w-full h-full object-contain bg-black"></video>
@@ -5182,7 +5197,10 @@
       const stageVideo = document.getElementById('remoteScreenShareVideo');
       const stageLabel = document.getElementById('remoteScreenShareLabel');
       const stopStageBtn = document.getElementById('btnStopScreenShareStage');
+      const restoreStageBtn = document.getElementById('btnRestoreScreenShareStage');
       if (!overlay || !stageVideo) return;
+
+      const isMinStage = overlay.classList.contains('hidden') && restoreStageBtn && !restoreStageBtn.classList.contains('hidden');
 
       // 1. Si el propio alumno está compartiendo pantalla, mostrarla en su Main Stage
       if (isSharingScreen && screenStream && screenStream.getVideoTracks().some(t => t.readyState === 'live')) {
@@ -5198,8 +5216,11 @@
           stopStageBtn.classList.remove('hidden');
           stopStageBtn.classList.add('inline-flex');
         }
-        overlay.classList.remove('hidden');
-        overlay.classList.add('flex');
+        if (!isMinStage) {
+          overlay.classList.remove('hidden');
+          overlay.classList.add('flex');
+          if (restoreStageBtn) restoreStageBtn.classList.add('hidden');
+        }
         return;
       }
 
@@ -5227,9 +5248,12 @@
         const remoteStream = (sharingPeer && sharingPeer.stream)
           || (sharingPeer && sharingPeer.videoEl && sharingPeer.videoEl.srcObject)
           || null;
-        stageVideo.muted = false;
         if (remoteStream && stageVideo.srcObject !== remoteStream) {
           stageVideo.srcObject = remoteStream;
+          // Silenciar siempre por defecto al conectar para prevenir acople acústico
+          stageVideo.muted = true;
+          stageVideo.volume = 0;
+          updateScreenShareAudioUI(true, 0);
         }
         if (stageVideo.srcObject) {
           stageVideo.play().catch(() => {});
@@ -5242,8 +5266,11 @@
           stopStageBtn.classList.add('hidden');
           stopStageBtn.classList.remove('inline-flex');
         }
-        overlay.classList.remove('hidden');
-        overlay.classList.add('flex');
+        if (!isMinStage) {
+          overlay.classList.remove('hidden');
+          overlay.classList.add('flex');
+          if (restoreStageBtn) restoreStageBtn.classList.add('hidden');
+        }
       } else {
         if (stageVideo.srcObject) stageVideo.srcObject = null;
         if (stopStageBtn) {
@@ -5252,8 +5279,98 @@
         }
         overlay.classList.add('hidden');
         overlay.classList.remove('flex');
+        if (restoreStageBtn) restoreStageBtn.classList.add('hidden');
       }
     }
+
+    // ==================== CONTROL DE AUDIO DE PANTALLA COMPARTIDA (STUDENT) ====================
+    let lastScreenShareVolume = 0.8;
+
+    function updateScreenShareAudioUI(isMuted, volume) {
+      const icon = document.getElementById('screenShareAudioIcon');
+      const slider = document.getElementById('screenShareAudioVolume');
+      const percent = document.getElementById('screenShareAudioPercent');
+      if (icon) {
+        if (isMuted || volume === 0) {
+          icon.className = 'fa-solid fa-volume-xmark text-rose-400 text-xs';
+        } else if (volume < 0.5) {
+          icon.className = 'fa-solid fa-volume-low text-emerald-400 text-xs';
+        } else {
+          icon.className = 'fa-solid fa-volume-high text-emerald-400 text-xs';
+        }
+      }
+      if (slider && !slider.matches(':active')) {
+        slider.value = isMuted ? 0 : volume;
+      }
+      if (percent) {
+        percent.textContent = `${Math.round((isMuted ? 0 : volume) * 100)}%`;
+      }
+    }
+
+    document.getElementById('btnToggleScreenShareAudio')?.addEventListener('click', () => {
+      const stageVideo = document.getElementById('remoteScreenShareVideo');
+      const slider = document.getElementById('screenShareAudioVolume');
+      if (!stageVideo) return;
+      if (stageVideo.muted || stageVideo.volume === 0) {
+        const targetVol = lastScreenShareVolume > 0 ? lastScreenShareVolume : 0.8;
+        stageVideo.muted = false;
+        stageVideo.volume = targetVol;
+        if (slider) slider.value = targetVol;
+        updateScreenShareAudioUI(false, targetVol);
+      } else {
+        lastScreenShareVolume = stageVideo.volume || 0.8;
+        stageVideo.muted = true;
+        stageVideo.volume = 0;
+        if (slider) slider.value = 0;
+        updateScreenShareAudioUI(true, 0);
+      }
+    });
+
+    document.getElementById('screenShareAudioVolume')?.addEventListener('input', (e) => {
+      const stageVideo = document.getElementById('remoteScreenShareVideo');
+      if (!stageVideo) return;
+      const val = parseFloat(e.target.value) || 0;
+      if (val > 0) {
+        stageVideo.muted = false;
+        stageVideo.volume = val;
+        lastScreenShareVolume = val;
+        updateScreenShareAudioUI(false, val);
+      } else {
+        stageVideo.muted = true;
+        stageVideo.volume = 0;
+        updateScreenShareAudioUI(true, 0);
+      }
+    });
+
+    // Inicializar propiedades del elemento de video de pantalla compartida silenciado
+    const initScreenVideo = document.getElementById('remoteScreenShareVideo');
+    if (initScreenVideo) {
+      initScreenVideo.muted = true;
+      initScreenVideo.volume = 0;
+    }
+
+    window.minimizeStudentScreenShareStage = function() {
+      const overlay = document.getElementById('remoteScreenShareOverlay');
+      const restoreBtn = document.getElementById('btnRestoreScreenShareStage');
+      if (overlay) {
+        overlay.classList.add('hidden');
+        overlay.classList.remove('flex');
+      }
+      const hasSharing = Boolean(isSharingScreen || window.__remoteScreenSharingActive || Object.values(webrtcPeers).some(p => p.isSharingScreen));
+      if (restoreBtn && hasSharing) {
+        restoreBtn.classList.remove('hidden');
+      }
+    };
+
+    window.restoreStudentScreenShareStage = function() {
+      const overlay = document.getElementById('remoteScreenShareOverlay');
+      const restoreBtn = document.getElementById('btnRestoreScreenShareStage');
+      if (restoreBtn) restoreBtn.classList.add('hidden');
+      if (overlay) {
+        overlay.classList.remove('hidden');
+        overlay.classList.add('flex');
+      }
+    };
 
     function updateStudentRemotePeerMediaState(remoteId, payload) {
       const entry = webrtcPeers[remoteId];

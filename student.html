@@ -2770,12 +2770,57 @@
           renderWhiteboardAll();
         }
       });
+
+      // Sincronización Forzada de Visor (Summon / Viewport Sync)
+      channel.on('broadcast', { event: 'FORCE_BOARD_VIEWPORT_SYNC' }, ({ payload }) => {
+        if (!payload) return;
+        // 1. Si la pizarra/tablero está minimizada o cerrada, abrirla automáticamente
+        if (!wbIsOpen) {
+          toggleWhiteboardView(true);
+        }
+        // 2. Actualizar variables de desplazamiento (panX, panY) y nivel de escala/zoom
+        if (typeof payload.zoom === 'number' && !isNaN(payload.zoom) && payload.zoom > 0) {
+          wbZoom = Math.max(0.15, Math.min(3, payload.zoom));
+        }
+        if (typeof payload.panX === 'number' && !isNaN(payload.panX)) {
+          wbPanX = payload.panX;
+        }
+        if (typeof payload.panY === 'number' && !isNaN(payload.panY)) {
+          wbPanY = payload.panY;
+        }
+        // 3. Ejecutar transformación y repintado de la pizarra
+        updateWbTransform();
+        renderWhiteboardAll();
+
+        // 4. Mostrar notificación sutil al estudiante (toast)
+        showStudentBoardToast('El profesor te ha llevado a su vista de trabajo');
+      });
     }
 
     document.getElementById('toggleWhiteboardBtn').addEventListener('click', () => toggleWhiteboardView());
     document.getElementById('wbCloseBtn').addEventListener('click', () => toggleWhiteboardView(false));
     document.getElementById('wbBannerStopBtn').addEventListener('click', () => toggleWhiteboardView(false));
     document.getElementById('wbCenterBoardBtn').addEventListener('click', () => centerWhiteboardView(1));
+
+    function showStudentBoardToast(text) {
+      let toastEl = document.getElementById('studentBoardToast');
+      if (!toastEl) {
+        toastEl = document.createElement('div');
+        toastEl.id = 'studentBoardToast';
+        toastEl.className = 'fixed top-14 left-1/2 -translate-x-1/2 z-[200] px-4 py-2 rounded-xl text-xs font-bold shadow-2xl transition-all duration-200 pointer-events-none flex items-center gap-2 select-none bg-indigo-600/95 text-white border border-indigo-400/50';
+        document.body.appendChild(toastEl);
+      }
+      toastEl.innerHTML = `<i class="fa-solid fa-arrows-to-eye"></i><span>${text}</span>`;
+      toastEl.style.opacity = '1';
+      toastEl.style.transform = 'translate(-50%, 0)';
+      clearTimeout(window.__studentBoardToastTimeout);
+      window.__studentBoardToastTimeout = setTimeout(() => {
+        if (toastEl) {
+          toastEl.style.opacity = '0';
+          toastEl.style.transform = 'translate(-50%, -8px)';
+        }
+      }, 2800);
+    }
 
     wbTitleInput.addEventListener('change', () => broadcastWbFullState());
 

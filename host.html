@@ -780,6 +780,14 @@
         <!-- ==================== PIZARRA COLABORATIVA (SOLO VISIBLE EN MODO PIZARRA BLANCA) ==================== -->
         <div id="whiteboardView" class="hidden absolute inset-0 z-30 bg-[#eef0f4] overflow-hidden select-none pointer-events-auto">
           
+          <!-- Barra Superior Derecha del Tablero: Botón "Traer alumnos aquí" (Summon Viewport Sync) -->
+          <div class="absolute top-3 right-4 z-40 flex items-center gap-2 pointer-events-auto">
+            <button id="btnSummonStudentsToBoard" type="button" class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white text-xs font-medium flex items-center gap-1.5 shadow-lg transition cursor-pointer" title="Forzar a todos los estudiantes a ver exactamente lo que estás viendo">
+              <i class="fa-solid fa-arrows-to-eye"></i>
+              <span>Traer alumnos aquí</span>
+            </button>
+          </div>
+
           <!-- Lienzo Mundial 4000x4000 -->
           <div id="wbViewport" class="w-full h-full relative overflow-hidden pointer-events-auto">
             <div id="wbWorld" class="wb-dot-grid absolute top-0 left-0 w-[4000px] h-[4000px] shadow-2xl border border-slate-300" style="transform-origin: 0 0; background-color: #ffffff;">
@@ -3054,6 +3062,53 @@
     document.getElementById('wbCloseBtn').addEventListener('click', () => toggleWhiteboardView(false));
     document.getElementById('wbBannerStopBtn').addEventListener('click', () => toggleWhiteboardView(false));
     document.getElementById('wbCenterBoardBtn').addEventListener('click', () => centerWhiteboardView(1));
+
+    // Botón "Traer alumnos aquí" (Summon / Viewport Sync)
+    document.getElementById('btnSummonStudentsToBoard')?.addEventListener('click', () => {
+      if (!roomChannel) {
+        showHostBoardToast('Inicia o abre la sala primero para sincronizar alumnos', 'warning');
+        return;
+      }
+      roomChannel.send({
+        type: 'broadcast',
+        event: 'FORCE_BOARD_VIEWPORT_SYNC',
+        payload: {
+          type: 'FORCE_BOARD_VIEWPORT_SYNC',
+          panX: wbPanX,
+          panY: wbPanY,
+          zoom: wbZoom,
+          page: 1,
+          senderName: webrtcMyDisplayName || 'Profesor'
+        }
+      });
+      showHostBoardToast('Alumnos alineados a tu vista');
+    });
+
+    function showHostBoardToast(text, type = 'success') {
+      let toastEl = document.getElementById('hostBoardToast');
+      if (!toastEl) {
+        toastEl = document.createElement('div');
+        toastEl.id = 'hostBoardToast';
+        toastEl.className = 'fixed top-14 left-1/2 -translate-x-1/2 z-[200] px-4 py-2 rounded-xl text-xs font-bold shadow-2xl transition-all duration-200 pointer-events-none flex items-center gap-2 select-none';
+        document.body.appendChild(toastEl);
+      }
+      if (type === 'warning') {
+        toastEl.className = 'fixed top-14 left-1/2 -translate-x-1/2 z-[200] px-4 py-2 rounded-xl text-xs font-bold shadow-2xl transition-all duration-200 pointer-events-none flex items-center gap-2 select-none bg-amber-900/90 text-amber-200 border border-amber-500/50';
+        toastEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i><span>${text}</span>`;
+      } else {
+        toastEl.className = 'fixed top-14 left-1/2 -translate-x-1/2 z-[200] px-4 py-2 rounded-xl text-xs font-bold shadow-2xl transition-all duration-200 pointer-events-none flex items-center gap-2 select-none bg-indigo-600/95 text-white border border-indigo-400/50';
+        toastEl.innerHTML = `<i class="fa-solid fa-arrows-to-eye"></i><span>${text}</span>`;
+      }
+      toastEl.style.opacity = '1';
+      toastEl.style.transform = 'translate(-50%, 0)';
+      clearTimeout(window.__hostBoardToastTimeout);
+      window.__hostBoardToastTimeout = setTimeout(() => {
+        if (toastEl) {
+          toastEl.style.opacity = '0';
+          toastEl.style.transform = 'translate(-50%, -8px)';
+        }
+      }, 2500);
+    }
 
     wbTitleInput.addEventListener('change', () => broadcastWbFullState());
 

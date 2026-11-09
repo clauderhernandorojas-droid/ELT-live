@@ -1,11 +1,17 @@
 {
   "name": "elt-live",
   "version": "1.0.0",
-  "description": "ELT Live — Centro de Mando Docente",
-  "main": "main.js",
+  "description": "ELT Live — Centro de Mando Docente y Aula Virtual",
+  "main": "main-host.js",
   "scripts": {
     "start": "electron .",
-    "build:win": "electron-builder --win --x64"
+    "start:host": "electron main-host.js",
+    "start:student": "electron main-student.js",
+    "start:agenda": "electron main-agenda.js",
+    "build:win": "electron-builder --win --x64",
+    "build:host": "electron-builder --win --x64 -c.extraMetadata.main=main-host.js -c.productName=\"ELT Live Host\" -c.appId=com.eltlive.host -c.artifactName=\"ELT-Live-Host-Setup-${version}.${ext}\"",
+    "build:student": "electron-builder --win --x64 -c.extraMetadata.main=main-student.js -c.productName=\"ELT Live Student\" -c.appId=com.eltlive.student -c.artifactName=\"ELT-Live-Student-Setup-${version}.${ext}\"",
+    "build:agenda": "electron-builder --win --x64 -c.extraMetadata.main=main-agenda.js -c.productName=\"ELT Live Agenda\" -c.appId=com.eltlive.agenda -c.artifactName=\"ELT-Live-Agenda-Setup-${version}.${ext}\""
   },
   "keywords": [
     "elt-live",
@@ -27,7 +33,10 @@
     },
     "win": {
       "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
     }
   }
 }
-

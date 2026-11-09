@@ -27,17 +27,18 @@ function createWindow() {
   mainWindow.webContents.session.setDisplayMediaRequestHandler(async (request, callback) => {
     try {
       const sources = await desktopCapturer.getSources({ types: ['screen', 'window'] });
+      const enableAudio = request.audioRequested ? 'loopback' : null;
       // Si el usuario seleccionó una fuente específica previamente
       if (global.__selectedDesktopSourceId) {
         const found = sources.find(s => s.id === global.__selectedDesktopSourceId);
         if (found) {
-          callback({ video: found, audio: 'loopback' });
+          callback({ video: found, audio: enableAudio });
           return;
         }
       }
       // Por defecto seleccionar la pantalla completa principal
       if (sources.length > 0) {
-        callback({ video: sources[0], audio: 'loopback' });
+        callback({ video: sources[0], audio: enableAudio });
       } else {
         callback({});
       }

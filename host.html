@@ -579,7 +579,13 @@
         </div>
       </div>
       <div class="bg-[#090d16] px-5 py-3 border-t border-slate-800 flex items-center justify-between">
-        <span class="text-[11px] text-slate-400"><i class="fa-solid fa-volume-high text-emerald-400 mr-1"></i> Audio del sistema incluido</span>
+        <label class="flex items-center gap-2 text-xs text-slate-300 hover:text-white cursor-pointer select-none">
+          <input type="checkbox" id="chkShareSystemAudio" class="rounded border-slate-700 bg-slate-900 text-indigo-500 focus:ring-0 cursor-pointer">
+          <span class="flex items-center gap-1.5">
+            <i class="fa-solid fa-volume-high text-indigo-400 text-xs"></i>
+            <span>Compartir audio del equipo</span>
+          </span>
+        </label>
         <button id="btnCancelScreenSourceModal" type="button" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold px-4 py-2 rounded-xl transition">
           Cancelar
         </button>
@@ -5279,10 +5285,12 @@
     }
 
     async function startScreenShare() {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
-        alert('Tu navegador no soporta compartir pantalla (getDisplayMedia).');
+      if (!navigator.mediaDevices || (!navigator.mediaDevices.getDisplayMedia && !navigator.mediaDevices.getUserMedia)) {
+        alert('Tu navegador no soporta compartir pantalla.');
         return;
       }
+
+      let shareAudio = false;
 
       // Si corre en Electron, mostrar selector visual de pantallas/ventanas
       if (window.electronAPI?.isElectron && typeof window.electronAPI.getDesktopSources === 'function') {
@@ -5293,13 +5301,42 @@
         if (typeof window.electronAPI.setSelectedDesktopSource === 'function') {
           await window.electronAPI.setSelectedDesktopSource(chosenSourceId);
         }
+        shareAudio = document.getElementById('chkShareSystemAudio')?.checked || false;
+      } else {
+        // En navegador estándar, permitir audio de pestaña/sistema según diálogo del navegador
+        shareAudio = true;
       }
 
       try {
-        screenStream = await navigator.mediaDevices.getDisplayMedia({
-          video: { cursor: 'always' },
-          audio: true
-        });
+        if (window.electronAPI?.isElectron && navigator.mediaDevices.getUserMedia) {
+          // Si estamos en Electron, podemos invocar getUserMedia con chromeMediaSource
+          const audioConstraint = shareAudio ? {
+            mandatory: {
+              chromeMediaSource: 'desktop'
+            }
+          } : false;
+
+          screenStream = await navigator.mediaDevices.getUserMedia({
+            audio: audioConstraint,
+            video: {
+              mandatory: {
+                chromeMediaSource: 'desktop',
+                chromeMediaSourceId: globalThis.__selectedDesktopSourceId || undefined
+              }
+            }
+          }).catch(async () => {
+            // Fallback a getDisplayMedia si getUserMedia con constraints propietarios falla
+            return await navigator.mediaDevices.getDisplayMedia({
+              video: { cursor: 'always' },
+              audio: shareAudio
+            });
+          });
+        } else {
+          screenStream = await navigator.mediaDevices.getDisplayMedia({
+            video: { cursor: 'always' },
+            audio: shareAudio
+          });
+        }
       } catch (err) {
         // Usuario canceló el diálogo de selección de pantalla
         return;

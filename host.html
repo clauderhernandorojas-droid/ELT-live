@@ -1951,7 +1951,8 @@
         event: 'WAITING_ROOM_ADMIT',
         payload: {
           studentId: studentId,
-          studentName: st.name
+          studentName: st.name,
+          videoMode: currentVideoMode
         }
       });
     };
@@ -2025,6 +2026,11 @@
           ? `Esperando a ${targetStudentName} (PIN #${roomPin})...`
           : `Sala #${roomPin} activa — Sala de Espera lista`;
       }
+
+      // Reiniciar Sala de Espera y estudiantes admitidos para la nueva sesión
+      admittedStudentIds.clear();
+      Object.keys(waitingRoomStudents).forEach(k => delete waitingRoomStudents[k]);
+      renderHostWaitingRoom();
 
       // Conectar automáticamente al motor de video seleccionado (P2P o LiveKit)
       if (typeof startHostVideoEngine === 'function') {
@@ -5091,7 +5097,8 @@
           urls: [
             'turn:openrelay.metered.ca:80',
             'turn:openrelay.metered.ca:443',
-            'turn:openrelay.metered.ca:443?transport=tcp'
+            'turn:openrelay.metered.ca:443?transport=tcp',
+            'turns:openrelay.metered.ca:443?transport=tcp'
           ],
           username: 'openrelay',
           credential: 'openrelay'
@@ -5462,9 +5469,9 @@
               audio: true,
               video: {
                 facingMode: 'user',
-                width: { ideal: 640 },
-                height: { ideal: 480 },
-                frameRate: { ideal: 24 }
+                width: { ideal: 480 },
+                height: { ideal: 360 },
+                frameRate: { max: 20 }
               }
             });
           } catch (camErr) {
@@ -5489,9 +5496,9 @@
               vStream = await navigator.mediaDevices.getUserMedia({
                 video: {
                   facingMode: 'user',
-                  width: { ideal: 640 },
-                  height: { ideal: 480 },
-                  frameRate: { ideal: 24 }
+                  width: { ideal: 480 },
+                  height: { ideal: 360 },
+                  frameRate: { max: 20 }
                 }
               });
             } catch (errFallback) {
@@ -5544,19 +5551,31 @@
         if (!peerObj || !peerObj.pc || !p2pLocalStream) continue;
 
         const pc = peerObj.pc;
-        for (const track of p2pLocalStream.getTracks()) {
-          if (track.kind === 'video' && isSharingScreen) continue;
-          let sender = (track.kind === 'video' ? peerObj.videoSender : peerObj.audioSender);
-          if (sender) {
-            try { await sender.replaceTrack(track); } catch (e) {}
-          } else {
-            try {
-              const newSender = pc.addTrack(track, p2pLocalStream);
-              if (track.kind === 'video') peerObj.videoSender = newSender;
-              if (track.kind === 'audio') peerObj.audioSender = newSender;
-            } catch (e) {}
-          }
+        const currentVideo = isSharingScreen && screenStream
+          ? screenStream.getVideoTracks()[0]
+          : (webrtcVideoEnabled && p2pLocalStream ? p2pLocalStream.getVideoTracks()[0] : null);
+        const currentAudio = (webrtcAudioEnabled && p2pLocalStream) ? p2pLocalStream.getAudioTracks()[0] : null;
+
+        if (peerObj.videoSender) {
+          try { await peerObj.videoSender.replaceTrack(currentVideo || null); } catch (e) {}
+        } else if (currentVideo) {
+          try {
+            peerObj.videoSender = pc.addTrack(currentVideo, p2pLocalStream);
+          } catch (e) {}
         }
+
+        if (peerObj.audioSender) {
+          try { await peerObj.audioSender.replaceTrack(currentAudio || null); } catch (e) {}
+        } else if (currentAudio) {
+          try {
+            peerObj.audioSender = pc.addTrack(currentAudio, p2pLocalStream);
+          } catch (e) {}
+        }
+
+        // Disparar renegociación SDP hacia el par remoto para que reciba la pista de inmediato
+        try {
+          await createAndSendP2POffer(remotePeerId, peerObj.name);
+        } catch (e) {}
       }
     }
 
@@ -5640,13 +5659,22 @@
           if (!remoteStream.getTracks().some(existing => existing.id === evt.track.id)) {
             remoteStream.addTrack(evt.track);
           }
+          if (evt.track.kind === 'video') {
+            webrtcPeers[remotePeerId].videoEnabled = true;
+          }
           evt.track.onunmute = () => {
+            if (evt.track.kind === 'video') {
+              webrtcPeers[remotePeerId].videoEnabled = true;
+            }
             updateRemotePeerCardMedia(remotePeerId);
           };
         } else if (evt.streams && evt.streams[0]) {
           evt.streams[0].getTracks().forEach(t => {
             if (!remoteStream.getTracks().some(existing => existing.id === t.id)) {
               remoteStream.addTrack(t);
+            }
+            if (t.kind === 'video') {
+              webrtcPeers[remotePeerId].videoEnabled = true;
             }
           });
         }
@@ -6230,7 +6258,11 @@
           vidEl.srcObject = peerObj.stream;
           vidEl.muted = false;
         }
-        const hasLiveVideo = Boolean(peerObj.videoEnabled) && !peerObj.isSharingScreen;
+        const hasStreamLiveVideoTrack = peerObj.stream && peerObj.stream.getVideoTracks().some(t => t.readyState === 'live' && t.enabled);
+        if (hasStreamLiveVideoTrack) {
+          peerObj.videoEnabled = true;
+        }
+        const hasLiveVideo = (Boolean(peerObj.videoEnabled) || hasStreamLiveVideoTrack) && !peerObj.isSharingScreen;
         vidEl.classList.toggle('hidden', !hasLiveVideo);
         if (phEl) phEl.classList.toggle('hidden', hasLiveVideo);
         if (hasLiveVideo) {
@@ -6330,14 +6362,40 @@
         try {
           const remoteName = payload.fromName || payload.name || 'Alumno';
           const pc = getOrCreateP2PPeerConnection(fromId, remoteName);
-          webrtcPeers[fromId].audioEnabled = Boolean(payload.audioEnabled ?? payload.audio);
-          webrtcPeers[fromId].videoEnabled = Boolean(payload.videoEnabled ?? payload.video);
-          webrtcPeers[fromId].isSharingScreen = Boolean(payload.isSharingScreen);
+          const peerObj = webrtcPeers[fromId];
+          if (peerObj) {
+            peerObj.audioEnabled = Boolean(payload.audioEnabled ?? payload.audio);
+            peerObj.videoEnabled = Boolean(payload.videoEnabled ?? payload.video);
+            peerObj.isSharingScreen = Boolean(payload.isSharingScreen);
+          }
 
           if (pc.signalingState !== 'stable') {
             try { await pc.setLocalDescription({ type: 'rollback' }); } catch (rb) {}
           }
           await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+
+          // Desahogar candidatos ICE recibidos previamente mientras se esperaba el SDP
+          if (peerObj && peerObj.pendingIce && peerObj.pendingIce.length > 0) {
+            for (const cand of peerObj.pendingIce) {
+              try { await pc.addIceCandidate(new RTCIceCandidate(cand)); } catch (e) {}
+            }
+            peerObj.pendingIce = [];
+          }
+
+          // Asignar pistas locales de host antes de crear respuesta
+          if (p2pLocalStream) {
+            const currentVideo = isSharingScreen && screenStream
+              ? screenStream.getVideoTracks()[0]
+              : (webrtcVideoEnabled ? p2pLocalStream.getVideoTracks()[0] : null);
+            const currentAudio = webrtcAudioEnabled ? p2pLocalStream.getAudioTracks()[0] : null;
+            if (peerObj && peerObj.videoSender) {
+              try { await peerObj.videoSender.replaceTrack(currentVideo || null); } catch (e) {}
+            }
+            if (peerObj && peerObj.audioSender) {
+              try { await peerObj.audioSender.replaceTrack(currentAudio || null); } catch (e) {}
+            }
+          }
+
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
 
@@ -6373,7 +6431,16 @@
         try {
           const peerObj = webrtcPeers[fromId];
           if (peerObj && peerObj.pc && peerObj.pc.signalingState === 'have-local-offer') {
+            if (payload.audioEnabled !== undefined) peerObj.audioEnabled = Boolean(payload.audioEnabled);
+            if (payload.videoEnabled !== undefined) peerObj.videoEnabled = Boolean(payload.videoEnabled);
             await peerObj.pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+
+            if (peerObj.pendingIce && peerObj.pendingIce.length > 0) {
+              for (const cand of peerObj.pendingIce) {
+                try { await peerObj.pc.addIceCandidate(new RTCIceCandidate(cand)); } catch (e) {}
+              }
+              peerObj.pendingIce = [];
+            }
             updateRemotePeerCardMedia(fromId);
           }
         } catch (e) {
@@ -6389,8 +6456,12 @@
 
         try {
           const peerObj = webrtcPeers[fromId];
-          if (peerObj && peerObj.pc && payload.candidate && peerObj.pc.remoteDescription) {
+          if (!peerObj || !peerObj.pc || !payload.candidate) return;
+          if (peerObj.pc.remoteDescription && peerObj.pc.remoteDescription.type) {
             await peerObj.pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
+          } else {
+            peerObj.pendingIce = peerObj.pendingIce || [];
+            peerObj.pendingIce.push(payload.candidate);
           }
         } catch (e) {}
       });

@@ -1851,48 +1851,32 @@
 
     let currentRoomPin = null;
 
-    async function completeStudentAdmissionToClass() {
+    let assignedVideoMode = 'p2p';
+
+    async function admitStudentToClass() {
       if (isAdmittedToClass) return;
       isAdmittedToClass = true;
+
+      console.log('[ELT Live] Estudiante admitido oficialmente a la clase:', myName, 'Modo asignado:', assignedVideoMode);
+
       if (waitingRoomPingInterval) {
         clearInterval(waitingRoomPingInterval);
         waitingRoomPingInterval = null;
       }
 
+      // Ocultar pantalla de login y sala de espera; mostrar pantalla de clase en vivo
       document.getElementById('waitingRoomScreen').classList.add('hidden');
       document.getElementById('joinScreen').classList.add('hidden');
       document.getElementById('liveScreen').classList.remove('hidden');
 
       if (typeof updateLocalMediaUI === 'function') updateLocalMediaUI();
-      if (typeof setupWebRTCSignaling === 'function') setupWebRTCSignaling(myChannel);
 
-      // Leer modo de video configurado por el profesor desde la presencia antes de iniciar motor
-      let initialVideoMode = 'p2p';
-      try {
-        const pres = myChannel.presenceState();
-        Object.keys(pres).forEach(k => {
-          const list = Array.isArray(pres[k]) ? pres[k] : [];
-          list.forEach(p => {
-            if (p && (k === 'host' || p.role === 'host') && p.videoMode) {
-              initialVideoMode = p.videoMode;
-            }
-          });
-        });
-      } catch (e) {}
-
+      // Iniciar el motor de video asignado SOLO AHORA que el estudiante fue formalmente admitido
       if (typeof startStudentVideoEngine === 'function') {
-        startStudentVideoEngine(initialVideoMode);
+        await startStudentVideoEngine(assignedVideoMode);
       }
 
-      // Solicitar confirmación de modo de video al Host
-      try {
-        myChannel.send({
-          type: 'broadcast',
-          event: 'REQUEST_VIDEO_MODE',
-          payload: { studentName: myName, studentId: myStudentId }
-        });
-      } catch (e) {}
-
+      // Registrar presencia activa en Supabase como alumno admitido
       try {
         await myChannel.track({
           name: myName,
@@ -1920,8 +1904,13 @@
         event: 'WB_REQUEST_STATE',
         payload: { studentName: myName }
       });
-      if (typeof announceWebRTCPresence === 'function') announceWebRTCPresence();
+
+      if (typeof announceWebRTCPresence === 'function') {
+        announceWebRTCPresence();
+      }
     }
+
+    const completeStudentAdmissionToClass = admitStudentToClass;
 
     document.getElementById('joinBtn').addEventListener('click', () => {
       myName = document.getElementById('studentNameInput').value.trim();
@@ -1942,6 +1931,11 @@
       }
 
       isAdmittedToClass = false;
+      // Retención estricta en Sala de Espera hasta aprobación del profesor
+      document.getElementById('joinScreen').classList.add('hidden');
+      document.getElementById('liveScreen').classList.add('hidden');
+      document.getElementById('waitingRoomScreen').classList.remove('hidden');
+
       document.getElementById('displayStudentName').textContent = myName;
       const pinHeaderEl = document.getElementById('studentHeaderPinLabel');
       if (pinHeaderEl) pinHeaderEl.textContent = `#${pin}`;
@@ -2010,6 +2004,15 @@
               if (entry && entry.micIconEl) {
                 entry.micIconEl.classList.toggle('hidden', Boolean(u.audioEnabled ?? u.audio));
               }
+              // Malla P2P entre estudiantes: descubrir al compañero y crear conexión dedicada
+              if (currentVideoMode === 'p2p' && isAdmittedToClass) {
+                const pc = getOrCreateP2PPeerConnection(stuPeerId, u.name, 'student');
+                if (webrtcPeerId < stuPeerId) {
+                  if (pc && pc.signalingState === 'stable' && !webrtcPeers[stuPeerId]?.isNegotiating) {
+                    createAndSendP2POffer(stuPeerId, u.name, 'student');
+                  }
+                }
+              }
             }
           }
         });
@@ -2023,15 +2026,26 @@
 
       myChannel.on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
         if (!isAdmittedToClass) return;
+        // Blindaje contra micro-cortes de red móvil y pausas de foco al pedir permisos de cámara:
+        // Los eventos transitorios leave nunca expulsan al estudiante de #liveScreen.
         const state = myChannel.presenceState();
         const remaining = Array.isArray(state[key]) ? state[key].filter(Boolean) : [];
         if (remaining.length === 0 && Array.isArray(leftPresences)) {
           leftPresences.forEach(lp => {
+            // No retirar al profesor por micro-cortes de presencia para evitar parpadeos
+            if (key === 'host' || (lp && lp.role === 'host')) return;
             if (lp && typeof removeStudentRemoteVideoCard === 'function') {
-              removeStudentRemoteVideoCard(lp.peerId, lp.name, key === 'host' || lp.role === 'host' ? 'host' : 'student');
+              removeStudentRemoteVideoCard(lp.peerId, lp.name, 'student');
             }
           });
         }
+      });
+
+      // El estudiante solo abandona la sala cuando el profesor finaliza la sesión o hace clic en Salir
+      myChannel.on('broadcast', { event: 'SESSION_ENDED' }, async () => {
+        console.log('[ELT Live] El profesor ha finalizado la sesión.');
+        alert('La clase ha finalizado. El profesor ha cerrado la sesión.');
+        await leaveStudentSession();
       });
 
       // Eventos de Sala de Espera (Waiting Room)
@@ -2043,10 +2057,27 @@
       });
 
       myChannel.on('broadcast', { event: 'WAITING_ROOM_ADMIT' }, ({ payload }) => {
-        if (!payload || isAdmittedToClass) return;
-        if (payload.studentId === myStudentId || payload.studentName === myName) {
-          playGentleNotificationBeep();
-          completeStudentAdmissionToClass();
+        if (!payload) return;
+        const targetId = payload.studentId;
+        const targetName = (payload.studentName || '').trim().toLowerCase();
+        const currentName = (myName || '').trim().toLowerCase();
+
+        if (!isAdmittedToClass) {
+          // Admitir solo si coincide con el studentId o studentName de este alumno
+          if ((targetId && targetId === myStudentId) || (targetName && targetName === currentName)) {
+            if (payload.videoMode) assignedVideoMode = payload.videoMode;
+            playGentleNotificationBeep();
+            admitStudentToClass();
+          }
+        } else {
+          // Si ya estamos admitidos y entra un nuevo compañero en modo P2P, anunciar presencia tras un breve lapso
+          if (targetName && targetName !== currentName && currentVideoMode === 'p2p') {
+            setTimeout(() => {
+              if (typeof announceWebRTCPresence === 'function') {
+                announceWebRTCPresence();
+              }
+            }, 600);
+          }
         }
       });
 
@@ -2083,6 +2114,23 @@
 
       myChannel.subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
+          // Blindaje anti-expulsión: Si el estudiante ya fue admitido y hay reconexión (ej. cambio de foco/permiso de cámara en móvil),
+          // NUNCA volver a mostrar la sala de espera ni salir del aula en vivo
+          if (isAdmittedToClass) {
+            try {
+              await myChannel.track({
+                name: myName,
+                role: 'student',
+                peerId: webrtcPeerId,
+                studentId: myStudentId,
+                audioEnabled: webrtcAudioEnabled,
+                videoEnabled: webrtcVideoEnabled,
+                joinedAt: new Date().toISOString()
+              });
+            } catch (e) {}
+            return;
+          }
+
           document.getElementById('joinScreen').classList.add('hidden');
           document.getElementById('waitingRoomScreen').classList.remove('hidden');
 
@@ -4855,7 +4903,8 @@
           urls: [
             'turn:openrelay.metered.ca:80',
             'turn:openrelay.metered.ca:443',
-            'turn:openrelay.metered.ca:443?transport=tcp'
+            'turn:openrelay.metered.ca:443?transport=tcp',
+            'turns:openrelay.metered.ca:443?transport=tcp'
           ],
           username: 'openrelay',
           credential: 'openrelay'
@@ -5303,63 +5352,112 @@
       }
       try {
         if (!p2pLocalStream) {
-          // Intentar primero con facingMode: 'user' optimizado para celular Android
-          try {
-            p2pLocalStream = await navigator.mediaDevices.getUserMedia({
-              audio: true,
-              video: {
-                facingMode: 'user',
-                width: { ideal: 640 },
-                height: { ideal: 480 },
-                frameRate: { ideal: 24 }
+          let stream = null;
+          if (wantVideo) {
+            // Nivel 1: Constraints ideales para móvil (480x360@20fps frontal)
+            try {
+              stream = await navigator.mediaDevices.getUserMedia({
+                audio: Boolean(wantAudio),
+                video: {
+                  facingMode: 'user',
+                  width: { ideal: 480 },
+                  height: { ideal: 360 },
+                  frameRate: { max: 20 }
+                }
+              });
+            } catch (err1) {
+              console.warn('[P2P Cam Fallback 1] Falló ideal constraints, intentando facingMode básico:', err1);
+              // Nivel 2: Solo facingMode user básico sin restricciones estrictas
+              try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                  audio: Boolean(wantAudio),
+                  video: { facingMode: 'user' }
+                });
+              } catch (err2) {
+                console.warn('[P2P Cam Fallback 2] Falló facingMode user, intentando video: true genérico:', err2);
+                // Nivel 3: video: true genérico universal
+                try {
+                  stream = await navigator.mediaDevices.getUserMedia({
+                    audio: Boolean(wantAudio),
+                    video: true
+                  });
+                } catch (err3) {
+                  console.error('[P2P Cam Fallback 3] Falló toda captura de video:', err3);
+                  // Si el video falla pero se solicitaba audio, rescatar al menos el micrófono
+                  if (wantAudio) {
+                    try {
+                      stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                    } catch (errA) {}
+                  }
+                }
               }
-            });
-          } catch (camErr) {
-            console.warn('[P2P] Falló getUserMedia con resolución ideal, reintentando con facingMode básico:', camErr);
-            p2pLocalStream = await navigator.mediaDevices.getUserMedia({
-              audio: true,
-              video: { facingMode: 'user' }
-            });
+            }
+          } else if (wantAudio) {
+            try {
+              stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+            } catch (errA) {}
           }
-          p2pLocalStream.getAudioTracks().forEach(t => { t.enabled = Boolean(wantAudio); });
-          p2pLocalStream.getVideoTracks().forEach(t => { t.enabled = Boolean(wantVideo); });
-          originalCamTrack = p2pLocalStream.getVideoTracks()[0] || null;
-          originalMicTrack = p2pLocalStream.getAudioTracks()[0] || null;
-        } else {
-          if (wantAudio && p2pLocalStream.getAudioTracks().length === 0) {
-            const aStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            aStream.getAudioTracks().forEach(t => p2pLocalStream.addTrack(t));
+
+          if (stream) {
+            p2pLocalStream = stream;
+            p2pLocalStream.getAudioTracks().forEach(t => { t.enabled = Boolean(wantAudio); });
+            p2pLocalStream.getVideoTracks().forEach(t => { t.enabled = Boolean(wantVideo); });
+            originalCamTrack = p2pLocalStream.getVideoTracks()[0] || null;
             originalMicTrack = p2pLocalStream.getAudioTracks()[0] || null;
           }
+        } else {
+          // Si ya existe p2pLocalStream pero falta audio
+          if (wantAudio && p2pLocalStream.getAudioTracks().length === 0) {
+            try {
+              const aStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+              aStream.getAudioTracks().forEach(t => p2pLocalStream.addTrack(t));
+              originalMicTrack = p2pLocalStream.getAudioTracks()[0] || null;
+            } catch (aErr) {
+              console.warn('[P2P] No se pudo agregar pista de audio:', aErr);
+            }
+          }
+          // Si falta video o está inactivo, reintentar con fallback progresivo de 3 niveles
           if (wantVideo && (!p2pLocalStream.getVideoTracks().length || !p2pLocalStream.getVideoTracks().some(t => t.readyState === 'live'))) {
             let vStream = null;
             try {
               vStream = await navigator.mediaDevices.getUserMedia({
                 video: {
                   facingMode: 'user',
-                  width: { ideal: 640 },
-                  height: { ideal: 480 },
-                  frameRate: { ideal: 24 }
+                  width: { ideal: 480 },
+                  height: { ideal: 360 },
+                  frameRate: { max: 20 }
                 }
               });
-            } catch (errFallback) {
-              vStream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: 'user' }
-              });
+            } catch (errFallback1) {
+              console.warn('[P2P Cam AddTrack Fallback 1] Falló ideal constraints:', errFallback1);
+              try {
+                vStream = await navigator.mediaDevices.getUserMedia({
+                  video: { facingMode: 'user' }
+                });
+              } catch (errFallback2) {
+                console.warn('[P2P Cam AddTrack Fallback 2] Falló facingMode user:', errFallback2);
+                try {
+                  vStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                } catch (errFallback3) {
+                  console.error('[P2P Cam AddTrack Fallback 3] Falló video:', errFallback3);
+                }
+              }
             }
-            vStream.getVideoTracks().forEach(t => {
-              t.enabled = true;
-              p2pLocalStream.addTrack(t);
-            });
-            originalCamTrack = p2pLocalStream.getVideoTracks()[0] || null;
+            if (vStream) {
+              vStream.getVideoTracks().forEach(t => {
+                t.enabled = true;
+                p2pLocalStream.addTrack(t);
+              });
+              originalCamTrack = p2pLocalStream.getVideoTracks()[0] || null;
+            }
           }
         }
 
-        handleP2PLocalVideoUI();
-        await syncP2PTracksToAllPeers();
+        try { handleP2PLocalVideoUI(); } catch (e) {}
+        try { await syncP2PTracksToAllPeers(); } catch (e) {}
         return p2pLocalStream;
       } catch (err) {
-        console.error('[P2P] Error al acceder a cámara/micrófono:', err);
+        console.error('[P2P] Error en ensureP2PLocalStream:', err);
         const errorDetail = err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError'
           ? 'Permiso de cámara denegado. Habilítalo en la configuración de tu navegador.'
           : (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError'
@@ -5423,14 +5521,15 @@
           } catch (e) {}
         }
 
-        // Disparar renegociación SDP hacia el Host para que reciba la pista de inmediato
-        await createAndSendP2POffer(remotePeerId, peerObj.name);
+        // Disparar renegociación SDP hacia el par remoto para que reciba la pista de inmediato
+        await createAndSendP2POffer(remotePeerId, peerObj.name, peerObj.role);
       }
     }
 
-    async function createAndSendP2POffer(remotePeerId, remoteName) {
-      if (!myChannel || currentVideoMode !== 'p2p') return;
-      const pc = getOrCreateP2PPeerConnection(remotePeerId, remoteName, 'host');
+    async function createAndSendP2POffer(remotePeerId, remoteName, remoteRole) {
+      if (!myChannel || currentVideoMode !== 'p2p' || !isAdmittedToClass) return;
+      const role = remoteRole || (remotePeerId.startsWith('host_') || (remoteName && remoteName.includes('Profesor')) ? 'host' : 'student');
+      const pc = getOrCreateP2PPeerConnection(remotePeerId, remoteName, role);
       const peerObj = webrtcPeers[remotePeerId];
       if (!pc || !peerObj) return;
       if (pc.signalingState !== 'stable' || peerObj.isNegotiating) return;
@@ -5458,7 +5557,7 @@
           }
         });
       } catch (e) {
-        console.warn('[P2P] Error creando oferta en Estudiante:', e);
+        console.warn('[P2P] Error creando oferta en Estudiante hacia ' + remotePeerId + ':', e);
       } finally {
         peerObj.isNegotiating = false;
       }
@@ -5548,13 +5647,22 @@
           if (!remoteStream.getTracks().some(existing => existing.id === evt.track.id)) {
             remoteStream.addTrack(evt.track);
           }
+          if (evt.track.kind === 'video') {
+            webrtcPeers[remotePeerId].videoEnabled = true;
+          }
           evt.track.onunmute = () => {
+            if (evt.track.kind === 'video') {
+              webrtcPeers[remotePeerId].videoEnabled = true;
+            }
             updateStudentRemotePeerCardMedia(remotePeerId);
           };
         } else if (evt.streams && evt.streams[0]) {
           evt.streams[0].getTracks().forEach(t => {
             if (!remoteStream.getTracks().some(existing => existing.id === t.id)) {
               remoteStream.addTrack(t);
+            }
+            if (t.kind === 'video') {
+              webrtcPeers[remotePeerId].videoEnabled = true;
             }
           });
         }
@@ -5597,17 +5705,23 @@
       }
 
       if (vidEl) {
+        vidEl.setAttribute('playsinline', '');
+        vidEl.setAttribute('webkit-playsinline', '');
+        vidEl.setAttribute('autoplay', '');
         if (currentVideoMode === 'p2p' && peerObj.stream && vidEl.srcObject !== peerObj.stream) {
           vidEl.srcObject = peerObj.stream;
           vidEl.muted = false;
-          vidEl.setAttribute('playsinline', '');
-          vidEl.setAttribute('webkit-playsinline', '');
-          vidEl.setAttribute('autoplay', '');
-          vidEl.play().catch(() => {});
         }
-        const hasLiveVideo = Boolean(peerObj.videoEnabled) && !peerObj.isSharingScreen;
+        const hasStreamLiveVideoTrack = peerObj.stream && peerObj.stream.getVideoTracks().some(t => t.readyState === 'live' && t.enabled);
+        if (hasStreamLiveVideoTrack) {
+          peerObj.videoEnabled = true;
+        }
+        const hasLiveVideo = (Boolean(peerObj.videoEnabled) || hasStreamLiveVideoTrack) && !peerObj.isSharingScreen;
         vidEl.classList.toggle('hidden', !hasLiveVideo);
         if (phEl) phEl.classList.toggle('hidden', hasLiveVideo);
+        if (hasLiveVideo) {
+          vidEl.play().catch(() => {});
+        }
       }
 
       // Elemento de audio dedicado para P2P para reproducción ininterrumpida incluso con video oculto
@@ -5717,8 +5831,16 @@
     // ==================== INICIALIZADOR Y CONTROLES UNIFICADOS (P2P / LIVEKIT) ====================
     async function startStudentVideoEngine(mode) {
       const targetMode = (mode === 'livekit') ? 'livekit' : 'p2p';
-      console.log('[ELT Live] Inicializando motor de video Estudiante:', targetMode);
+      assignedVideoMode = targetMode;
       currentVideoMode = targetMode;
+
+      // PROHIBIDO iniciar motor de video, LiveKit o P2P mientras no esté admitido por el profesor
+      if (!isAdmittedToClass) {
+        console.log('[ELT Live] Modo de video configurado a', targetMode, '— retenido hasta aprobación del profesor.');
+        return;
+      }
+
+      console.log('[ELT Live] Inicializando motor de video Estudiante:', targetMode);
 
       if (targetMode === 'livekit') {
         closeAllP2PConnections();
@@ -5726,7 +5848,7 @@
           p2pLocalStream.getTracks().forEach(t => t.stop());
           p2pLocalStream = null;
         }
-        if (currentRoomPin && isAdmittedToClass) {
+        if (currentRoomPin) {
           await connectLiveKit(currentRoomPin, myName, false);
         }
       } else {
@@ -5735,12 +5857,10 @@
           try { await livekitRoom.disconnect(); } catch (e) {}
           livekitRoom = null;
         }
-        if (isAdmittedToClass && (webrtcAudioEnabled || webrtcVideoEnabled)) {
+        if (webrtcAudioEnabled || webrtcVideoEnabled) {
           await ensureP2PLocalStream(webrtcAudioEnabled, webrtcVideoEnabled);
         }
-        if (isAdmittedToClass) {
-          announceWebRTCPresence();
-        }
+        announceWebRTCPresence();
       }
       updateLocalMediaUI();
     }
@@ -5775,43 +5895,53 @@
     }
 
     async function toggleLocalVideo() {
-      webrtcVideoEnabled = !webrtcVideoEnabled;
-      if (currentVideoMode === 'livekit' && livekitRoom) {
-        try {
-          if (webrtcVideoEnabled) {
-            await livekitRoom.localParticipant.setCameraEnabled(true, {
-              facingMode: 'user'
-            });
-          } else {
-            await livekitRoom.localParticipant.setCameraEnabled(false);
-          }
-          handleStudentLocalCameraTrack();
-        } catch (err) {
-          console.error('[LiveKit] Error al alternar cámara en Estudiante:', err);
-          webrtcVideoEnabled = !webrtcVideoEnabled;
-          showMediaAlert('No se pudo encender la cámara frontal: ' + (err.message || err.name || err));
-        }
-      } else if (currentVideoMode === 'p2p') {
-        try {
-          if (webrtcVideoEnabled) {
-            const stream = await ensureP2PLocalStream(webrtcAudioEnabled, true);
-            if (!stream) {
-              webrtcVideoEnabled = false;
+      try {
+        webrtcVideoEnabled = !webrtcVideoEnabled;
+        if (currentVideoMode === 'livekit' && livekitRoom) {
+          try {
+            if (webrtcVideoEnabled) {
+              try {
+                await livekitRoom.localParticipant.setCameraEnabled(true, { facingMode: 'user' });
+              } catch (lkErr) {
+                console.warn('[LiveKit] Falló setCameraEnabled con facingMode, reintentando básico:', lkErr);
+                await livekitRoom.localParticipant.setCameraEnabled(true);
+              }
+            } else {
+              await livekitRoom.localParticipant.setCameraEnabled(false);
             }
+            try { handleStudentLocalCameraTrack(); } catch (e) {}
+          } catch (err) {
+            console.error('[LiveKit] Error al alternar cámara en Estudiante:', err);
+            webrtcVideoEnabled = !webrtcVideoEnabled;
+            showMediaAlert('No se pudo encender la cámara frontal: ' + (err.message || err.name || err));
           }
-          if (p2pLocalStream) {
-            p2pLocalStream.getVideoTracks().forEach(t => { t.enabled = webrtcVideoEnabled; });
+        } else if (currentVideoMode === 'p2p') {
+          try {
+            if (webrtcVideoEnabled) {
+              const stream = await ensureP2PLocalStream(webrtcAudioEnabled, true);
+              if (!stream || !stream.getVideoTracks().some(t => t.readyState === 'live')) {
+                webrtcVideoEnabled = false;
+              }
+            }
+            if (p2pLocalStream) {
+              p2pLocalStream.getVideoTracks().forEach(t => { t.enabled = webrtcVideoEnabled; });
+            }
+            try { handleP2PLocalVideoUI(); } catch (e) {}
+            try { await syncP2PTracksToAllPeers(); } catch (syncErr) {
+              console.warn('[P2P] syncP2PTracksToAllPeers aviso:', syncErr);
+            }
+          } catch (err) {
+            console.error('[P2P] Error al alternar cámara P2P:', err);
+            webrtcVideoEnabled = !webrtcVideoEnabled;
+            showMediaAlert('Error al activar cámara frontal: ' + (err.message || err.name || err));
           }
-          handleP2PLocalVideoUI();
-          await syncP2PTracksToAllPeers();
-        } catch (err) {
-          console.error('[P2P] Error al alternar cámara P2P:', err);
-          webrtcVideoEnabled = !webrtcVideoEnabled;
-          showMediaAlert('Error al activar cámara frontal P2P: ' + (err.message || err.name || err));
         }
+      } catch (fatalCamErr) {
+        console.error('[toggleLocalVideo] Error atrapado y blindado:', fatalCamErr);
+      } finally {
+        try { updateLocalMediaUI(); } catch (e) {}
+        try { broadcastWebRTCMediaState(); } catch (e) {}
       }
-      updateLocalMediaUI();
-      broadcastWebRTCMediaState();
     }
 
     async function toggleScreenShare() {
@@ -5977,6 +6107,10 @@
       Object.keys(webrtcPeers).forEach(pid => {
         const p = webrtcPeers[pid];
         if (!p) return;
+        // Proteger conexiones P2P activas o en proceso de conexión
+        if (p.pc && (p.pc.connectionState === 'connected' || p.pc.connectionState === 'connecting')) {
+          return;
+        }
         const dedupKey = getParticipantDedupKey(p.name, p.role);
         if (activeParticipantKeys && dedupKey && !activeParticipantKeys.has(dedupKey)) {
           removeStudentRemoteVideoCard(pid, p.name, p.role);
@@ -5990,6 +6124,12 @@
           if (!dKey) return;
           if (seenKeys.has(dKey)) {
             cardEl.remove();
+            return;
+          }
+          const pid = cardEl.getAttribute('data-peer-id');
+          const p = pid ? webrtcPeers[pid] : null;
+          if (p && p.pc && (p.pc.connectionState === 'connected' || p.pc.connectionState === 'connecting')) {
+            seenKeys.add(dKey);
             return;
           }
           if (activeParticipantKeys && activeParticipantKeys.size > 0 && !activeParticipantKeys.has(dKey)) {
@@ -6283,16 +6423,61 @@
       channel.on('broadcast', { event: 'VIDEO_MODE_CONFIG' }, async ({ payload }) => {
         if (!payload || !payload.videoMode) return;
         const targetMode = payload.videoMode === 'livekit' ? 'livekit' : 'p2p';
-        if (targetMode !== currentVideoMode) {
-          console.log('[ELT Live] Cambio dinámico de modo de video recibido del Host:', targetMode);
+        assignedVideoMode = targetMode;
+        currentVideoMode = targetMode;
+        console.log('[ELT Live] Modo de video transmitido por Host:', targetMode, '(Admitido:', isAdmittedToClass, ')');
+        // NO ingresar al aula; solo actualizar el motor si el estudiante ya está formalmente dentro
+        if (isAdmittedToClass) {
           await startStudentVideoEngine(targetMode);
         }
       });
 
+      channel.on('broadcast', { event: 'STUDENT_JOIN' }, async ({ payload }) => {
+        if (!payload || !isAdmittedToClass) return;
+        const fromPeerId = payload.peerId;
+        const fromName = payload.studentName;
+        const myCleanName = String(myName || '').trim().toLowerCase();
+        const incomingCleanName = String(fromName || '').trim().toLowerCase();
+        if (!fromPeerId || fromPeerId === webrtcPeerId || incomingCleanName === myCleanName) return;
+
+        console.log('[P2P Mesh] Estudiante detectado en sala:', fromName, fromPeerId);
+        ensureRemoteVideoCard(fromPeerId, fromName, 'student');
+
+        if (currentVideoMode === 'p2p') {
+          const pc = getOrCreateP2PPeerConnection(fromPeerId, fromName, 'student');
+          channel.send({
+            type: 'broadcast',
+            event: 'WEBRTC_ANNOUNCE',
+            payload: {
+              fromPeerId: webrtcPeerId,
+              from: webrtcPeerId,
+              fromName: getMyDisplayNameForWebRTC(),
+              name: getMyDisplayNameForWebRTC(),
+              role: 'student',
+              videoMode: currentVideoMode,
+              toPeerId: fromPeerId,
+              to: fromPeerId,
+              audioEnabled: webrtcAudioEnabled,
+              videoEnabled: webrtcVideoEnabled,
+              isSharingScreen: isSharingScreen
+            }
+          });
+
+          if (webrtcPeerId < fromPeerId) {
+            if (pc && pc.signalingState === 'stable' && !webrtcPeers[fromPeerId]?.isNegotiating) {
+              await createAndSendP2POffer(fromPeerId, fromName, 'student');
+            }
+          }
+        }
+      });
+
       channel.on('broadcast', { event: 'WEBRTC_JOIN' }, async ({ payload }) => {
-        if (!payload) return;
-        if (payload.videoMode && payload.videoMode !== currentVideoMode && isAdmittedToClass) {
-          await startStudentVideoEngine(payload.videoMode);
+        if (!payload || !isAdmittedToClass) return;
+        if (payload.videoMode) {
+          assignedVideoMode = payload.videoMode;
+          if (payload.videoMode !== currentVideoMode) {
+            await startStudentVideoEngine(payload.videoMode);
+          }
         }
         const fromId = payload.peerId || payload.fromPeerId || payload.from;
         if (!fromId || fromId === webrtcPeerId) return;
@@ -6307,15 +6492,45 @@
             webrtcPeers[fromId].isSharingScreen = Boolean(payload.isSharingScreen);
           }
           updateStudentRemotePeerCardMedia(fromId);
+
+          // Responder con ANNOUNCE directo al nuevo participante para que conozca nuestra presencia y estado
+          channel.send({
+            type: 'broadcast',
+            event: 'WEBRTC_ANNOUNCE',
+            payload: {
+              fromPeerId: webrtcPeerId,
+              from: webrtcPeerId,
+              fromName: getMyDisplayNameForWebRTC(),
+              name: getMyDisplayNameForWebRTC(),
+              role: 'student',
+              videoMode: currentVideoMode,
+              toPeerId: fromId,
+              to: fromId,
+              audioEnabled: webrtcAudioEnabled,
+              videoEnabled: webrtcVideoEnabled,
+              isSharingScreen: isSharingScreen
+            }
+          });
+
+          // Regla de desempate cortés para malla WebRTC P2P entre pares:
+          // Si el par remoto es alumno, el peer con ID léxico menor genera la oferta SDP
+          if (remoteRole !== 'host' && webrtcPeerId < fromId) {
+            if (pc && pc.signalingState === 'stable' && !webrtcPeers[fromId]?.isNegotiating) {
+              await createAndSendP2POffer(fromId, remoteName, remoteRole);
+            }
+          }
         } else {
           ensureRemoteVideoCard(fromId, remoteName, remoteRole);
         }
       });
 
       channel.on('broadcast', { event: 'WEBRTC_ANNOUNCE' }, async ({ payload }) => {
-        if (!payload) return;
-        if (payload.videoMode && payload.videoMode !== currentVideoMode && isAdmittedToClass) {
-          await startStudentVideoEngine(payload.videoMode);
+        if (!payload || !isAdmittedToClass) return;
+        if (payload.videoMode) {
+          assignedVideoMode = payload.videoMode;
+          if (payload.videoMode !== currentVideoMode) {
+            await startStudentVideoEngine(payload.videoMode);
+          }
         }
         const fromId = payload.fromPeerId || payload.from || payload.peerId;
         const toId = payload.toPeerId || payload.to;
@@ -6332,9 +6547,12 @@
             webrtcPeers[fromId].isSharingScreen = Boolean(payload.isSharingScreen);
           }
           updateStudentRemotePeerCardMedia(fromId);
-          // Si tenemos cámara activa, emitir oferta de inmediato
-          if (webrtcVideoEnabled && p2pLocalStream) {
-            await syncP2PTracksToAllPeers();
+
+          // Si el par remoto es alumno y nuestro ID es menor, o si no hay oferta pendiente, iniciar oferta
+          if (remoteRole !== 'host' && webrtcPeerId < fromId) {
+            if (pc && pc.signalingState === 'stable' && !webrtcPeers[fromId]?.isNegotiating) {
+              await createAndSendP2POffer(fromId, remoteName, remoteRole);
+            }
           }
         } else {
           ensureRemoteVideoCard(fromId, remoteName, remoteRole);
@@ -6342,21 +6560,22 @@
       });
 
       channel.on('broadcast', { event: 'WEBRTC_OFFER' }, async ({ payload }) => {
-        if (currentVideoMode !== 'p2p') return;
+        if (!isAdmittedToClass || currentVideoMode !== 'p2p') return;
         const fromId = payload && (payload.fromPeerId || payload.from);
         const toId = payload && (payload.toPeerId || payload.to);
         if (!fromId || toId !== webrtcPeerId || fromId === webrtcPeerId) return;
 
         try {
-          const remoteName = payload.fromName || payload.name || 'Profesor (Host)';
-          const remoteRole = payload.role || 'host';
+          const remoteRole = payload.role || (fromId.startsWith('host_') || (payload.name && payload.name.includes('Profesor')) ? 'host' : 'student');
+          const remoteName = payload.fromName || payload.name || (remoteRole === 'host' ? 'Profesor (Host)' : 'Participante');
           const pc = getOrCreateP2PPeerConnection(fromId, remoteName, remoteRole);
           if (!pc) return;
 
-          if (webrtcPeers[fromId]) {
-            webrtcPeers[fromId].audioEnabled = Boolean(payload.audioEnabled ?? payload.audio);
-            webrtcPeers[fromId].videoEnabled = Boolean(payload.videoEnabled ?? payload.video);
-            webrtcPeers[fromId].isSharingScreen = Boolean(payload.isSharingScreen);
+          const peerObj = webrtcPeers[fromId];
+          if (peerObj) {
+            peerObj.audioEnabled = Boolean(payload.audioEnabled ?? payload.audio);
+            peerObj.videoEnabled = Boolean(payload.videoEnabled ?? payload.video);
+            peerObj.isSharingScreen = Boolean(payload.isSharingScreen);
           }
 
           if (pc.signalingState !== 'stable') {
@@ -6365,6 +6584,14 @@
 
           await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
 
+          // Desahogar candidatos ICE recibidos antes de fijar la descripción remota
+          if (peerObj && peerObj.pendingIce && peerObj.pendingIce.length > 0) {
+            for (const cand of peerObj.pendingIce) {
+              try { await pc.addIceCandidate(new RTCIceCandidate(cand)); } catch (e) {}
+            }
+            peerObj.pendingIce = [];
+          }
+
           // Asignar pistas locales del estudiante a los transceivers antes de crear la respuesta
           if (p2pLocalStream) {
             const vTrack = isSharingScreen && screenStream
@@ -6372,11 +6599,11 @@
               : (webrtcVideoEnabled ? p2pLocalStream.getVideoTracks()[0] : null);
             const aTrack = webrtcAudioEnabled ? p2pLocalStream.getAudioTracks()[0] : null;
 
-            if (webrtcPeers[fromId].videoSender) {
-              try { await webrtcPeers[fromId].videoSender.replaceTrack(vTrack || null); } catch (e) {}
+            if (peerObj && peerObj.videoSender) {
+              try { await peerObj.videoSender.replaceTrack(vTrack || null); } catch (e) {}
             }
-            if (webrtcPeers[fromId].audioSender) {
-              try { await webrtcPeers[fromId].audioSender.replaceTrack(aTrack || null); } catch (e) {}
+            if (peerObj && peerObj.audioSender) {
+              try { await peerObj.audioSender.replaceTrack(aTrack || null); } catch (e) {}
             }
           }
 
@@ -6408,7 +6635,7 @@
       });
 
       channel.on('broadcast', { event: 'WEBRTC_ANSWER' }, async ({ payload }) => {
-        if (currentVideoMode !== 'p2p') return;
+        if (!isAdmittedToClass || currentVideoMode !== 'p2p') return;
         const fromId = payload && (payload.fromPeerId || payload.from);
         const toId = payload && (payload.toPeerId || payload.to);
         if (!fromId || toId !== webrtcPeerId || fromId === webrtcPeerId) return;
@@ -6416,7 +6643,16 @@
         try {
           const peerObj = webrtcPeers[fromId];
           if (peerObj && peerObj.pc && peerObj.pc.signalingState === 'have-local-offer') {
+            if (payload.audioEnabled !== undefined) peerObj.audioEnabled = Boolean(payload.audioEnabled);
+            if (payload.videoEnabled !== undefined) peerObj.videoEnabled = Boolean(payload.videoEnabled);
             await peerObj.pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+
+            if (peerObj.pendingIce && peerObj.pendingIce.length > 0) {
+              for (const cand of peerObj.pendingIce) {
+                try { await peerObj.pc.addIceCandidate(new RTCIceCandidate(cand)); } catch (e) {}
+              }
+              peerObj.pendingIce = [];
+            }
             updateStudentRemotePeerCardMedia(fromId);
           }
         } catch (e) {
@@ -6425,20 +6661,25 @@
       });
 
       channel.on('broadcast', { event: 'WEBRTC_ICE' }, async ({ payload }) => {
-        if (currentVideoMode !== 'p2p') return;
+        if (!isAdmittedToClass || currentVideoMode !== 'p2p') return;
         const fromId = payload && (payload.fromPeerId || payload.from);
         const toId = payload && (payload.toPeerId || payload.to);
         if (!fromId || toId !== webrtcPeerId || fromId === webrtcPeerId) return;
 
         try {
           const peerObj = webrtcPeers[fromId];
-          if (peerObj && peerObj.pc && payload.candidate && peerObj.pc.remoteDescription) {
+          if (!peerObj || !peerObj.pc || !payload.candidate) return;
+          if (peerObj.pc.remoteDescription && peerObj.pc.remoteDescription.type) {
             await peerObj.pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
+          } else {
+            peerObj.pendingIce = peerObj.pendingIce || [];
+            peerObj.pendingIce.push(payload.candidate);
           }
         } catch (e) {}
       });
 
       channel.on('broadcast', { event: 'WEBRTC_MEDIA_STATE' }, ({ payload }) => {
+        if (!isAdmittedToClass) return;
         const remoteId = payload && (payload.peerId || payload.fromPeerId || payload.from);
         if (!remoteId || remoteId === webrtcPeerId) return;
         const entry = webrtcPeers[remoteId];
@@ -6456,6 +6697,7 @@
       });
 
       channel.on('broadcast', { event: 'SCREEN_SHARE_STATE' }, ({ payload }) => {
+        if (!isAdmittedToClass) return;
         if (!payload) return;
         const remoteId = payload.peerId || payload.fromPeerId || payload.from;
         if (remoteId === webrtcPeerId) return;
@@ -6468,6 +6710,7 @@
       });
 
       channel.on('broadcast', { event: 'WEBRTC_LEAVE' }, ({ payload }) => {
+        if (!isAdmittedToClass) return;
         const remoteId = payload && (payload.peerId || payload.fromPeerId || payload.from);
         if (!remoteId || remoteId === webrtcPeerId) return;
         removeStudentRemoteVideoCard(remoteId, payload.name, payload.role);

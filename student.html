@@ -23,6 +23,189 @@
       background-color: #020617;
       -webkit-tap-highlight-color: transparent;
     }
+    /* Estilos del Modo Galería tipo Zoom Gigante (cuando no hay lección/pizarra/screen share) */
+    #webrtcVideoStrip.gallery-mode {
+      display: grid !important;
+      width: 100% !important;
+      height: 100% !important;
+      max-width: 100% !important;
+      max-height: 100% !important;
+      min-height: 50vh !important;
+      margin: 0 !important;
+      padding: 1.5rem !important;
+      gap: 1.5rem !important;
+      box-sizing: border-box !important;
+      position: relative !important;
+      inset: 0 !important;
+      top: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      bottom: 0 !important;
+      transform: none !important;
+      border: 0 !important;
+      border-radius: 0 !important;
+      background-color: #0a0c10 !important;
+      z-index: 25 !important;
+      flex: 1 1 0% !important;
+      box-shadow: none !important;
+    }
+    #webrtcVideoStrip.gallery-mode #webrtcDragHandle,
+    #webrtcVideoStrip.gallery-mode #btnMinimizeVideoStrip {
+      display: none !important;
+    }
+    #webrtcVideoStrip.gallery-mode #webrtcStripExpandedBody {
+      width: 100% !important;
+      height: 100% !important;
+      min-width: 0 !important;
+      min-height: 0 !important;
+      display: grid !important;
+      gap: 1.5rem !important;
+      grid-column: 1 / -1 !important;
+      grid-row: 1 / -1 !important;
+      align-items: stretch !important;
+      justify-items: stretch !important;
+      overflow: hidden !important;
+      /* Cuadrícula por defecto para 2 participantes */
+      grid-template-columns: repeat(2, 1fr) !important;
+      grid-template-rows: 1fr !important;
+    }
+    /* #webrtcRemoteCards se desenvuelve como contents para que cada tarjeta remota y la local participen como celdas hermanas en el grid */
+    #webrtcVideoStrip.gallery-mode #webrtcRemoteCards {
+      display: contents !important;
+    }
+    #webrtcVideoStrip.gallery-mode #webrtcRemoteCards:empty {
+      display: none !important;
+    }
+    #webrtcVideoStrip.gallery-mode #webrtcLocalCard {
+      order: 99 !important;
+      margin: 0 !important;
+    }
+    /* Cuadrículas responsivas según número de participantes en PC */
+    #webrtcVideoStrip.gallery-mode.gallery-count-1 #webrtcStripExpandedBody {
+      grid-template-columns: 1fr !important;
+      grid-template-rows: 1fr !important;
+    }
+    #webrtcVideoStrip.gallery-mode.gallery-count-2 #webrtcStripExpandedBody {
+      grid-template-columns: repeat(2, 1fr) !important;
+      grid-template-rows: 1fr !important;
+    }
+    #webrtcVideoStrip.gallery-mode.gallery-count-3 #webrtcStripExpandedBody {
+      grid-template-columns: repeat(3, 1fr) !important;
+      grid-template-rows: 1fr !important;
+    }
+    #webrtcVideoStrip.gallery-mode.gallery-count-4 #webrtcStripExpandedBody {
+      grid-template-columns: repeat(2, 1fr) !important;
+      grid-template-rows: repeat(2, 1fr) !important;
+    }
+    #webrtcVideoStrip.gallery-mode.gallery-count-many #webrtcStripExpandedBody {
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)) !important;
+      grid-template-rows: repeat(auto-fit, minmax(200px, 1fr)) !important;
+    }
+    /* Tarjetas individuales dentro de la galería */
+    #webrtcVideoStrip.gallery-mode #webrtcLocalCard,
+    #webrtcVideoStrip.gallery-mode [id^="webrtcCard_"] {
+      width: 100% !important;
+      height: 100% !important;
+      min-width: 0 !important;
+      min-height: 0 !important;
+      max-width: 100% !important;
+      max-height: 100% !important;
+      display: flex !important;
+      flex-direction: column !important;
+      overflow: hidden !important;
+      border-radius: 12px !important;
+      position: relative !important;
+      border: 1px solid rgba(255, 255, 255, 0.12) !important;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4) !important;
+      background-color: #111317 !important;
+      aspect-ratio: auto !important;
+    }
+    /* Contenedores de video al 100% absoluto para evitar franjas laterales */
+    #webrtcVideoStrip.gallery-mode video {
+      position: absolute !important;
+      inset: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      min-width: 0 !important;
+      min-height: 0 !important;
+      object-fit: cover !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      border: 0 !important;
+    }
+    #webrtcVideoStrip.gallery-mode #webrtcLocalVideo {
+      transform: scaleX(-1) !important;
+      transform-origin: center center !important;
+    }
+    #webrtcVideoStrip.gallery-mode video:not(.hidden) {
+      display: block !important;
+    }
+    #webrtcVideoStrip.gallery-mode video.hidden {
+      display: none !important;
+    }
+    /* Placeholders con avatares centrados */
+    #webrtcLocalPlaceholder,
+    #webrtcVideoStrip.gallery-mode #webrtcLocalPlaceholder,
+    #webrtcVideoStrip.gallery-mode [data-role="placeholder"] {
+      position: absolute !important;
+      inset: 0 !important;
+      top: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      bottom: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      display: flex !important;
+      flex-direction: column !important;
+      align-items: center !important;
+      justify-content: center !important;
+      background-color: #111317 !important;
+    }
+    #webrtcLocalVideo.hidden,
+    #webrtcVideoStrip.gallery-mode #webrtcLocalVideo.hidden {
+      display: none !important;
+    }
+    #webrtcVideoStrip.gallery-mode #webrtcLocalPlaceholder:not(.hidden),
+    #webrtcVideoStrip.gallery-mode [data-role="placeholder"]:not(.hidden) {
+      display: flex !important;
+    }
+    #webrtcVideoStrip.gallery-mode #webrtcLocalPlaceholder.hidden,
+    #webrtcVideoStrip.gallery-mode [data-role="placeholder"].hidden {
+      display: none !important;
+    }
+    #webrtcVideoStrip.gallery-mode #webrtcLocalAvatarInitial,
+    #webrtcVideoStrip.gallery-mode [data-role="placeholder"] .rounded-full {
+      width: 90px !important;
+      height: 90px !important;
+      font-size: 36px !important;
+      margin-bottom: 0.5rem !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+    }
+    #webrtcVideoStrip.gallery-mode #webrtcLocalNameTag,
+    #webrtcVideoStrip.gallery-mode [data-role="name"] {
+      position: absolute !important;
+      bottom: 0.75rem !important;
+      left: 0.75rem !important;
+      font-size: 13px !important;
+      padding: 0.25rem 0.6rem !important;
+      background-color: rgba(0, 0, 0, 0.75) !important;
+      border-radius: 6px !important;
+      z-index: 10 !important;
+    }
+    #webrtcVideoStrip.gallery-mode #webrtcLocalMuteIcon,
+    #webrtcVideoStrip.gallery-mode [data-role="mute"] {
+      position: absolute !important;
+      top: 0.75rem !important;
+      right: 0.75rem !important;
+      width: 28px !important;
+      height: 28px !important;
+      font-size: 13px !important;
+      z-index: 10 !important;
+    }
     #wbViewport, #wbCanvas {
       touch-action: none;
     }
@@ -37,11 +220,53 @@
         z-index: 70 !important;
         box-shadow: -4px 0 25px rgba(0, 0, 0, 0.6);
       }
+      #zmChatDockSlot.hidden,
+      #zmChatDockSlot[style*="display: none"] {
+        display: none !important;
+      }
       #zmChatDockResizeLeft {
         display: none !important;
       }
       #webrtcVideoStrip {
         max-width: 95% !important;
+      }
+      /* Modo Galería Zoom en pantallas móviles (max-width: 768px): tarjetas ocupando el alto responsivo */
+      #webrtcVideoStrip.gallery-mode {
+        padding: 0.75rem !important;
+        gap: 0.75rem !important;
+      }
+      #webrtcVideoStrip.gallery-mode #webrtcStripExpandedBody {
+        gap: 0.75rem !important;
+      }
+      /* 1 participante en móvil: 100% ancho y alto */
+      #webrtcVideoStrip.gallery-mode.gallery-count-1 #webrtcStripExpandedBody {
+        grid-template-columns: 1fr !important;
+        grid-template-rows: 1fr !important;
+      }
+      /* 2 participantes en móvil vertical: apilados al 100% ancho y 50%/50% alto */
+      #webrtcVideoStrip.gallery-mode.gallery-count-2 #webrtcStripExpandedBody {
+        grid-template-columns: 1fr !important;
+        grid-template-rows: repeat(2, 1fr) !important;
+      }
+      /* 3 participantes en móvil vertical: 3 tarjetas apiladas al 33.3% alto cada una */
+      #webrtcVideoStrip.gallery-mode.gallery-count-3 #webrtcStripExpandedBody {
+        grid-template-columns: 1fr !important;
+        grid-template-rows: repeat(3, 1fr) !important;
+      }
+      /* 4 participantes en móvil: cuadrícula 2x2 */
+      #webrtcVideoStrip.gallery-mode.gallery-count-4 #webrtcStripExpandedBody {
+        grid-template-columns: repeat(2, 1fr) !important;
+        grid-template-rows: repeat(2, 1fr) !important;
+      }
+      #webrtcVideoStrip.gallery-mode.gallery-count-many #webrtcStripExpandedBody {
+        grid-template-columns: repeat(2, 1fr) !important;
+        grid-template-rows: repeat(auto-fit, minmax(160px, 1fr)) !important;
+      }
+      #webrtcVideoStrip.gallery-mode #webrtcLocalAvatarInitial,
+      #webrtcVideoStrip.gallery-mode [data-role="placeholder"] .rounded-full {
+        width: 72px !important;
+        height: 72px !important;
+        font-size: 28px !important;
       }
     }
     /* Controles táctiles permanentes en móviles y dispositivos sin hover */
@@ -71,7 +296,7 @@
       #cardToggleVideoBtn i {
         font-size: 13px !important;
       }
-      #webrtcLocalCard {
+      #webrtcVideoStrip:not(.gallery-mode) #webrtcLocalCard {
         min-width: 144px !important;
         min-height: 86px !important;
       }
@@ -93,7 +318,7 @@
         max-width: 48% !important;
         padding: 3px !important;
       }
-      #webrtcLocalCard {
+      #webrtcVideoStrip:not(.gallery-mode) #webrtcLocalCard {
         min-width: 120px !important;
         width: 120px !important;
         height: 72px !important;
@@ -324,7 +549,7 @@
 
     <div class="flex-1 w-full h-full flex overflow-hidden relative bg-slate-950">
       <!-- COLUMNA IZQUIERDA/CENTRAL: Área de Trabajo + Tira Superior WebRTC + Barra Inferior de Reunión -->
-      <div id="leftWorkspaceColumn" class="flex-1 min-w-0 h-full flex flex-col relative overflow-hidden bg-white">
+      <div id="leftWorkspaceColumn" class="flex-1 min-w-0 h-full flex flex-col relative overflow-hidden bg-[#0a0c10]">
 
         <!-- Miniatura Flotante de Cámaras Web (WebRTC P2P 16:9 - Arrastrable y Minimizable) -->
         <div id="webrtcVideoStrip" class="absolute bottom-14 right-3 z-50 bg-[#18191b]/95 border-2 border-[#2e323b] rounded-2xl p-1.5 shadow-2xl flex items-center gap-2 max-w-[82%] select-none cursor-move transition-shadow hover:border-indigo-500/40" title="Arrastra para mover las cámaras a cualquier esquina">
@@ -335,8 +560,8 @@
             </div>
             <!-- Miniatura Local (Estudiante) -->
             <div id="webrtcLocalCard" class="relative w-36 h-20 rounded-xl overflow-hidden bg-[#111317] border border-white/10 flex-shrink-0 flex items-center justify-center group">
-              <video id="webrtcLocalVideo" autoplay playsinline webkit-playsinline muted class="w-full h-full object-cover transform scale-x-[-1] hidden"></video>
-              <div id="webrtcLocalPlaceholder" class="flex flex-col items-center justify-center text-slate-400">
+              <video id="webrtcLocalVideo" autoplay playsinline webkit-playsinline muted class="absolute inset-0 w-full h-full object-cover transform scale-x-[-1] hidden"></video>
+              <div id="webrtcLocalPlaceholder" class="absolute inset-0 w-full h-full flex flex-col items-center justify-center text-slate-400">
                 <div id="webrtcLocalAvatarInitial" class="w-8 h-8 rounded-full bg-indigo-600/30 border border-indigo-400/40 flex items-center justify-center text-xs font-bold text-indigo-200 mb-0.5">A</div>
               </div>
               <span id="webrtcLocalNameTag" class="absolute bottom-1 left-1.5 bg-black/65 backdrop-blur-xs text-white text-[10px] font-medium px-1.5 py-0.5 rounded leading-tight truncate max-w-[90%] z-10">Alumno</span>
@@ -383,7 +608,7 @@
         </div>
 
         <!-- Área Didáctica Unificada (Lección Interactiva + Lienzo de Pizarra Colaborativa) -->
-        <main id="studentFrameContainer" class="flex-1 min-h-0 w-full relative overflow-hidden bg-white">
+        <main id="studentFrameContainer" class="flex-1 min-h-0 w-full relative overflow-hidden bg-[#0a0c10]">
           <iframe id="studentFrame" class="w-full h-full border-0 bg-white"></iframe>
           
           <div id="waitingCover" class="absolute inset-0 bg-white flex flex-col items-center justify-center p-6 text-center text-slate-700 z-10">
@@ -731,6 +956,7 @@
                 <div class="flex items-center gap-1 relative">
                   <i class="fa-regular fa-comment-dots text-sm text-slate-100"></i>
                   <span id="headerChatUnreadBadge" class="hidden absolute -top-1.5 -right-2.5 bg-rose-500 text-white text-[9px] font-black px-1.5 py-0.2 rounded-full">0</span>
+                  <span id="bottomChatUnreadBadge" class="hidden absolute -top-1.5 -right-2 bg-rose-500 text-white text-[9px] font-black px-1.5 py-0.2 rounded-full animate-pulse shadow">0</span>
                 </div>
                 <span class="text-[10px] text-slate-300 font-medium mt-0.5">Chat</span>
               </button>
@@ -764,7 +990,7 @@
       </div>
 
       <!-- COLUMNA DERECHA: Panel Acoplado de Chat Estilo Zoom (de arriba a abajo hasta el borde inferior exacto de la pantalla) -->
-      <aside id="zmChatDockSlot" class="relative w-[325px] h-full flex-shrink-0 flex flex-col border-l border-[#2c2e33] bg-[#1a1a1a]">
+      <aside id="zmChatDockSlot" class="hidden relative w-[325px] h-full flex-shrink-0 flex flex-col border-l border-[#2c2e33] bg-[#1a1a1a]">
         <!-- Tirador izquierdo para redimensionar el ancho del panel acoplado -->
         <div id="zmChatDockResizeLeft" class="absolute left-0 top-0 bottom-0 w-1.5 cursor-ew-resize hover:bg-[#0e72ed]/60 z-40 transition-colors" title="Arrastra para ajustar el ancho del panel del chat"></div>
         <div id="zmChatWindow" class="relative w-full h-full flex flex-col bg-[#1a1a1a] text-[#e4e6eb] select-none overflow-hidden">
@@ -1020,6 +1246,8 @@
     let myChannel = null;
     let myName = "";
     let currentLoadedLessonId = null;
+    let hasLoadedLesson = false;
+    window.hasLoadedLesson = false;
     let assignedSlide = 1;
     let analyticsInterval = null;
     let studentFrame = document.getElementById('studentFrame');
@@ -1712,8 +1940,11 @@
       }
 
       currentLoadedLessonId = lessonId || Date.now().toString();
+      hasLoadedLesson = true;
+      window.hasLoadedLesson = true;
       latestPostMessageAnswers = [];
       waitingCover.classList.add('hidden');
+      if (typeof syncVideoGalleryMode === 'function') syncVideoGalleryMode();
 
       if (studentFrame) studentFrame.remove();
       studentFrame = document.createElement('iframe');
@@ -1873,6 +2104,12 @@
 
       if (typeof updateLocalMediaUI === 'function') updateLocalMediaUI();
 
+      // Asegurar inmediatamente la tarjeta de Profesor (Host) en #webrtcRemoteCards con avatar "P"
+      if (typeof ensureRemoteVideoCard === 'function') {
+        const hostPeerId = (window.__studentLatestPeerByKey && window.__studentLatestPeerByKey['__host__']) || 'host_presence';
+        ensureRemoteVideoCard(hostPeerId, 'Profesor (Host)', 'host');
+      }
+
       // Iniciar el motor de video asignado SOLO AHORA que el estudiante fue formalmente admitido
       if (typeof startStudentVideoEngine === 'function') {
         await startStudentVideoEngine(assignedVideoMode);
@@ -1907,8 +2144,21 @@
         payload: { studentName: myName }
       });
 
+      // En dispositivos móviles (window.innerWidth <= 768), garantizar que el chat inicie cerrado
+      if (window.innerWidth <= 768) {
+        zmIsHidden = true;
+        zmIsMinimized = false;
+        zmIsFloating = false;
+      }
+      if (typeof updateChatLayoutMode === 'function') {
+        updateChatLayoutMode();
+      }
+
       if (typeof announceWebRTCPresence === 'function') {
         announceWebRTCPresence();
+      }
+      if (typeof syncVideoGalleryMode === 'function') {
+        syncVideoGalleryMode();
       }
     }
 
@@ -2075,13 +2325,19 @@
             admitStudentToClass();
           }
         } else {
-          // Si ya estamos admitidos y entra un nuevo compañero en modo P2P, anunciar presencia tras un breve lapso
-          if (targetName && targetName !== currentName && currentVideoMode === 'p2p') {
-            setTimeout(() => {
-              if (typeof announceWebRTCPresence === 'function') {
-                announceWebRTCPresence();
-              }
-            }, 600);
+          // Si ya estamos admitidos y entra un nuevo compañero, asegurar su tarjeta de inmediato
+          if (targetName && targetName !== currentName) {
+            const peerId = payload.peerId || targetId || (typeof normalizeStudentPeerKey === 'function' ? normalizeStudentPeerKey(payload.studentName) : targetName);
+            if (peerId && typeof ensureRemoteVideoCard === 'function') {
+              ensureRemoteVideoCard(peerId, payload.studentName || 'Compañero', 'student');
+            }
+            if (currentVideoMode === 'p2p') {
+              setTimeout(() => {
+                if (typeof announceWebRTCPresence === 'function') {
+                  announceWebRTCPresence();
+                }
+              }, 600);
+            }
           }
         }
       });
@@ -2965,6 +3221,7 @@
     function toggleWhiteboardView(forceState) {
       wbIsOpen = typeof forceState === 'boolean' ? forceState : !wbIsOpen;
       whiteboardView.classList.toggle('hidden', !wbIsOpen);
+      if (typeof syncVideoGalleryMode === 'function') syncVideoGalleryMode();
       const toggleBtn = document.getElementById('toggleWhiteboardBtn');
       const wbTopHeader = document.getElementById('wbBoardTopHeader');
       if (wbIsOpen) {
@@ -3769,7 +4026,7 @@
     let zmPendingAttachment = null;
     let zmIsFloating = false;
     let zmIsMinimized = false;
-    let zmIsHidden = (window.innerWidth < 768);
+    let zmIsHidden = (window.innerWidth <= 768);
     let zmUnreadCount = 0;
 
     let zmContextState = {
@@ -3864,9 +4121,16 @@
           titlePill.textContent = zmUnreadCount;
           titlePill.classList.remove('hidden');
         }
+        const bottomBadge = document.getElementById('bottomChatUnreadBadge');
+        if (bottomBadge) {
+          bottomBadge.textContent = zmUnreadCount;
+          bottomBadge.classList.remove('hidden');
+        }
       } else {
         if (headerBadge) headerBadge.classList.add('hidden');
         if (titlePill) titlePill.classList.add('hidden');
+        const bottomBadge = document.getElementById('bottomChatUnreadBadge');
+        if (bottomBadge) bottomBadge.classList.add('hidden');
       }
 
       const floatResizers = zmChatWindow.querySelectorAll('.zm-float-resizer');
@@ -3887,11 +4151,15 @@
         zmChatWindow.style.height = '100%';
         zmChatWindow.style.zIndex = '';
         zmChatWindow.classList.add('hidden');
+        zmChatWindow.style.setProperty('display', 'none', 'important');
         zmChatDockSlot.classList.add('hidden');
+        zmChatDockSlot.style.setProperty('display', 'none', 'important');
         zmChatBody.classList.remove('hidden');
         return;
       }
 
+      zmChatDockSlot.style.removeProperty('display');
+      zmChatWindow.style.removeProperty('display');
       zmChatWindow.classList.remove('hidden');
       zmDockedWidthPx = Math.max(250, Math.min(680, Number(zmDockedWidthPx) || 325));
       zmFloatingWidth = Math.max(280, Math.min(window.innerWidth - 20, Number(zmFloatingWidth) || 345));
@@ -4151,6 +4419,14 @@
       zmResizeMode = null;
       zmResizeStartRect = null;
     });
+
+    // Inicializar visualización del chat (en móviles cerrado por defecto)
+    if (window.innerWidth <= 768) {
+      zmIsHidden = true;
+      zmIsMinimized = false;
+      zmIsFloating = false;
+    }
+    updateChatLayoutMode();
 
     function setChatTarget(target) {
       zmActiveTarget = target || 'EVERYONE';
@@ -5535,7 +5811,7 @@
 
         const currentTrack = isSharingScreen && screenStream
           ? screenStream.getVideoTracks()[0]
-          : (webrtcVideoEnabled && p2pLocalStream ? p2pLocalStream.getVideoTracks()[0] : null);
+          : (webrtcVideoEnabled && p2pLocalStream ? p2pLocalStream.getVideoTracks().find(t => t.readyState === 'live') || null : null);
 
         if (peerObj.videoSender) {
           try { await peerObj.videoSender.replaceTrack(currentTrack || null); } catch (e) {}
@@ -5545,7 +5821,7 @@
           } catch (e) {}
         }
 
-        const micTrack = (webrtcAudioEnabled && p2pLocalStream) ? p2pLocalStream.getAudioTracks()[0] : null;
+        const micTrack = (webrtcAudioEnabled && p2pLocalStream) ? p2pLocalStream.getAudioTracks().find(t => t.readyState === 'live') || null : null;
         if (peerObj.audioSender) {
           try { await peerObj.audioSender.replaceTrack(micTrack || null); } catch (e) {}
         } else if (micTrack) {
@@ -5553,6 +5829,13 @@
             peerObj.audioSender = peerObj.pc.addTrack(micTrack, p2pLocalStream);
           } catch (e) {}
         }
+
+        // Asegurar transceivers en sendrecv
+        try {
+          peerObj.pc.getTransceivers().forEach(tr => {
+            if (tr.direction !== 'sendrecv') tr.direction = 'sendrecv';
+          });
+        } catch (e) {}
 
         // Disparar renegociación SDP hacia el par remoto para que reciba la pista de inmediato
         await createAndSendP2POffer(remotePeerId, peerObj.name, peerObj.role);
@@ -5745,14 +6028,43 @@
           vidEl.srcObject = peerObj.stream;
           vidEl.muted = false;
         }
-        const hasStreamLiveVideoTrack = peerObj.stream && peerObj.stream.getVideoTracks().some(t => t.readyState === 'live' && t.enabled);
+
+        if (!vidEl.__frameDetectionAttached) {
+          vidEl.__frameDetectionAttached = true;
+          const onFrameReady = () => {
+            if (peerObj.videoEnabled && !peerObj.isSharingScreen && vidEl.videoWidth > 0 && !vidEl.paused) {
+              vidEl.classList.remove('hidden');
+              if (phEl) {
+                phEl.classList.add('hidden');
+                phEl.style.display = 'none';
+              }
+            }
+          };
+          vidEl.addEventListener('loadedmetadata', onFrameReady);
+          vidEl.addEventListener('playing', onFrameReady);
+          vidEl.addEventListener('timeupdate', onFrameReady);
+          vidEl.addEventListener('pause', () => {
+            if (vidEl.paused && phEl) {
+              vidEl.classList.add('hidden');
+              phEl.classList.remove('hidden');
+              phEl.style.display = 'flex';
+            }
+          });
+        }
+
+        const hasStreamLiveVideoTrack = peerObj.stream && peerObj.stream.getVideoTracks().some(t => t.readyState === 'live' && t.enabled && !t.muted);
         if (hasStreamLiveVideoTrack) {
           peerObj.videoEnabled = true;
         }
-        const hasLiveVideo = (Boolean(peerObj.videoEnabled) || hasStreamLiveVideoTrack) && !peerObj.isSharingScreen;
-        vidEl.classList.toggle('hidden', !hasLiveVideo);
-        if (phEl) phEl.classList.toggle('hidden', hasLiveVideo);
-        if (hasLiveVideo) {
+        const hasLiveDecodedFrames = vidEl.videoWidth > 0 && !vidEl.paused && vidEl.readyState >= 2;
+        const shouldShowVideo = Boolean(peerObj.videoEnabled) && hasStreamLiveVideoTrack && hasLiveDecodedFrames && !peerObj.isSharingScreen;
+
+        vidEl.classList.toggle('hidden', !shouldShowVideo);
+        if (phEl) {
+          phEl.classList.toggle('hidden', shouldShowVideo);
+          phEl.style.display = shouldShowVideo ? 'none' : 'flex';
+        }
+        if (peerObj.videoEnabled && hasStreamLiveVideoTrack) {
           vidEl.play().catch(() => {});
         }
       }
@@ -5868,6 +6180,8 @@
     }
 
     // ==================== INICIALIZADOR Y CONTROLES UNIFICADOS (P2P / LIVEKIT) ====================
+
+
     async function startStudentVideoEngine(mode) {
       const targetMode = (mode === 'livekit') ? 'livekit' : 'p2p';
       assignedVideoMode = targetMode;
@@ -5978,7 +6292,7 @@
             showMediaAlert('No se pudo encender la cámara frontal: ' + (err.message || err.name || err));
           }
         } else if (currentVideoMode === 'p2p') {
-          if (!p2pLocalStream) {
+          if (!p2pLocalStream || (webrtcVideoEnabled && (!p2pLocalStream.getVideoTracks().length || !p2pLocalStream.getVideoTracks().some(t => t.readyState === 'live')))) {
             await ensureP2PLocalStream(webrtcAudioEnabled, webrtcVideoEnabled);
           }
           if (p2pLocalStream) {
@@ -6151,6 +6465,9 @@
       if (typeof updateMinimizedVideoStripSummary === 'function') {
         updateMinimizedVideoStripSummary();
       }
+      if (typeof syncVideoGalleryMode === 'function') {
+        syncVideoGalleryMode();
+      }
     }
 
     function cleanupOrphanStudentVideoCards(activeParticipantKeys) {
@@ -6233,6 +6550,15 @@
         existingCard.id = `webrtcCard_${remotePeerId}`;
         existingCard.setAttribute('data-peer-id', remotePeerId);
         if (dedupKey) existingCard.setAttribute('data-student-name', dedupKey);
+        existingCard.setAttribute('data-peer-role', resolvedRole);
+
+        if (existingCard.parentElement !== remoteContainer) {
+          if (resolvedRole === 'host') {
+            remoteContainer.insertBefore(existingCard, remoteContainer.firstChild);
+          } else {
+            remoteContainer.appendChild(existingCard);
+          }
+        }
 
         const videoEl = existingCard.querySelector('video');
         if (videoEl) {
@@ -6240,7 +6566,22 @@
           videoEl.setAttribute('webkit-playsinline', '');
           videoEl.setAttribute('autoplay', '');
         }
-        const placeholderEl = existingCard.querySelector('[data-role="placeholder"]') || existingCard.querySelectorAll('div')[0];
+        let placeholderEl = existingCard.querySelector('[data-role="placeholder"]');
+        const initial = (resolvedName || 'P').trim().charAt(0).toUpperCase() || 'P';
+        const avatarColor = resolvedRole === 'host'
+          ? 'bg-emerald-600/30 border-emerald-400/40 text-emerald-200'
+          : 'bg-[#0e72ed]/30 border-[#0e72ed]/60 text-white';
+
+        if (!placeholderEl) {
+          placeholderEl = document.createElement('div');
+          placeholderEl.setAttribute('data-role', 'placeholder');
+          placeholderEl.className = 'flex flex-col items-center justify-center text-slate-400';
+          placeholderEl.innerHTML = `<div class="w-8 h-8 rounded-full ${avatarColor} border flex items-center justify-center font-bold text-xs mb-0.5">${initial}</div>`;
+          existingCard.appendChild(placeholderEl);
+        } else {
+          placeholderEl.innerHTML = `<div class="w-8 h-8 rounded-full ${avatarColor} border flex items-center justify-center font-bold text-xs mb-0.5">${initial}</div>`;
+        }
+
         const nameTagEl = existingCard.querySelector('[data-role="name"]') || existingCard.querySelectorAll('div')[2];
         const micIconEl = existingCard.querySelector('[data-role="mute"]') || existingCard.querySelectorAll('div')[3];
 
@@ -6257,6 +6598,7 @@
           micIconEl: micIconEl || webrtcPeers[remotePeerId].micIconEl
         });
         updateMinimizedVideoStripSummary();
+        if (typeof syncVideoGalleryMode === 'function') syncVideoGalleryMode();
         return webrtcPeers[remotePeerId];
       }
 
@@ -6299,10 +6641,8 @@
       card.appendChild(nameTag);
       card.appendChild(micIcon);
 
-      const expandedBody = document.getElementById('webrtcStripExpandedBody') || strip;
-      const localCard = document.getElementById('webrtcLocalCard');
       if (resolvedRole === 'host') {
-        expandedBody.insertBefore(card, localCard || expandedBody.firstChild);
+        remoteContainer.insertBefore(card, remoteContainer.firstChild);
       } else {
         remoteContainer.appendChild(card);
       }
@@ -6408,6 +6748,7 @@
         overlay.classList.remove('flex');
         if (restoreStageBtn) restoreStageBtn.classList.add('hidden');
       }
+      if (typeof syncVideoGalleryMode === 'function') syncVideoGalleryMode();
     }
 
     let lastScreenShareVolume = 0.8;
@@ -6808,6 +7149,175 @@
     // ==================== MINIATURA DE VIDEO FLOTANTE: ARRASTRABLE (DRAGGABLE) Y MINIMIZABLE ====================
     let isVideoStripMinimized = false;
 
+    
+    // ==================== MODO GALERÍA TIPO ZOOM / COMPACTO AUTOMÁTICO ====================
+    let isGalleryModeActive = false;
+
+    function hasActiveSharedContent() {
+      // 1. Hay lección interactiva .html realmente cargada (no simplemente que el iframe exista)
+      const hasLesson = Boolean(
+        (typeof hasLoadedLesson !== 'undefined' && hasLoadedLesson) ||
+        (typeof window.hasLoadedLesson !== 'undefined' && window.hasLoadedLesson)
+      );
+
+      // 2. Hay Pizarra Colaborativa activa
+      const hasWhiteboard = Boolean(typeof wbIsOpen !== 'undefined' && wbIsOpen);
+
+      // 3. Hay pantalla compartida en vivo (remota o local)
+      const stageOverlay = document.getElementById('remoteScreenShareOverlay');
+      const hasScreenShare = Boolean(
+        (typeof isSharingScreen !== 'undefined' && isSharingScreen) ||
+        (typeof window.__remoteScreenSharingActive !== 'undefined' && window.__remoteScreenSharingActive) ||
+        (stageOverlay && !stageOverlay.classList.contains('hidden') && stageOverlay.style.display !== 'none')
+      );
+
+      return hasLesson || hasWhiteboard || hasScreenShare;
+    }
+
+    let __isSyncingGallery = false;
+    function syncVideoGalleryMode() {
+      if (__isSyncingGallery) return;
+      __isSyncingGallery = true;
+      try {
+        _syncVideoGalleryModeInternal();
+      } finally {
+        __isSyncingGallery = false;
+      }
+    }
+
+    function _syncVideoGalleryModeInternal() {
+      const strip = document.getElementById('webrtcVideoStrip');
+      const expandedBody = document.getElementById('webrtcStripExpandedBody');
+      const frameContainer = document.getElementById('studentFrameContainer');
+      const studentFrame = document.getElementById('studentFrame');
+      const lessonFrame = document.getElementById('lessonFrame');
+      const waitingCover = document.getElementById('waitingCover');
+      const whiteboardView = document.getElementById('whiteboardView');
+      const workspaceCol = document.getElementById('leftWorkspaceColumn');
+      if (!strip || !expandedBody) return;
+
+      const hasContent = hasActiveSharedContent();
+
+      if (!hasContent) {
+        // MODO GALERÍA GRANDE: Se expande ocupando el escenario completo sobre fondo oscuro
+        isGalleryModeActive = true;
+        strip.classList.add('gallery-mode');
+
+        // Ocultar con !important todos los elementos del escenario didáctico blanco
+        if (frameContainer) frameContainer.style.setProperty('display', 'none', 'important');
+        if (studentFrame) studentFrame.style.setProperty('display', 'none', 'important');
+        if (lessonFrame) lessonFrame.style.setProperty('display', 'none', 'important');
+        if (waitingCover) waitingCover.style.setProperty('display', 'none', 'important');
+        if (whiteboardView) whiteboardView.style.setProperty('display', 'none', 'important');
+
+        if (workspaceCol) {
+          workspaceCol.classList.remove('bg-white');
+          workspaceCol.classList.add('bg-[#0a0c10]');
+          workspaceCol.style.setProperty('background-color', '#0a0c10', 'important');
+        }
+
+        // Limpiar cualquier propiedad inline de posición o dimensiones para que las reglas CSS tomen el control
+        ['top', 'left', 'right', 'bottom', 'width', 'height', 'transform', 'max-width', 'max-height'].forEach(prop => {
+          strip.style.removeProperty(prop);
+        });
+        strip.style.top = '';
+        strip.style.left = '';
+        strip.style.right = '';
+        strip.style.bottom = '';
+        strip.style.width = '';
+        strip.style.height = '';
+        strip.style.transform = '';
+
+        // Si estaba minimizado, restaurarlo en galería
+        if (isVideoStripMinimized) {
+          isVideoStripMinimized = false;
+          const minPill = document.getElementById('webrtcStripMinimizedPill');
+          if (minPill) { minPill.classList.add('hidden'); minPill.classList.remove('flex'); }
+          expandedBody.classList.remove('hidden');
+        }
+
+// Tarjeta del Host gestionada limpiamente fuera del bucle de layout
+
+        // Calcular cantidad de participantes visibles
+        const remoteCards = strip.querySelectorAll('[id^="webrtcCard_"]');
+        const count = 1 + (remoteCards ? remoteCards.length : 0);
+
+        expandedBody.classList.remove('gallery-count-1', 'gallery-count-2', 'gallery-count-3', 'gallery-count-4', 'gallery-count-many');
+        strip.classList.remove('gallery-count-1', 'gallery-count-2', 'gallery-count-3', 'gallery-count-4', 'gallery-count-many');
+        if (count === 1) {
+          expandedBody.classList.add('gallery-count-1');
+          strip.classList.add('gallery-count-1');
+        } else if (count === 2) {
+          expandedBody.classList.add('gallery-count-2');
+          strip.classList.add('gallery-count-2');
+        } else if (count === 3) {
+          expandedBody.classList.add('gallery-count-3');
+          strip.classList.add('gallery-count-3');
+        } else if (count === 4) {
+          expandedBody.classList.add('gallery-count-4');
+          strip.classList.add('gallery-count-4');
+        } else {
+          expandedBody.classList.add('gallery-count-many');
+          strip.classList.add('gallery-count-many');
+        }
+      } else {
+        // MODO COMPACTO FLOTANTE: Hay lección, pizarra o screen share activo
+        isGalleryModeActive = false;
+        strip.classList.remove('gallery-mode');
+        strip.classList.remove('gallery-count-1', 'gallery-count-2', 'gallery-count-3', 'gallery-count-4', 'gallery-count-many');
+        expandedBody.classList.remove('gallery-count-1', 'gallery-count-2', 'gallery-count-3', 'gallery-count-4', 'gallery-count-many');
+
+        // Restaurar display de los contenedores según corresponda
+        if (frameContainer) {
+          frameContainer.style.removeProperty('display');
+          frameContainer.style.display = '';
+        }
+        if (studentFrame) {
+          studentFrame.style.removeProperty('display');
+          studentFrame.style.display = '';
+        }
+        if (lessonFrame) {
+          lessonFrame.style.removeProperty('display');
+          lessonFrame.style.display = '';
+        }
+
+        if (typeof wbIsOpen !== 'undefined' && wbIsOpen) {
+          if (whiteboardView) {
+            whiteboardView.style.removeProperty('display');
+            whiteboardView.classList.remove('hidden');
+          }
+        } else {
+          if (whiteboardView) {
+            whiteboardView.style.setProperty('display', 'none', 'important');
+            whiteboardView.classList.add('hidden');
+          }
+          if (hasLoadedLesson) {
+            if (waitingCover) {
+              waitingCover.style.setProperty('display', 'none', 'important');
+              waitingCover.classList.add('hidden');
+            }
+          } else {
+            if (waitingCover) {
+              waitingCover.style.removeProperty('display');
+              waitingCover.classList.remove('hidden');
+            }
+          }
+        }
+
+        if (workspaceCol) {
+          workspaceCol.classList.remove('bg-[#0a0c10]');
+          workspaceCol.classList.add('bg-white');
+          workspaceCol.style.removeProperty('background-color');
+        }
+
+        // Restaurar posición flotante predeterminada si no tiene coordenadas personalizadas
+        if (strip.style.left === '' && strip.style.top === '') {
+          strip.style.bottom = '3.5rem';
+          strip.style.right = '0.75rem';
+        }
+      }
+    }
+
     function updateMinimizedVideoStripSummary() {
       const labelEl = document.getElementById('webrtcMinimizedLabel');
       const subLabelEl = document.getElementById('webrtcMinimizedSubLabel');
@@ -6850,6 +7360,7 @@ window.setVideoStripMinimized = function(minimized) {
     };
 
     function clampVideoStripIntoBounds() {
+      if (isGalleryModeActive) return;
       const strip = document.getElementById('webrtcVideoStrip');
       const container = document.getElementById('leftWorkspaceColumn');
       if (!strip || !container) return;
@@ -6922,7 +7433,7 @@ window.setVideoStripMinimized = function(minimized) {
       let dragOffsetY = 0;
 
       strip.addEventListener('mousedown', (e) => {
-        if (e.button !== 0) return;
+        if (e.button !== 0 || isGalleryModeActive) return;
         if (e.target.closest('button, #webrtcLocalControls, #btnMinimizeVideoStrip, #btnRestoreVideoStrip')) return;
 
         const cRect = container.getBoundingClientRect();
@@ -6972,6 +7483,7 @@ window.setVideoStripMinimized = function(minimized) {
       let touchCanDrag = false;
 
       strip.addEventListener('touchstart', (e) => {
+        if (isGalleryModeActive) return;
         if (e.target.closest('button, #webrtcLocalControls, #btnMinimizeVideoStrip, #btnRestoreVideoStrip')) return;
         if (e.touches.length === 1) {
           const t = e.touches[0];
@@ -7028,6 +7540,7 @@ window.setVideoStripMinimized = function(minimized) {
 
       // Posicionamiento adaptado para modo horizontal móvil (evita tapar la barra central de mandos)
       function applyLandscapePositionIfNeeded() {
+        if (isGalleryModeActive) return;
         const isLandscapeMobile = window.innerHeight <= 450 || (window.innerWidth <= 950 && window.innerHeight < window.innerWidth && window.innerHeight <= 480);
         if (isLandscapeMobile) {
           strip.style.top = '8px';
@@ -7041,6 +7554,7 @@ window.setVideoStripMinimized = function(minimized) {
 
       window.addEventListener('resize', () => {
         clampVideoStripIntoBounds();
+        if (typeof updateChatLayoutMode === 'function') updateChatLayoutMode();
       });
 
       window.addEventListener('orientationchange', () => {

@@ -218,13 +218,13 @@
 
         <!-- Selector de Motor de Video: 1-a-1 P2P vs Grupal LiveKit -->
         <div class="flex items-center bg-slate-900 border border-slate-700/90 rounded-xl p-1 shadow-sm" title="Motor de Video para la Sala">
-          <button id="btnVideoModeP2P" type="button" class="px-2.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 bg-emerald-600 text-white shadow-xs" title="Modo Gratis: WebRTC Nativo con STUN/TURN (sin cuotas)">
+          <button id="btnVideoModeP2P" data-mode="p2p" type="button" class="px-2.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 bg-emerald-600 text-white shadow-xs" title="Modo Gratis: WebRTC Nativo con STUN/TURN (sin cuotas)">
             <i class="fa-solid fa-users text-[11px]"></i>
             <span>Gratis (Nativo)</span>
           </button>
-          <button id="btnVideoModeLiveKit" type="button" class="px-2.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 text-slate-400 hover:text-white" title="Modo Grupal: LiveKit Cloud SFU (ideal 3 a 8 alumnos)">
-            <i class="fa-solid fa-users text-[11px]"></i>
-            <span>Grupal (LiveKit SFU)</span>
+          <button id="btnVideoModeLiveKit" data-mode="livekit" type="button" class="px-2.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 text-slate-400 hover:text-white" title="Modo Grupal: LiveKit Cloud SFU (ideal 3 a 8 alumnos)">
+            <i class="fa-solid fa-server text-[11px]"></i>
+            <span>LiveKit SFU</span>
           </button>
         </div>
 
@@ -680,11 +680,11 @@
 
       <!-- Selector compacto de Modo de Video en Cabecera -->
       <div class="flex items-center bg-slate-800/90 border border-slate-700 rounded-lg p-0.5" title="Motor de Video para la Sala">
-        <button id="headerBtnVideoModeP2P" type="button" class="px-2 py-1 rounded text-[10px] font-bold transition bg-emerald-600 text-white" title="Modo Gratis: WebRTC Nativo con STUN/TURN">
+        <button id="headerBtnVideoModeP2P" data-mode="p2p" type="button" class="px-2 py-1 rounded text-[10px] font-bold transition bg-emerald-600 text-white" title="Modo Gratis: WebRTC Nativo con STUN/TURN">
           <i class="fa-solid fa-users text-[9px] mr-1"></i>Gratis (Nativo)
         </button>
-        <button id="headerBtnVideoModeLiveKit" type="button" class="px-2 py-1 rounded text-[10px] font-bold transition text-slate-400 hover:text-white" title="Modo Grupal LiveKit SFU">
-          <i class="fa-solid fa-users text-[9px] mr-1"></i>Grupal SFU
+        <button id="headerBtnVideoModeLiveKit" data-mode="livekit" type="button" class="px-2 py-1 rounded text-[10px] font-bold transition text-slate-400 hover:text-white" title="Modo Grupal LiveKit SFU">
+          <i class="fa-solid fa-server text-[9px] mr-1"></i>LiveKit SFU
         </button>
       </div>
 
@@ -1947,6 +1947,12 @@
       }
       renderStudentsDashboard();
 
+      // CREACIÓN GARANTIZADA DE TARJETA EN EL DOCK DEL HOST AL ADMITIR
+      if (typeof ensureRemotePeerCard === 'function') {
+        const studentPeerId = st.peerId || studentId;
+        ensureRemotePeerCard(studentPeerId, st.name);
+      }
+
       roomChannel.send({
         type: 'broadcast',
         event: 'WAITING_ROOM_ADMIT',
@@ -2119,6 +2125,9 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
         const sName = payload.studentName || 'Alumno';
         // Si ya fue admitido previamente en esta sesión, re-enviarle admisión automática
         if (admittedStudentIds.has(sid)) {
+          if (typeof ensureRemotePeerCard === 'function') {
+            ensureRemotePeerCard(payload.peerId || sid, sName);
+          }
           roomChannel.send({
             type: 'broadcast',
             event: 'WAITING_ROOM_ADMIT',
@@ -2174,6 +2183,12 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
           studentsState[stName] = { joined: true, slide: currentSlide, answers: [], slideHistory: {}, officialScoreHistory: {} };
         }
         renderStudentsDashboard();
+
+        // CREACIÓN GARANTIZADA DE TARJETA EN EL DOCK DEL HOST AL UNIRSE
+        if (typeof ensureRemotePeerCard === 'function') {
+          const peerId = payload.peerId || payload.studentId || normalizeStudentPeerKey(stName);
+          ensureRemotePeerCard(peerId, stName);
+        }
       });
 
       roomChannel.on('broadcast', { event: 'REQUEST_LESSON' }, () => {
@@ -5032,6 +5047,10 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
 
     // ==================== ARQUITECTURA DUAL DE VIDEO: WEBRTC NATIVO (P2P) / LIVEKIT SFU ====================
     let rawStoredMode = localStorage.getItem('elt_host_video_mode');
+    if (rawStoredMode === 'daily') {
+      rawStoredMode = 'p2p';
+      try { localStorage.setItem('elt_host_video_mode', 'p2p'); } catch (e) {}
+    }
     let currentVideoMode = (rawStoredMode === 'livekit') ? 'livekit' : 'p2p';
 
     function setHostVideoMode(mode) {
@@ -5897,7 +5916,7 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
           webrtcVideoEnabled = !webrtcVideoEnabled;
         }
       } else if (currentVideoMode === 'p2p') {
-        if (!p2pLocalStream) {
+        if (!p2pLocalStream || (webrtcVideoEnabled && (!p2pLocalStream.getVideoTracks().length || !p2pLocalStream.getVideoTracks().some(t => t.readyState === 'live')))) {
           await ensureP2PLocalStream(webrtcAudioEnabled, webrtcVideoEnabled);
         }
         if (p2pLocalStream) {
@@ -5964,7 +5983,7 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
           el.volume = 1.0;
           el.play().catch(() => {});
         });
-        const remoteVideos = document.querySelectorAll('#webrtcRemoteCardsContainer video');
+        const remoteVideos = document.querySelectorAll('#webrtcRemoteCards video');
         remoteVideos.forEach(v => {
           v.muted = false;
           v.volume = 1.0;
@@ -6163,7 +6182,17 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
     function cleanupOrphanRemotePeerCards(activePeerIds, activeStudentNames) {
       Object.keys(webrtcPeers).forEach(pid => {
         const p = webrtcPeers[pid];
+        if (!p) return;
+        // Blindaje: No podar si la conexión P2P está conectada, conectando o con señalización activa
+        if (p.pc && (p.pc.connectionState === 'connected' || p.pc.connectionState === 'connecting' || p.pc.signalingState !== 'closed')) {
+          return;
+        }
         const cleanName = normalizeStudentPeerKey(p && p.name);
+        // Blindaje: No podar si el alumno está registrado como admitido en studentsState
+        if (cleanName && typeof studentsState === 'object' && studentsState) {
+          const isAdmitted = Object.values(studentsState).some(st => normalizeStudentPeerKey(st.name || st.student_name) === cleanName);
+          if (isAdmitted) return;
+        }
         if (activeStudentNames && cleanName && !activeStudentNames.has(cleanName)) {
           if (!activePeerIds || !activePeerIds.has(pid)) {
             removeRemotePeerCard(pid, p.name);
@@ -6182,6 +6211,13 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
               return;
             }
             if (activeStudentNames && activeStudentNames.size > 0 && !activeStudentNames.has(sName)) {
+              if (typeof studentsState === 'object' && studentsState) {
+                const isAdmitted = Object.values(studentsState).some(st => normalizeStudentPeerKey(st.name || st.student_name) === sName);
+                if (isAdmitted) {
+                  seenNames.add(sName);
+                  return;
+                }
+              }
               cardEl.remove();
               return;
             }
@@ -6311,14 +6347,37 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
           vidEl.srcObject = peerObj.stream;
           vidEl.muted = false;
         }
-        const hasStreamLiveVideoTrack = peerObj.stream && peerObj.stream.getVideoTracks().some(t => t.readyState === 'live' && t.enabled);
+
+        if (!vidEl.__frameDetectionAttached) {
+          vidEl.__frameDetectionAttached = true;
+          const onFrameReady = () => {
+            if (peerObj.videoEnabled && !peerObj.isSharingScreen && vidEl.videoWidth > 0 && !vidEl.paused) {
+              vidEl.classList.remove('hidden');
+              if (phEl) phEl.classList.add('hidden');
+            }
+          };
+          vidEl.addEventListener('loadedmetadata', onFrameReady);
+          vidEl.addEventListener('playing', onFrameReady);
+          vidEl.addEventListener('timeupdate', onFrameReady);
+          vidEl.addEventListener('pause', () => {
+            if (vidEl.paused && phEl) {
+              vidEl.classList.add('hidden');
+              phEl.classList.remove('hidden');
+            }
+          });
+        }
+
+        const hasStreamLiveVideoTrack = peerObj.stream && peerObj.stream.getVideoTracks().some(t => t.readyState === 'live' && t.enabled && !t.muted);
         if (hasStreamLiveVideoTrack) {
           peerObj.videoEnabled = true;
         }
-        const hasLiveVideo = (Boolean(peerObj.videoEnabled) || hasStreamLiveVideoTrack) && !peerObj.isSharingScreen;
-        vidEl.classList.toggle('hidden', !hasLiveVideo);
-        if (phEl) phEl.classList.toggle('hidden', hasLiveVideo);
-        if (hasLiveVideo) {
+        const hasLiveDecodedFrames = vidEl.videoWidth > 0 && !vidEl.paused && vidEl.readyState >= 2;
+        const shouldShowVideo = Boolean(peerObj.videoEnabled) && hasStreamLiveVideoTrack && hasLiveDecodedFrames && !peerObj.isSharingScreen;
+
+        vidEl.classList.toggle('hidden', !shouldShowVideo);
+        if (phEl) phEl.classList.toggle('hidden', shouldShowVideo);
+
+        if (peerObj.videoEnabled && hasStreamLiveVideoTrack) {
           vidEl.play().catch(() => {});
         }
       }

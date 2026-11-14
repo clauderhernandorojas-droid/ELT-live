@@ -173,6 +173,9 @@ function setupIPCHandlers() {
 
 // Ciclo de vida de la aplicación
 app.whenReady().then(() => {
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+    callback(true);
+  });
   configureMediaPermissions();
   setupIPCHandlers();
   createWindow();
@@ -190,3 +193,18 @@ app.on('window-all-closed', () => {
   }
 });
 
+
+// Bloqueo de deep linking y protocolos externos como jitsi-meet://
+app.on('web-contents-created', (event, contents) => {
+  contents.on('will-navigate', (navEvent, url) => {
+    if (typeof url === 'string' && url.startsWith('jitsi-meet://')) {
+      navEvent.preventDefault();
+    }
+  });
+  contents.setWindowOpenHandler(({ url }) => {
+    if (typeof url === 'string' && url.startsWith('jitsi-meet://')) {
+      return { action: 'deny' };
+    }
+    return { action: 'allow' };
+  });
+});

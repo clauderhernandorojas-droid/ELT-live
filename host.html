@@ -144,7 +144,8 @@
         color: #000000 !important;
       }
     }
-  </style>
+  
+    </style>
 </head>
 <body class="bg-slate-900 font-sans h-screen w-screen overflow-hidden flex flex-col text-slate-100">
 
@@ -217,9 +218,9 @@
 
         <!-- Selector de Motor de Video: 1-a-1 P2P vs Grupal LiveKit -->
         <div class="flex items-center bg-slate-900 border border-slate-700/90 rounded-xl p-1 shadow-sm" title="Motor de Video para la Sala">
-          <button id="btnVideoModeP2P" type="button" class="px-2.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 bg-emerald-600 text-white shadow-xs" title="Modo 1-a-1: WebRTC P2P directo ilimitado y gratis (sin consumir cuota de LiveKit)">
-            <i class="fa-solid fa-user text-[11px]"></i>
-            <span>1-a-1 (P2P Gratis)</span>
+          <button id="btnVideoModeP2P" type="button" class="px-2.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 bg-emerald-600 text-white shadow-xs" title="Modo Gratis: WebRTC Nativo con STUN/TURN (sin cuotas)">
+            <i class="fa-solid fa-users text-[11px]"></i>
+            <span>Gratis (Nativo)</span>
           </button>
           <button id="btnVideoModeLiveKit" type="button" class="px-2.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 text-slate-400 hover:text-white" title="Modo Grupal: LiveKit Cloud SFU (ideal 3 a 8 alumnos)">
             <i class="fa-solid fa-users text-[11px]"></i>
@@ -679,8 +680,8 @@
 
       <!-- Selector compacto de Modo de Video en Cabecera -->
       <div class="flex items-center bg-slate-800/90 border border-slate-700 rounded-lg p-0.5" title="Motor de Video para la Sala">
-        <button id="headerBtnVideoModeP2P" type="button" class="px-2 py-1 rounded text-[10px] font-bold transition bg-emerald-600 text-white" title="Modo 1-a-1 P2P Gratis Ilimitado">
-          <i class="fa-solid fa-user text-[9px] mr-1"></i>1-a-1 P2P
+        <button id="headerBtnVideoModeP2P" type="button" class="px-2 py-1 rounded text-[10px] font-bold transition bg-emerald-600 text-white" title="Modo Gratis: WebRTC Nativo con STUN/TURN">
+          <i class="fa-solid fa-users text-[9px] mr-1"></i>Gratis (Nativo)
         </button>
         <button id="headerBtnVideoModeLiveKit" type="button" class="px-2 py-1 rounded text-[10px] font-bold transition text-slate-400 hover:text-white" title="Modo Grupal LiveKit SFU">
           <i class="fa-solid fa-users text-[9px] mr-1"></i>Grupal SFU
@@ -1952,7 +1953,9 @@
         payload: {
           studentId: studentId,
           studentName: st.name,
-          videoMode: currentVideoMode
+          videoMode: currentVideoMode,
+          videoEngine: currentVideoMode,
+          roomPin: roomPin
         }
       });
     };
@@ -2011,8 +2014,7 @@
         ? String(customPin).trim()
         : Math.floor(1000 + Math.random() * 9000).toString();
       document.getElementById('roomPinDisplay').textContent = '#' + roomPin;
-
-      const titleLabel = document.getElementById('liveSessionTitleLabel');
+const titleLabel = document.getElementById('liveSessionTitleLabel');
       if (titleLabel) {
         titleLabel.textContent = targetStudentName
           ? `ELT Live — Clase con ${targetStudentName}`
@@ -2237,6 +2239,7 @@
             name: 'Profesor (Host)',
             role: 'host',
             videoMode: currentVideoMode,
+            videoEngine: currentVideoMode,
             peerId: webrtcMyPeerId,
             audioEnabled: webrtcAudioEnabled,
             videoEnabled: webrtcVideoEnabled
@@ -5027,8 +5030,9 @@
       }
     });
 
-    // ==================== ARQUITECTURA DUAL DE VIDEO: P2P GRATIS ILIMITADO / LIVEKIT SFU ====================
-    let currentVideoMode = localStorage.getItem('elt_host_video_mode') || 'p2p';
+    // ==================== ARQUITECTURA DUAL DE VIDEO: WEBRTC NATIVO (P2P) / LIVEKIT SFU ====================
+    let rawStoredMode = localStorage.getItem('elt_host_video_mode');
+    let currentVideoMode = (rawStoredMode === 'livekit') ? 'livekit' : 'p2p';
 
     function setHostVideoMode(mode) {
       currentVideoMode = (mode === 'livekit') ? 'livekit' : 'p2p';
@@ -5043,7 +5047,7 @@
     }
 
     function updateVideoModeUI() {
-      const isP2P = currentVideoMode === 'p2p';
+      const isP2P = (currentVideoMode === 'p2p');
 
       const btnP2P = document.getElementById('btnVideoModeP2P');
       const btnLK = document.getElementById('btnVideoModeLiveKit');
@@ -5070,12 +5074,13 @@
 
     function broadcastVideoModeConfig(mode) {
       if (!roomChannel) return;
-      const targetMode = mode || currentVideoMode;
+      const targetMode = (mode === 'livekit') ? 'livekit' : 'p2p';
       roomChannel.send({
         type: 'broadcast',
         event: 'VIDEO_MODE_CONFIG',
         payload: {
           videoMode: targetMode,
+          videoEngine: targetMode,
           roomPin: roomPin
         }
       });
@@ -5086,22 +5091,19 @@
     document.getElementById('headerBtnVideoModeP2P')?.addEventListener('click', () => setHostVideoMode('p2p'));
     document.getElementById('headerBtnVideoModeLiveKit')?.addEventListener('click', () => setHostVideoMode('livekit'));
 
-    // Configuración STUN + TURN OpenRelay gratuito para conexiones P2P sin cuota
+    // Configuración STUN + TURN OpenRelay gratuito para conexiones WebRTC Nativas
     const WEBRTC_ICE_SERVERS = {
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' },
-        { urls: 'stun:stun.cloudflare.com:3478' },
         {
           urls: [
             'turn:openrelay.metered.ca:80',
             'turn:openrelay.metered.ca:443',
-            'turn:openrelay.metered.ca:443?transport=tcp',
             'turns:openrelay.metered.ca:443?transport=tcp'
           ],
-          username: 'openrelay',
-          credential: 'openrelay'
+          username: 'openrelayproject',
+          credential: 'openrelayproject'
         }
       ],
       iceCandidatePoolSize: 10
@@ -5463,16 +5465,16 @@
         return null;
       }
       try {
+        const participantCount = Object.keys(webrtcPeers).length + 1;
+        const videoConstraints = participantCount >= 3
+          ? { facingMode: 'user', width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 15, max: 15 } }
+          : { facingMode: 'user', width: { ideal: 480 }, height: { ideal: 360 }, frameRate: { max: 20 } };
+
         if (!p2pLocalStream) {
           try {
             p2pLocalStream = await navigator.mediaDevices.getUserMedia({
               audio: true,
-              video: {
-                facingMode: 'user',
-                width: { ideal: 480 },
-                height: { ideal: 360 },
-                frameRate: { max: 20 }
-              }
+              video: videoConstraints
             });
           } catch (camErr) {
             p2pLocalStream = await navigator.mediaDevices.getUserMedia({
@@ -5494,12 +5496,7 @@
             let vStream = null;
             try {
               vStream = await navigator.mediaDevices.getUserMedia({
-                video: {
-                  facingMode: 'user',
-                  width: { ideal: 480 },
-                  height: { ideal: 360 },
-                  frameRate: { max: 20 }
-                }
+                video: videoConstraints
               });
             } catch (errFallback) {
               vStream = await navigator.mediaDevices.getUserMedia({
@@ -5512,6 +5509,13 @@
             });
             originalCamTrack = p2pLocalStream.getVideoTracks()[0] || null;
           }
+        }
+
+        // Si ya hay pista de video y cambiamos a 3+ participantes, aplicar constraints en vivo
+        if (p2pLocalStream && originalCamTrack && participantCount >= 3 && originalCamTrack.applyConstraints) {
+          try {
+            await originalCamTrack.applyConstraints({ width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 15, max: 15 } });
+          } catch (e) {}
         }
 
         handleP2PLocalVideoUI();
@@ -5812,26 +5816,28 @@
 
     // ==================== INICIALIZADOR Y CONTROLES UNIFICADOS (P2P / LIVEKIT) ====================
     async function startHostVideoEngine(mode) {
-      console.log('[ELT Live] Inicializando motor de video Host:', mode);
-      if (mode === 'livekit') {
-        closeAllP2PConnections();
-        if (p2pLocalStream) {
-          p2pLocalStream.getTracks().forEach(t => t.stop());
-          p2pLocalStream = null;
-        }
+      const targetMode = (mode === 'livekit') ? 'livekit' : 'p2p';
+      currentVideoMode = targetMode;
+      console.log('[ELT Live] Inicializando motor de video Host:', targetMode);
+
+      const localCard = document.getElementById('webrtcLocalCard');
+      const remoteCards = document.getElementById('webrtcRemoteCards');
+      if (localCard) localCard.classList.remove('hidden');
+      if (remoteCards) remoteCards.classList.remove('hidden');
+
+      if (targetMode === 'livekit') {
         if (roomPin) {
           await connectLiveKit(roomPin, 'Profesor (Host)', true);
         }
       } else {
-        // Modo P2P directo
+        // Modo Gratis WebRTC Nativo (P2P)
         if (livekitRoom) {
           try { await livekitRoom.disconnect(); } catch (e) {}
           livekitRoom = null;
         }
-        if (webrtcAudioEnabled || webrtcVideoEnabled) {
-          await ensureP2PLocalStream(webrtcAudioEnabled, webrtcVideoEnabled);
+        if (typeof announceWebRTCPresence === 'function') {
+          announceWebRTCPresence();
         }
-        announceWebRTCPresence();
       }
       updateLocalMediaButtonsUI();
     }
@@ -5846,16 +5852,38 @@
           webrtcAudioEnabled = !webrtcAudioEnabled;
         }
       } else if (currentVideoMode === 'p2p') {
-        if (!p2pLocalStream && webrtcAudioEnabled) {
-          await ensureP2PLocalStream(true, webrtcVideoEnabled);
+        try {
+          if (webrtcAudioEnabled) {
+            const hasLiveAudio = p2pLocalStream && p2pLocalStream.getAudioTracks().some(t => t.readyState === 'live');
+            if (!p2pLocalStream || !hasLiveAudio) {
+              try {
+                const micStream = await navigator.mediaDevices.getUserMedia({
+                  audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+                });
+                if (micStream) {
+                  if (!p2pLocalStream) {
+                    p2pLocalStream = micStream;
+                  } else {
+                    micStream.getAudioTracks().forEach(t => p2pLocalStream.addTrack(t));
+                  }
+                  originalMicTrack = p2pLocalStream.getAudioTracks()[0] || null;
+                }
+              } catch (micErr) {
+                console.warn('[P2P] No se pudo obtener micrófono en Host:', micErr);
+              }
+            }
+          }
+          if (p2pLocalStream) {
+            p2pLocalStream.getAudioTracks().forEach(t => { t.enabled = webrtcAudioEnabled; });
+          }
+          await syncP2PTracksToAllPeers();
+        } catch (errAudio) {
+          console.warn('[P2P] Error en toggleLocalAudio Host:', errAudio);
         }
-        if (p2pLocalStream) {
-          p2pLocalStream.getAudioTracks().forEach(t => { t.enabled = webrtcAudioEnabled; });
-        }
-        await syncP2PTracksToAllPeers();
       }
       updateLocalMediaButtonsUI();
       broadcastWebRTCMediaState();
+      unlockAllHostRemoteAudio();
     }
 
     async function toggleLocalVideo() {
@@ -5869,8 +5897,8 @@
           webrtcVideoEnabled = !webrtcVideoEnabled;
         }
       } else if (currentVideoMode === 'p2p') {
-        if (!p2pLocalStream && webrtcVideoEnabled) {
-          await ensureP2PLocalStream(webrtcAudioEnabled, true);
+        if (!p2pLocalStream) {
+          await ensureP2PLocalStream(webrtcAudioEnabled, webrtcVideoEnabled);
         }
         if (p2pLocalStream) {
           p2pLocalStream.getVideoTracks().forEach(t => { t.enabled = webrtcVideoEnabled; });
@@ -5925,6 +5953,28 @@
       broadcastScreenShareState(isSharingScreen);
       broadcastWebRTCMediaState();
     }
+
+    
+    // Desbloqueo de reproducción de audio remoto P2P en el Host
+    function unlockAllHostRemoteAudio() {
+      try {
+        const audioEls = document.querySelectorAll('audio[data-p2p-peer], audio[data-livekit-participant]');
+        audioEls.forEach(el => {
+          el.muted = false;
+          el.volume = 1.0;
+          el.play().catch(() => {});
+        });
+        const remoteVideos = document.querySelectorAll('#webrtcRemoteCardsContainer video');
+        remoteVideos.forEach(v => {
+          v.muted = false;
+          v.volume = 1.0;
+          v.play().catch(() => {});
+        });
+      } catch (e) {}
+    }
+    ['touchstart', 'touchend', 'click', 'keydown'].forEach(evt => {
+      document.addEventListener(evt, unlockAllHostRemoteAudio, { passive: true });
+    });
 
     function syncHostScreenShareStage() {
       const screenOverlay = document.getElementById('remoteScreenShareOverlay');
@@ -6089,6 +6139,8 @@
           webrtcRemoteCardsContainer.querySelectorAll(`[data-peer-id="${peerId}"]`).forEach(el => el.remove());
         }
         document.querySelectorAll(`audio[data-livekit-participant="${peerId}"]`).forEach(a => a.remove());
+        const p2pAudio = document.getElementById(`webrtc_audio_${peerId}`);
+        if (p2pAudio) p2pAudio.remove();
       }
       if (cleanName && webrtcRemoteCardsContainer) {
         const hasAnotherActivePeer = Object.keys(webrtcPeers).some(
@@ -6145,6 +6197,7 @@
 
     function ensureRemotePeerCard(peerId, peerName) {
       if (!webrtcRemoteCardsContainer || !peerId) return null;
+      
       const resolvedName = (peerName || (webrtcPeers[peerId] && webrtcPeers[peerId].name) || 'Alumno').trim();
       const cleanName = normalizeStudentPeerKey(resolvedName);
 
@@ -6278,9 +6331,15 @@
           p2pAudioEl.id = `webrtc_audio_${peerId}`;
           p2pAudioEl.setAttribute('data-p2p-peer', peerId);
           p2pAudioEl.autoplay = true;
+          p2pAudioEl.playsInline = true;
           p2pAudioEl.setAttribute('playsinline', '');
+          p2pAudioEl.setAttribute('webkit-playsinline', '');
+          p2pAudioEl.muted = false;
+          p2pAudioEl.volume = 1.0;
           document.body.appendChild(p2pAudioEl);
         }
+        p2pAudioEl.muted = false;
+        p2pAudioEl.volume = 1.0;
         if (p2pAudioEl.srcObject !== peerObj.stream) {
           p2pAudioEl.srcObject = peerObj.stream;
         }
@@ -6587,8 +6646,7 @@
       webrtcVideoStripEl.style.left = `${Math.max(8, Math.min(maxLeft, currentLeft))}px`;
       webrtcVideoStripEl.style.top = `${Math.max(8, Math.min(maxTop, currentTop))}px`;
     }
-
-    btnMinimizeVideoStrip?.addEventListener('click', (e) => {
+btnMinimizeVideoStrip?.addEventListener('click', (e) => {
       e.stopPropagation();
       setVideoStripMinimized(true);
     });

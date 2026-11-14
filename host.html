@@ -5834,7 +5834,7 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
     }
 
     // ==================== INICIALIZADOR Y CONTROLES UNIFICADOS (P2P / LIVEKIT) ====================
-    async function startHostVideoEngine(mode) {
+        async function startHostVideoEngine(mode) {
       const targetMode = (mode === 'livekit') ? 'livekit' : 'p2p';
       currentVideoMode = targetMode;
       console.log('[ELT Live] Inicializando motor de video Host:', targetMode);
@@ -5842,9 +5842,18 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
       const localCard = document.getElementById('webrtcLocalCard');
       const remoteCards = document.getElementById('webrtcRemoteCards');
       if (localCard) localCard.classList.remove('hidden');
-      if (remoteCards) remoteCards.classList.remove('hidden');
+      if (remoteCards) {
+        remoteCards.classList.remove('hidden');
+        remoteCards.innerHTML = '';
+      }
 
       if (targetMode === 'livekit') {
+        // Liberar hardware de cámara/micrófono y cerrar conexiones P2P previas
+        if (p2pLocalStream) {
+          try { p2pLocalStream.getTracks().forEach(t => t.stop()); } catch (e) {}
+          p2pLocalStream = null;
+        }
+        closeAllP2PConnections();
         if (roomPin) {
           await connectLiveKit(roomPin, 'Profesor (Host)', true);
         }
@@ -5854,6 +5863,7 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
           try { await livekitRoom.disconnect(); } catch (e) {}
           livekitRoom = null;
         }
+        closeAllP2PConnections();
         if (typeof announceWebRTCPresence === 'function') {
           announceWebRTCPresence();
         }
@@ -6598,10 +6608,28 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
         if (!payload) return;
         const remoteId = payload.peerId || payload.fromPeerId || payload.from;
         if (!remoteId || remoteId === webrtcMyPeerId) return;
+        const cleanName = (typeof normalizeStudentPeerKey === 'function')
+          ? normalizeStudentPeerKey(payload.name || payload.fromName)
+          : String(payload.name || payload.fromName || '').trim().toLowerCase();
+        let matched = false;
         if (webrtcPeers[remoteId]) {
           webrtcPeers[remoteId].isSharingScreen = Boolean(payload.isSharing);
           updateRemotePeerCardMedia(remoteId);
+          matched = true;
         }
+        if (!matched && cleanName) {
+          Object.keys(webrtcPeers).forEach(pid => {
+            const pClean = (typeof normalizeStudentPeerKey === 'function')
+              ? normalizeStudentPeerKey(webrtcPeers[pid]?.name)
+              : String(webrtcPeers[pid]?.name || '').trim().toLowerCase();
+            if (pClean === cleanName) {
+              webrtcPeers[pid].isSharingScreen = Boolean(payload.isSharing);
+              updateRemotePeerCardMedia(pid);
+              matched = true;
+            }
+          });
+        }
+        syncHostScreenShareStage();
       });
 
       channel.on('broadcast', { event: 'WEBRTC_LEAVE' }, ({ payload }) => {

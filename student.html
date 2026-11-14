@@ -6103,14 +6103,31 @@
         showMediaAlert('Tu navegador móvil no soporta compartir pantalla.');
         return;
       }
+      let sStream = null;
       try {
-        screenStream = await navigator.mediaDevices.getDisplayMedia({
-          video: { cursor: 'always' },
+        // Nivel 1: Constraints completas con audio (ideal para PC / Mac)
+        sStream = await navigator.mediaDevices.getDisplayMedia({
+          video: true,
           audio: true
         });
-      } catch (err) {
-        return;
+      } catch (err1) {
+        console.warn('[ScreenShare Fallback] Falló captura con audio, reintentando solo video (móviles):', err1);
+        try {
+          // Nivel 2: Solo video sin audio ni restricciones de cursor (requerido para Chrome Android)
+          sStream = await navigator.mediaDevices.getDisplayMedia({
+            video: true
+          });
+        } catch (err2) {
+          console.error('[ScreenShare Error]', err2);
+          if (err2.name !== 'AbortError' && err2.name !== 'NotAllowedError') {
+            showMediaAlert('No se pudo compartir pantalla: ' + (err2.message || err2.name || err2));
+          }
+          return;
+        }
       }
+
+      if (!sStream) return;
+      screenStream = sStream;
 
       const screenVideoTrack = screenStream.getVideoTracks()[0];
       if (!screenVideoTrack) return;
@@ -6134,8 +6151,16 @@
         }
       }
 
+      // Disparar renegociación SDP hacia los pares para que reciban la pantalla compartida de inmediato
+      if (typeof syncP2PTracksToAllPeers === 'function') {
+        try { await syncP2PTracksToAllPeers(); } catch (e) {}
+      }
+
       updateLocalMediaUI();
       syncStudentRemoteScreenShareOverlay();
+      if (typeof syncVideoGalleryMode === 'function') {
+        syncVideoGalleryMode();
+      }
       broadcastScreenShareState(true);
     }
 
@@ -6159,8 +6184,15 @@
         }
       }
 
+      if (typeof syncP2PTracksToAllPeers === 'function') {
+        try { await syncP2PTracksToAllPeers(); } catch (e) {}
+      }
+
       updateLocalMediaUI();
       syncStudentRemoteScreenShareOverlay();
+      if (typeof syncVideoGalleryMode === 'function') {
+        syncVideoGalleryMode();
+      }
       broadcastScreenShareState(false);
     }
 
@@ -6198,9 +6230,20 @@
       const localCard = document.getElementById('webrtcLocalCard');
       const remoteCards = document.getElementById('webrtcRemoteCards');
       if (localCard) localCard.classList.remove('hidden');
-      if (remoteCards) remoteCards.classList.remove('hidden');
+      if (remoteCards) {
+        remoteCards.classList.remove('hidden');
+        remoteCards.innerHTML = '';
+      }
 
       if (targetMode === 'livekit') {
+        // Liberar hardware de cámara/micrófono de P2P para que el SDK de LiveKit pueda abrir la cámara en Android sin error
+        if (p2pLocalStream) {
+          try { p2pLocalStream.getTracks().forEach(t => t.stop()); } catch (e) {}
+          p2pLocalStream = null;
+        }
+        if (typeof closeAllP2PConnections === 'function') {
+          closeAllP2PConnections();
+        }
         if (currentRoomPin) {
           await connectLiveKit(currentRoomPin, myName || 'Alumno', false);
         }
@@ -6210,11 +6253,17 @@
           try { await livekitRoom.disconnect(); } catch (e) {}
           livekitRoom = null;
         }
+        if (typeof closeAllP2PConnections === 'function') {
+          closeAllP2PConnections();
+        }
         if (typeof announceWebRTCPresence === 'function') {
           announceWebRTCPresence();
         }
       }
       updateLocalMediaUI();
+      if (typeof syncVideoGalleryMode === 'function') {
+        syncVideoGalleryMode();
+      }
     }
 
     async function toggleLocalAudio() {
@@ -6661,6 +6710,9 @@
         isSharingScreen: false
       });
       updateMinimizedVideoStripSummary();
+      if (typeof syncVideoGalleryMode === 'function') {
+        syncVideoGalleryMode();
+      }
       return webrtcPeers[remotePeerId];
     }
 
@@ -7122,6 +7174,9 @@
           webrtcPeers[remoteId].isSharingScreen = Boolean(payload.isSharing);
         }
         syncStudentRemoteScreenShareOverlay();
+        if (typeof syncVideoGalleryMode === 'function') {
+          syncVideoGalleryMode();
+        }
       });
 
       channel.on('broadcast', { event: 'WEBRTC_LEAVE' }, ({ payload }) => {

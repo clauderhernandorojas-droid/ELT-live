@@ -524,6 +524,13 @@
             <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
             <span id="displayStudentName" class="font-bold text-xs">Alumno</span>
             <span id="studentSlideBadge" class="text-emerald-400 font-mono text-[10px] font-bold">● Sincronizado</span>
+            <span id="studentBreakoutBadge" class="hidden items-center gap-1.5 px-2 py-0.5 rounded-full bg-indigo-900/90 border border-indigo-500/50 text-[10px] text-indigo-200 font-bold">
+              <span class="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse"></span>
+              <span id="studentBreakoutRoomLabel">Sala 1</span>
+              <button id="btnAskTeacherHelp" type="button" title="Solicitar que el profesor entre a esta sala" class="ml-1 px-1.5 py-0.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold rounded text-[9px] transition cursor-pointer">
+                ✋ Pedir ayuda
+              </button>
+            </span>
           </div>
           <p class="text-[10px] text-slate-400">
             Session PIN: <span id="studentHeaderPinLabel" class="font-mono font-bold text-slate-200">#----</span>
@@ -548,6 +555,15 @@
         </div>
       </div>
     </header>
+
+    <!-- Banner / Toast flotante para avisos de Breakout Rooms -->
+    <div id="studentBreakoutToast" class="hidden absolute top-14 left-1/2 -translate-x-1/2 z-[70] max-w-md w-11/12 bg-slate-900/95 border border-indigo-500/80 text-white px-4 py-2.5 rounded-xl shadow-2xl backdrop-blur-md items-center justify-between gap-3">
+      <div class="flex items-center gap-2 min-w-0">
+        <span class="w-2 h-2 rounded-full bg-indigo-400 animate-ping shrink-0"></span>
+        <span id="studentBreakoutToastText" class="text-xs font-medium text-slate-200 truncate">Mensaje del profesor</span>
+      </div>
+      <button id="btnDismissStudentBreakoutToast" type="button" class="text-slate-400 hover:text-white text-xs font-bold p-1 cursor-pointer">✕</button>
+    </div>
 
     <div class="flex-1 w-full h-full flex overflow-hidden relative bg-slate-950">
       <!-- COLUMNA IZQUIERDA/CENTRAL: Área de Trabajo + Tira Superior WebRTC + Barra Inferior de Reunión -->
@@ -7088,6 +7104,10 @@
         const incomingCleanName = String(fromName || '').trim().toLowerCase();
         if (!fromPeerId || fromPeerId === webrtcPeerId || incomingCleanName === myCleanName) return;
 
+        if (typeof shouldStudentConnectWithPeerInBreakout === 'function' && !shouldStudentConnectWithPeerInBreakout(fromPeerId, fromName, 'student')) {
+          return;
+        }
+
         console.log('[P2P Mesh] Estudiante detectado en sala:', fromName, fromPeerId);
         ensureRemoteVideoCard(fromPeerId, fromName, 'student');
 
@@ -7131,6 +7151,10 @@
         if (!fromId || fromId === webrtcPeerId) return;
         const remoteName = payload.name || payload.fromName || 'Profesor (Host)';
         const remoteRole = payload.role || (fromId.startsWith('host_') || remoteName.includes('Profesor') ? 'host' : 'student');
+
+        if (typeof shouldStudentConnectWithPeerInBreakout === 'function' && !shouldStudentConnectWithPeerInBreakout(fromId, remoteName, remoteRole)) {
+          return;
+        }
 
         if (currentVideoMode === 'p2p') {
           const pc = getOrCreateP2PPeerConnection(fromId, remoteName, remoteRole);
@@ -7187,6 +7211,10 @@
         const remoteName = payload.fromName || payload.name || 'Profesor (Host)';
         const remoteRole = payload.role || (fromId.startsWith('host_') || remoteName.includes('Profesor') ? 'host' : 'student');
 
+        if (typeof shouldStudentConnectWithPeerInBreakout === 'function' && !shouldStudentConnectWithPeerInBreakout(fromId, remoteName, remoteRole)) {
+          return;
+        }
+
         if (currentVideoMode === 'p2p') {
           const pc = getOrCreateP2PPeerConnection(fromId, remoteName, remoteRole);
           if (webrtcPeers[fromId]) {
@@ -7224,6 +7252,11 @@
         try {
           const remoteRole = payload.role || (fromId.startsWith('host_') || (payload.name && payload.name.includes('Profesor')) ? 'host' : 'student');
           const remoteName = payload.fromName || payload.name || (remoteRole === 'host' ? 'Profesor (Host)' : 'Participante');
+
+          if (typeof shouldStudentConnectWithPeerInBreakout === 'function' && !shouldStudentConnectWithPeerInBreakout(fromId, remoteName, remoteRole)) {
+            return;
+          }
+
           const pc = getOrCreateP2PPeerConnection(fromId, remoteName, remoteRole);
           if (!pc) return;
 
@@ -7439,6 +7472,25 @@
           }
         }
       });
+
+      channel.on('broadcast', { event: 'BREAKOUT_START' }, ({ payload }) => {
+        if (!payload || !payload.active) return;
+        handleBreakoutStart(payload);
+      });
+
+      channel.on('broadcast', { event: 'BREAKOUT_HOST_JOIN' }, ({ payload }) => {
+        if (!payload) return;
+        handleBreakoutHostJoin(payload);
+      });
+
+      channel.on('broadcast', { event: 'BREAKOUT_BROADCAST_MSG' }, ({ payload }) => {
+        if (!payload || !payload.message) return;
+        showStudentBreakoutToast('📢 Profesor: ' + payload.message, 6000);
+      });
+
+      channel.on('broadcast', { event: 'BREAKOUT_CLOSE' }, () => {
+        handleBreakoutClose();
+      });
     }
 
     window.addEventListener('beforeunload', () => {
@@ -7472,6 +7524,194 @@
     });
 
     updateLocalMediaUI();
+
+    // ==================== SALAS PEQUEÑAS / BREAKOUT ROOMS (LADO ESTUDIANTE) ====================
+    let breakoutRoomsActive = false;
+    let currentBreakoutRoom = null; // id de la sala asignada (ej. 'room-1') o null
+    let currentBreakoutRoomName = ''; // ej. 'Sala 1'
+    let hostActiveBreakoutRoom = null; // id de la sala donde está el profesor
+    let breakoutRoomsData = []; // lista de salas con participantes enviada por el host
+    let studentBreakoutToastTimer = null;
+
+    function showStudentBreakoutToast(message, durationMs = 4000) {
+      const toast = document.getElementById('studentBreakoutToast');
+      const label = document.getElementById('studentBreakoutToastText');
+      if (!toast || !label) return;
+      label.textContent = message;
+      toast.classList.remove('hidden');
+      toast.classList.add('flex');
+      if (studentBreakoutToastTimer) clearTimeout(studentBreakoutToastTimer);
+      studentBreakoutToastTimer = setTimeout(() => {
+        toast.classList.remove('flex');
+        toast.classList.add('hidden');
+      }, durationMs);
+    }
+
+    function shouldStudentConnectWithPeerInBreakout(remotePeerId, remoteName, remoteRole) {
+      if (!breakoutRoomsActive) return true;
+      const isHost = remoteRole === 'host' || (remotePeerId && String(remotePeerId).startsWith('host_')) || (remoteName && String(remoteName).includes('Profesor'));
+
+      if (isHost) {
+        return hostActiveBreakoutRoom === currentBreakoutRoom;
+      }
+
+      const rKey = (typeof normalizeStudentPeerKey === 'function')
+        ? normalizeStudentPeerKey(remoteName || remotePeerId)
+        : String(remoteName || remotePeerId || '').trim().toLowerCase();
+
+      let remoteRoomId = null;
+      for (const r of breakoutRoomsData) {
+        if (r.participants && r.participants.some(p => {
+          const pNorm = (typeof normalizeStudentPeerKey === 'function')
+            ? normalizeStudentPeerKey(p.name || p.peerId)
+            : String(p.name || p.peerId || '').trim().toLowerCase();
+          return (p.peerId && p.peerId === remotePeerId) || (pNorm && pNorm === rKey);
+        })) {
+          remoteRoomId = r.id;
+          break;
+        }
+      }
+
+      return remoteRoomId === currentBreakoutRoom;
+    }
+
+    function handleBreakoutStart(payload) {
+      breakoutRoomsActive = true;
+      breakoutRoomsData = payload.rooms || [];
+      hostActiveBreakoutRoom = payload.hostActiveRoom || null;
+
+      const myId = webrtcPeerId;
+      const myDisplay = (typeof getMyDisplayNameForWebRTC === 'function') ? getMyDisplayNameForWebRTC() : myName;
+      const myKey = (typeof normalizeStudentPeerKey === 'function') ? normalizeStudentPeerKey(myDisplay || myName) : String(myDisplay || myName || '').trim().toLowerCase();
+
+      let myRoom = null;
+      for (const r of breakoutRoomsData) {
+        if (r.participants && r.participants.some(p => {
+          const pNorm = (typeof normalizeStudentPeerKey === 'function') ? normalizeStudentPeerKey(p.name || p.peerId) : String(p.name || p.peerId || '').trim().toLowerCase();
+          return (p.peerId && p.peerId === myId) || (pNorm && pNorm === myKey);
+        })) {
+          myRoom = r;
+          break;
+        }
+      }
+
+      if (myRoom) {
+        currentBreakoutRoom = myRoom.id;
+        currentBreakoutRoomName = myRoom.name;
+        const badge = document.getElementById('studentBreakoutBadge');
+        const label = document.getElementById('studentBreakoutRoomLabel');
+        if (label) label.textContent = myRoom.name;
+        if (badge) {
+          badge.classList.remove('hidden');
+          badge.classList.add('flex');
+        }
+        showStudentBreakoutToast(`Has sido asignado a ${myRoom.name}. Conectando con tu equipo...`, 4000);
+      } else {
+        currentBreakoutRoom = null;
+        currentBreakoutRoomName = 'Aula Principal';
+        const badge = document.getElementById('studentBreakoutBadge');
+        if (badge) {
+          badge.classList.remove('flex');
+          badge.classList.add('hidden');
+        }
+        showStudentBreakoutToast('Permaneces en el Aula Principal.', 3000);
+      }
+
+      if (currentVideoMode === 'p2p') {
+        Object.keys(webrtcPeers).forEach(pid => {
+          const pObj = webrtcPeers[pid];
+          if (pObj && !shouldStudentConnectWithPeerInBreakout(pid, pObj.name, pObj.role)) {
+            removeStudentRemoteVideoCard(pid, pObj.name, pObj.role);
+          }
+        });
+        if (typeof announceWebRTCPresence === 'function') {
+          announceWebRTCPresence();
+        }
+      }
+    }
+
+    function handleBreakoutHostJoin(payload) {
+      const previousHostRoom = hostActiveBreakoutRoom;
+      hostActiveBreakoutRoom = payload.hostActiveRoom || null;
+
+      if (currentBreakoutRoom && hostActiveBreakoutRoom === currentBreakoutRoom) {
+        showStudentBreakoutToast('👋 El profesor ha entrado a tu sala.', 4000);
+        if (typeof announceWebRTCPresence === 'function') {
+          announceWebRTCPresence();
+        }
+      } else if (previousHostRoom === currentBreakoutRoom && hostActiveBreakoutRoom !== currentBreakoutRoom) {
+        showStudentBreakoutToast('El profesor ha salido de tu sala.', 3000);
+        Object.keys(webrtcPeers).forEach(pid => {
+          const p = webrtcPeers[pid];
+          if (p && (p.role === 'host' || pid.startsWith('host_') || String(p.name).includes('Profesor'))) {
+            removeStudentRemoteVideoCard(pid, p.name, p.role);
+          }
+        });
+      }
+    }
+
+    function handleBreakoutClose() {
+      breakoutRoomsActive = false;
+      currentBreakoutRoom = null;
+      currentBreakoutRoomName = '';
+      hostActiveBreakoutRoom = null;
+      breakoutRoomsData = [];
+
+      const badge = document.getElementById('studentBreakoutBadge');
+      if (badge) {
+        badge.classList.remove('flex');
+        badge.classList.add('hidden');
+      }
+
+      showStudentBreakoutToast('Salas finalizadas. Regresando al aula principal...', 3500);
+
+      // Re-anuncio escalonado para re-enlazar malla completa (Salvaguarda 2)
+      if (typeof announceWebRTCPresence === 'function') {
+        announceWebRTCPresence();
+        setTimeout(() => {
+          if (typeof announceWebRTCPresence === 'function') announceWebRTCPresence();
+        }, 150);
+        setTimeout(() => {
+          if (typeof announceWebRTCPresence === 'function') announceWebRTCPresence();
+          if (typeof refreshAllP2PBitrateProfiles === 'function') refreshAllP2PBitrateProfiles();
+        }, 900);
+      }
+    }
+
+    function initStudentBreakoutUI() {
+      const btnHelp = document.getElementById('btnAskTeacherHelp');
+      if (btnHelp) {
+        btnHelp.onclick = () => {
+          if (!myChannel || !currentBreakoutRoom) return;
+          try {
+            myChannel.send({
+              type: 'broadcast',
+              event: 'BREAKOUT_HELP_REQUEST',
+              payload: {
+                studentName: (typeof getMyDisplayNameForWebRTC === 'function') ? getMyDisplayNameForWebRTC() : myName,
+                roomId: currentBreakoutRoom,
+                roomName: currentBreakoutRoomName || 'Sala'
+              }
+            });
+            showStudentBreakoutToast('✋ Solicitud enviada al profesor. Espera un momento...', 4000);
+          } catch (e) {
+            console.warn('[Breakout] Error enviando petición de ayuda:', e);
+          }
+        };
+      }
+
+      const btnDismiss = document.getElementById('btnDismissStudentBreakoutToast');
+      if (btnDismiss) {
+        btnDismiss.onclick = () => {
+          const toast = document.getElementById('studentBreakoutToast');
+          if (toast) {
+            toast.classList.remove('flex');
+            toast.classList.add('hidden');
+          }
+        };
+      }
+    }
+    initStudentBreakoutUI();
 
     // ==================== MINIATURA DE VIDEO FLOTANTE: ARRASTRABLE (DRAGGABLE) Y MINIMIZABLE ====================
     let isVideoStripMinimized = false;

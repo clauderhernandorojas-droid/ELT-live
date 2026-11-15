@@ -674,6 +674,13 @@
         <span>🎨 Pizarra Blanca</span>
       </button>
 
+      <!-- Botón Breakout Rooms (Grupos) en Cabecera -->
+      <button id="headerBreakoutBtn" type="button" class="bg-slate-800/90 hover:bg-slate-700 text-slate-200 text-[11px] font-bold px-2.5 py-1 rounded-lg border border-slate-700 flex items-center gap-1.5 transition cursor-pointer relative" title="Salas para grupos pequeños (Breakout Rooms)">
+        <i class="fa-solid fa-shapes text-xs text-indigo-400"></i>
+        <span>Grupos</span>
+        <span id="headerBreakoutActiveDot" class="hidden w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+      </button>
+
       <button id="headerChatToggleBtn" class="hidden bg-[#1e2124] hover:bg-[#2b2f36] text-slate-100 text-[11px] font-bold px-2.5 py-1 rounded-lg border border-slate-700 items-center gap-1.5 transition relative">
         <span>💬 Chat</span>
       </button>
@@ -1131,6 +1138,15 @@
               </div>
               <span class="text-[10px] text-slate-300 font-medium mt-0.5">Chat</span>
             </button>
+
+            <!-- Breakout Rooms (Grupos Pequeños) -->
+            <button id="bottomBreakoutBtn" type="button" class="group flex flex-col items-center justify-center px-2.5 py-1 rounded-lg hover:bg-white/10 transition relative cursor-pointer" title="Salas para grupos pequeños (Breakout Rooms)">
+              <div class="flex items-center gap-1 relative">
+                <i class="fa-solid fa-shapes text-sm text-slate-100 group-hover:text-indigo-400"></i>
+                <span id="breakoutActiveDot" class="hidden absolute -top-1 -right-1.5 w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              </div>
+              <span class="text-[10px] text-slate-300 font-medium mt-0.5">Grupos</span>
+            </button>
           </div>
 
           <!-- Zona Derecha: Separador | Share | End | Next → -->
@@ -1454,6 +1470,121 @@
       <span>Delete</span>
       <span class="text-[10px] opacity-75">Supr</span>
     </button>
+  </div>
+
+  <!-- Modal de Gestión de Breakout Rooms (Salas Pequeñas en Parejas / Tríos) -->
+  <div id="breakoutRoomsModal" class="hidden fixed inset-0 z-[80] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-[#18191b] border border-[#2e323b] rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+      <!-- Encabezado Modal -->
+      <div class="px-5 py-4 bg-[#1e2024] border-b border-[#2e323b] flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-xl bg-indigo-600/20 border border-indigo-500/40 flex items-center justify-center text-indigo-400">
+            <i class="fa-solid fa-shapes text-sm"></i>
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-white">Salas para Grupos Pequeños</h3>
+            <p id="breakoutModalSubtitle" class="text-[11px] text-slate-400">Trabajo en parejas o tríos a costo $0 P2P</p>
+          </div>
+        </div>
+        <button id="btnCloseBreakoutModal" type="button" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition text-sm cursor-pointer">✕</button>
+      </div>
+
+      <!-- Cuerpo del Modal -->
+      <div class="p-5 overflow-y-auto flex-1 space-y-4 text-xs text-slate-300">
+        <!-- VISTA CONFIGURACIÓN (Cuando no están activas) -->
+        <div id="breakoutConfigView" class="space-y-4">
+          <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-3 space-y-2">
+            <label class="font-bold text-slate-200 block text-xs">1. Número de Salas Deseadas</label>
+            <div class="flex items-center gap-2" id="breakoutRoomCountSelector">
+              <button type="button" data-rooms="2" class="breakout-count-btn px-3 py-1.5 rounded-lg border border-indigo-600 bg-indigo-600/30 text-white font-bold text-xs transition cursor-pointer">2 Salas</button>
+              <button type="button" data-rooms="3" class="breakout-count-btn px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800 text-slate-300 font-bold text-xs hover:border-slate-500 transition cursor-pointer">3 Salas</button>
+              <button type="button" data-rooms="4" class="breakout-count-btn px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800 text-slate-300 font-bold text-xs hover:border-slate-500 transition cursor-pointer">4 Salas</button>
+            </div>
+            <p class="text-[10px] text-slate-400" id="breakoutEstimateNotice">Calculando participantes conectados...</p>
+          </div>
+
+          <div class="space-y-2">
+            <div class="flex items-center justify-between">
+              <label class="font-bold text-slate-200 block text-xs">2. Distribución de Alumnos</label>
+              <button id="btnAutoShuffleBreakout" type="button" class="text-[11px] text-indigo-400 hover:text-indigo-300 font-bold transition flex items-center gap-1 cursor-pointer">
+                <i class="fa-solid fa-arrows-rotate text-[10px]"></i> Mezclar parejas al azar
+              </button>
+            </div>
+            <div id="breakoutAssignmentsList" class="space-y-2 max-h-52 overflow-y-auto pr-1">
+              <!-- Renderizado dinámico de alumnos y sus salas asignadas -->
+            </div>
+          </div>
+        </div>
+
+        <!-- VISTA SALAS ACTIVAS (Cuando los grupos están en curso) -->
+        <div id="breakoutActiveView" class="hidden space-y-4">
+          <div class="bg-emerald-950/60 border border-emerald-800/80 rounded-xl p-3 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+              <div>
+                <span class="font-bold text-emerald-200 text-xs">Grupos en curso</span>
+                <p id="breakoutActiveTimerLabel" class="text-[10px] text-emerald-400/80">Tiempo transcurrido: 00:00</p>
+              </div>
+            </div>
+            <span id="breakoutHostLocationBadge" class="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-900/80 text-indigo-300 border border-indigo-700">Observando aula principal</span>
+          </div>
+
+          <!-- Lista de Salas con botones de Entrar/Salir -->
+          <div id="breakoutActiveRoomsList" class="space-y-2.5 max-h-60 overflow-y-auto pr-1">
+            <!-- Renderizado dinámico de salas activas -->
+          </div>
+
+          <!-- Mensaje de difusión a todas las salas -->
+          <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-3 space-y-2">
+            <label class="font-bold text-slate-200 text-[11px] flex items-center gap-1.5">
+              <i class="fa-solid fa-bullhorn text-indigo-400"></i> Difundir mensaje a todas las salas
+            </label>
+            <div class="flex items-center gap-1.5">
+              <input id="breakoutBroadcastInput" type="text" maxlength="150" placeholder="Ej. Faltan 2 minutos para terminar..." class="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-indigo-500">
+              <button id="btnSendBreakoutBroadcast" type="button" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs px-3 py-1.5 rounded-lg transition shrink-0 cursor-pointer">
+                Difundir
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pie del Modal -->
+      <div class="px-5 py-3.5 bg-[#1e2024] border-t border-[#2e323b] flex items-center justify-between">
+        <button id="btnCancelBreakoutModal" type="button" class="text-slate-400 hover:text-white font-bold text-xs transition cursor-pointer">
+          Cerrar ventana
+        </button>
+        <div id="breakoutFooterActions">
+          <button id="btnStartBreakoutRooms" type="button" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs px-4 py-2 rounded-xl transition shadow cursor-pointer">
+            Iniciar Grupos Pequeños
+          </button>
+          <button id="btnCloseAllBreakoutRooms" type="button" class="hidden bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs px-4 py-2 rounded-xl transition shadow cursor-pointer">
+            Cerrar todas las salas
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Flotante de Notificación de Ayuda de Alumno -->
+  <div id="hostBreakoutHelpToast" class="hidden fixed bottom-16 left-6 z-[100] max-w-sm bg-slate-900/95 border border-amber-500/80 text-white p-3 rounded-2xl shadow-2xl flex items-center justify-between gap-3 backdrop-blur-md">
+    <div class="flex items-center gap-2.5 min-w-0">
+      <span class="w-8 h-8 rounded-full bg-amber-500/20 border border-amber-400/50 flex items-center justify-center text-amber-400 shrink-0">
+        <i class="fa-solid fa-hand text-sm"></i>
+      </span>
+      <div class="flex flex-col leading-tight min-w-0">
+        <span id="hostBreakoutHelpText" class="text-xs font-bold text-amber-200 truncate">Alumno pide ayuda</span>
+        <span id="hostBreakoutHelpSub" class="text-[10px] text-slate-400">En Sala 1</span>
+      </div>
+    </div>
+    <div class="flex items-center gap-1.5 shrink-0">
+      <button id="btnHostEnterHelpRoom" type="button" class="bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition shadow cursor-pointer">
+        Entrar
+      </button>
+      <button id="btnDismissHostBreakoutHelp" type="button" class="text-slate-400 hover:text-white p-1 text-xs cursor-pointer">
+        ✕
+      </button>
+    </div>
   </div>
 
   <script>
@@ -2016,10 +2147,16 @@
       }
       renderStudentsDashboard();
 
+      if (typeof syncBreakoutStateToLateStudent === 'function') {
+        syncBreakoutStateToLateStudent(studentId, st.name);
+      }
+
       // CREACIÓN GARANTIZADA DE TARJETA EN EL DOCK DEL HOST AL ADMITIR
       if (typeof ensureRemotePeerCard === 'function') {
         const studentPeerId = st.peerId || studentId;
-        ensureRemotePeerCard(studentPeerId, st.name);
+        if (typeof shouldHostConnectWithPeerInBreakout !== 'function' || shouldHostConnectWithPeerInBreakout(studentPeerId, st.name)) {
+          ensureRemotePeerCard(studentPeerId, st.name);
+        }
       }
 
       roomChannel.send({
@@ -2267,14 +2404,23 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
         }
         renderStudentsDashboard();
 
+        if (typeof syncBreakoutStateToLateStudent === 'function') {
+          syncBreakoutStateToLateStudent(payload.peerId || payload.studentId, stName);
+        }
+
         // CREACIÓN GARANTIZADA DE TARJETA EN EL DOCK DEL HOST AL UNIRSE
         if (typeof ensureRemotePeerCard === 'function') {
           const peerId = payload.peerId || payload.studentId || normalizeStudentPeerKey(stName);
-          ensureRemotePeerCard(peerId, stName);
+          if (typeof shouldHostConnectWithPeerInBreakout !== 'function' || shouldHostConnectWithPeerInBreakout(peerId, stName)) {
+            ensureRemotePeerCard(peerId, stName);
+          }
         }
       });
 
       roomChannel.on('broadcast', { event: 'REQUEST_LESSON' }, () => {
+        if (typeof syncBreakoutStateToLateStudent === 'function') {
+          syncBreakoutStateToLateStudent();
+        }
         if (rawLessonHTML) broadcastDeckToStudents();
         if (wbIsOpen) {
           roomChannel.send({ type: 'broadcast', event: 'WB_TOGGLE', payload: { active: true } });
@@ -6607,6 +6753,9 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
         const remoteId = payload && (payload.peerId || payload.fromPeerId || payload.from);
         if (!remoteId || remoteId === webrtcMyPeerId) return;
         const remoteName = payload.name || payload.fromName || 'Alumno';
+        if (typeof shouldHostConnectWithPeerInBreakout === 'function' && !shouldHostConnectWithPeerInBreakout(remoteId, remoteName)) {
+          return;
+        }
 
         if (currentVideoMode === 'p2p') {
           const pc = getOrCreateP2PPeerConnection(remoteId, remoteName);
@@ -6647,6 +6796,9 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
         const isForMe = !toId || toId === webrtcMyPeerId || toId === 'host' || toId === 'host_presence' || payload.role === 'host' || payload.toRole === 'host';
         if (!isForMe) return;
         const remoteName = payload.fromName || payload.name || 'Alumno';
+        if (typeof shouldHostConnectWithPeerInBreakout === 'function' && !shouldHostConnectWithPeerInBreakout(fromId, remoteName)) {
+          return;
+        }
 
         if (currentVideoMode === 'p2p') {
           const pc = getOrCreateP2PPeerConnection(fromId, remoteName);
@@ -6666,6 +6818,10 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
         const toId = payload && (payload.toPeerId || payload.to);
         const isForMe = toId === webrtcMyPeerId || toId === 'host' || toId === 'host_presence' || payload.role === 'host' || payload.toRole === 'host';
         if (!fromId || !isForMe || fromId === webrtcMyPeerId) return;
+        const remoteName = payload.fromName || payload.name || 'Alumno';
+        if (typeof shouldHostConnectWithPeerInBreakout === 'function' && !shouldHostConnectWithPeerInBreakout(fromId, remoteName)) {
+          return;
+        }
 
         try {
           const remoteName = payload.fromName || payload.name || 'Alumno';
@@ -6837,6 +6993,14 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
         syncHostScreenShareStage();
       });
 
+      channel.on('broadcast', { event: 'BREAKOUT_HELP_REQUEST' }, ({ payload }) => {
+        if (!payload || !payload.studentName) return;
+        if (typeof playHostWaitingRoomBeep === 'function') playHostWaitingRoomBeep();
+        if (typeof showHostBreakoutHelpToast === 'function') {
+          showHostBreakoutHelpToast(payload.studentName, payload.roomName, payload.roomId);
+        }
+      });
+
       channel.on('broadcast', { event: 'WEBRTC_LEAVE' }, ({ payload }) => {
         const remoteId = payload && (payload.peerId || payload.fromPeerId || payload.from);
         const remoteName = payload && (payload.name || payload.fromName);
@@ -6865,6 +7029,564 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
 
     updateVideoModeUI();
     updateLocalMediaButtonsUI();
+
+    // ==================== SALAS PEQUEÑAS / BREAKOUT ROOMS P2P ($0 USD) ====================
+    let breakoutRoomsActive = false;
+    let breakoutDesiredRoomsCount = 2;
+    let breakoutRooms = []; // [ { id: 'room-1', name: 'Sala 1', participants: [ { peerId: '...', name: '...' } ] }, ... ]
+    let hostActiveBreakoutRoom = null; // null = aula principal, o 'room-1'
+    let breakoutTimerInterval = null;
+    let breakoutStartTime = 0;
+    let breakoutTargetHelpRoomId = null;
+
+    function getBreakoutRoomName(roomId) {
+      if (!roomId) return 'Aula Principal';
+      const r = breakoutRooms.find(room => room.id === roomId);
+      return r ? r.name : 'Sala';
+    }
+
+    function shouldHostConnectWithPeerInBreakout(peerId, peerName) {
+      if (!breakoutRoomsActive) return true;
+      const pKey = (typeof normalizeStudentPeerKey === 'function')
+        ? normalizeStudentPeerKey(peerName || peerId)
+        : String(peerName || peerId || '').trim().toLowerCase();
+
+      let studentRoomId = null;
+      for (const r of breakoutRooms) {
+        if (r.participants && r.participants.some(p => {
+          const pNorm = (typeof normalizeStudentPeerKey === 'function')
+            ? normalizeStudentPeerKey(p.name || p.peerId)
+            : String(p.name || p.peerId || '').trim().toLowerCase();
+          return (p.peerId && p.peerId === peerId) || (pNorm && pNorm === pKey);
+        })) {
+          studentRoomId = r.id;
+          break;
+        }
+      }
+
+      if (hostActiveBreakoutRoom) {
+        return studentRoomId === hostActiveBreakoutRoom;
+      }
+      return studentRoomId === null;
+    }
+
+    function syncBreakoutStateToLateStudent(peerId, studentName) {
+      if (!breakoutRoomsActive || !roomChannel) return;
+      try {
+        roomChannel.send({
+          type: 'broadcast',
+          event: 'BREAKOUT_START',
+          payload: {
+            active: true,
+            rooms: breakoutRooms,
+            hostActiveRoom: hostActiveBreakoutRoom
+          }
+        });
+        if (hostActiveBreakoutRoom) {
+          roomChannel.send({
+            type: 'broadcast',
+            event: 'BREAKOUT_HOST_JOIN',
+            payload: {
+              hostActiveRoom: hostActiveBreakoutRoom,
+              roomName: getBreakoutRoomName(hostActiveBreakoutRoom)
+            }
+          });
+        }
+      } catch (e) {
+        console.warn('[Breakout] Error sincronizando estado con estudiante tardío:', e);
+      }
+    }
+
+    function getActiveConnectedStudents() {
+      const map = new Map();
+      Object.keys(webrtcPeers || {}).forEach(pid => {
+        const p = webrtcPeers[pid];
+        if (p && p.name && pid !== webrtcMyPeerId) {
+          const key = (typeof normalizeStudentPeerKey === 'function') ? normalizeStudentPeerKey(p.name) : p.name.trim().toLowerCase();
+          map.set(key, { peerId: pid, name: p.name });
+        }
+      });
+      Object.keys(studentsState || {}).forEach(sName => {
+        const key = (typeof normalizeStudentPeerKey === 'function') ? normalizeStudentPeerKey(sName) : sName.trim().toLowerCase();
+        if (!map.has(key)) {
+          map.set(key, { peerId: key, name: sName });
+        }
+      });
+      return Array.from(map.values());
+    }
+
+    function autoAssignBreakoutRooms(numRooms) {
+      breakoutDesiredRoomsCount = Math.max(2, Math.min(6, parseInt(numRooms, 10) || 2));
+      const students = getActiveConnectedStudents();
+      const shuffled = [...students].sort(() => Math.random() - 0.5);
+
+      const newRooms = [];
+      for (let i = 1; i <= breakoutDesiredRoomsCount; i++) {
+        newRooms.push({
+          id: `room-${i}`,
+          name: `Sala ${i}`,
+          participants: []
+        });
+      }
+
+      shuffled.forEach((st, idx) => {
+        const roomIdx = idx % breakoutDesiredRoomsCount;
+        newRooms[roomIdx].participants.push({
+          peerId: st.peerId,
+          name: st.name
+        });
+      });
+
+      breakoutRooms = newRooms;
+      renderBreakoutConfigView();
+    }
+
+    function renderBreakoutConfigView() {
+      const notice = document.getElementById('breakoutEstimateNotice');
+      const list = document.getElementById('breakoutAssignmentsList');
+      const countSelector = document.getElementById('breakoutRoomCountSelector');
+      if (countSelector) {
+        countSelector.querySelectorAll('button').forEach(btn => {
+          const rNum = parseInt(btn.getAttribute('data-rooms'), 10);
+          if (rNum === breakoutDesiredRoomsCount) {
+            btn.className = 'breakout-count-btn px-3 py-1.5 rounded-lg border border-indigo-600 bg-indigo-600/30 text-white font-bold text-xs transition cursor-pointer';
+          } else {
+            btn.className = 'breakout-count-btn px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800 text-slate-300 font-bold text-xs hover:border-slate-500 transition cursor-pointer';
+          }
+        });
+      }
+
+      const students = getActiveConnectedStudents();
+      const perRoomEst = Math.ceil(students.length / breakoutDesiredRoomsCount);
+      if (notice) {
+        notice.textContent = `${students.length} participante(s) detectado(s) (~${perRoomEst} por sala).`;
+      }
+
+      if (!list) return;
+      list.innerHTML = '';
+
+      if (breakoutRooms.length === 0) {
+        autoAssignBreakoutRooms(breakoutDesiredRoomsCount);
+        return;
+      }
+
+      breakoutRooms.forEach(room => {
+        const roomCard = document.createElement('div');
+        roomCard.className = 'bg-slate-900/90 border border-slate-800 rounded-xl p-2.5 space-y-1.5';
+        const titleRow = document.createElement('div');
+        titleRow.className = 'flex items-center justify-between text-xs font-bold text-indigo-300';
+        titleRow.innerHTML = `<span>${room.name}</span><span class="text-[10px] text-slate-400 font-normal">(${room.participants.length} alumno(s))</span>`;
+        roomCard.appendChild(titleRow);
+
+        if (room.participants.length === 0) {
+          const emptyNotice = document.createElement('p');
+          emptyNotice.className = 'text-[11px] text-slate-500 italic';
+          emptyNotice.textContent = 'Sin alumnos asignados';
+          roomCard.appendChild(emptyNotice);
+        } else {
+          const pList = document.createElement('div');
+          pList.className = 'flex flex-wrap gap-1.5';
+          room.participants.forEach(p => {
+            const badge = document.createElement('div');
+            badge.className = 'flex items-center gap-1.5 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-[11px] text-slate-200';
+            badge.innerHTML = `<span>👤 ${p.name}</span>`;
+
+            const sel = document.createElement('select');
+            sel.className = 'bg-slate-950 border border-slate-600 rounded text-[10px] text-slate-300 ml-1 py-0.5 px-1 cursor-pointer';
+            breakoutRooms.forEach(otherR => {
+              const opt = document.createElement('option');
+              opt.value = otherR.id;
+              opt.textContent = otherR.name;
+              if (otherR.id === room.id) opt.selected = true;
+              sel.appendChild(opt);
+            });
+            sel.addEventListener('change', (e) => {
+              const targetRoomId = e.target.value;
+              if (targetRoomId === room.id) return;
+              room.participants = room.participants.filter(item => item.name !== p.name);
+              const tRoom = breakoutRooms.find(r => r.id === targetRoomId);
+              if (tRoom) tRoom.participants.push(p);
+              renderBreakoutConfigView();
+            });
+            badge.appendChild(sel);
+            pList.appendChild(badge);
+          });
+          roomCard.appendChild(pList);
+        }
+        list.appendChild(roomCard);
+      });
+    }
+
+    function renderBreakoutActiveView() {
+      const activeList = document.getElementById('breakoutActiveRoomsList');
+      const locBadge = document.getElementById('breakoutHostLocationBadge');
+      if (locBadge) {
+        if (hostActiveBreakoutRoom) {
+          locBadge.textContent = `En ${getBreakoutRoomName(hostActiveBreakoutRoom)}`;
+          locBadge.className = 'text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-900/80 text-emerald-300 border border-emerald-700';
+        } else {
+          locBadge.textContent = 'Observando aula principal';
+          locBadge.className = 'text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-900/80 text-indigo-300 border border-indigo-700';
+        }
+      }
+
+      if (!activeList) return;
+      activeList.innerHTML = '';
+
+      breakoutRooms.forEach(room => {
+        const item = document.createElement('div');
+        item.className = 'bg-slate-900/90 border border-slate-800 rounded-xl p-3 flex items-center justify-between gap-3';
+
+        const info = document.createElement('div');
+        info.className = 'min-w-0';
+        const pNames = room.participants.map(p => p.name).join(', ') || 'Sin alumnos';
+        info.innerHTML = `
+          <div class="flex items-center gap-2">
+            <span class="font-bold text-white text-xs">${room.name}</span>
+            <span class="text-[10px] text-slate-400">(${room.participants.length} alumnos)</span>
+          </div>
+          <p class="text-[11px] text-slate-400 truncate mt-0.5">${pNames}</p>
+        `;
+        item.appendChild(info);
+
+        const actions = document.createElement('div');
+        actions.className = 'flex items-center gap-2 shrink-0';
+
+        if (hostActiveBreakoutRoom === room.id) {
+          const btnLeave = document.createElement('button');
+          btnLeave.type = 'button';
+          btnLeave.className = 'bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs px-3 py-1.5 rounded-lg transition cursor-pointer';
+          btnLeave.textContent = 'Salir al Aula';
+          btnLeave.addEventListener('click', () => {
+            hostLeaveBreakoutRoomAction();
+          });
+          actions.appendChild(btnLeave);
+        } else {
+          const btnEnter = document.createElement('button');
+          btnEnter.type = 'button';
+          btnEnter.className = 'bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs px-3 py-1.5 rounded-lg transition cursor-pointer';
+          btnEnter.textContent = 'Entrar';
+          btnEnter.addEventListener('click', () => {
+            hostEnterBreakoutRoomAction(room.id);
+          });
+          actions.appendChild(btnEnter);
+        }
+
+        item.appendChild(actions);
+        activeList.appendChild(item);
+      });
+    }
+
+    function renderBreakoutRoomsModal() {
+      const configView = document.getElementById('breakoutConfigView');
+      const activeView = document.getElementById('breakoutActiveView');
+      const btnStart = document.getElementById('btnStartBreakoutRooms');
+      const btnCloseAll = document.getElementById('btnCloseAllBreakoutRooms');
+      const subtitle = document.getElementById('breakoutModalSubtitle');
+
+      if (breakoutRoomsActive) {
+        if (configView) configView.classList.add('hidden');
+        if (activeView) activeView.classList.remove('hidden');
+        if (btnStart) btnStart.classList.add('hidden');
+        if (btnCloseAll) btnCloseAll.classList.remove('hidden');
+        if (subtitle) subtitle.textContent = 'Salas activas en vivo (WebRTC P2P)';
+        renderBreakoutActiveView();
+      } else {
+        if (configView) configView.classList.remove('hidden');
+        if (activeView) activeView.classList.add('hidden');
+        if (btnStart) btnStart.classList.remove('hidden');
+        if (btnCloseAll) btnCloseAll.classList.add('hidden');
+        if (subtitle) subtitle.textContent = 'Trabajo en parejas o tríos a costo $0 P2P';
+        renderBreakoutConfigView();
+      }
+    }
+
+    window.openBreakoutRoomsModal = function() {
+      const modal = document.getElementById('breakoutRoomsModal');
+      if (!modal) return;
+      if (!breakoutRoomsActive && breakoutRooms.length === 0) {
+        autoAssignBreakoutRooms(breakoutDesiredRoomsCount);
+      }
+      renderBreakoutRoomsModal();
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    };
+
+    window.closeBreakoutRoomsModal = function() {
+      const modal = document.getElementById('breakoutRoomsModal');
+      if (!modal) return;
+      modal.classList.remove('flex');
+      modal.classList.add('hidden');
+    };
+
+    function updateBreakoutIndicatorUI() {
+      const headerBtn = document.getElementById('headerBreakoutBtn');
+      const bottomBtn = document.getElementById('bottomBreakoutBtn');
+      if (breakoutRoomsActive) {
+        if (headerBtn) {
+          headerBtn.classList.remove('bg-indigo-600/30', 'border-indigo-500/40', 'text-indigo-300');
+          headerBtn.classList.add('bg-emerald-600', 'border-emerald-500', 'text-white', 'animate-pulse');
+        }
+        if (bottomBtn) {
+          bottomBtn.classList.add('text-emerald-400');
+        }
+      } else {
+        if (headerBtn) {
+          headerBtn.classList.remove('bg-emerald-600', 'border-emerald-500', 'text-white', 'animate-pulse');
+          headerBtn.classList.add('bg-indigo-600/30', 'border-indigo-500/40', 'text-indigo-300');
+        }
+        if (bottomBtn) {
+          bottomBtn.classList.remove('text-emerald-400');
+        }
+      }
+    }
+
+    function startBreakoutRoomsExecution() {
+      if (breakoutRoomsActive || !roomChannel) return;
+      breakoutRoomsActive = true;
+      hostActiveBreakoutRoom = null;
+      breakoutStartTime = Date.now();
+
+      if (breakoutTimerInterval) clearInterval(breakoutTimerInterval);
+      breakoutTimerInterval = setInterval(() => {
+        const diffSec = Math.floor((Date.now() - breakoutStartTime) / 1000);
+        const m = String(Math.floor(diffSec / 60)).padStart(2, '0');
+        const s = String(diffSec % 60).padStart(2, '0');
+        const lbl = document.getElementById('breakoutActiveTimerLabel');
+        if (lbl) lbl.textContent = `Tiempo transcurrido: ${m}:${s}`;
+      }, 1000);
+
+      // Podar pares que quedan en salas a las que el host no pertenece
+      if (currentVideoMode === 'p2p') {
+        Object.keys(webrtcPeers).forEach(pid => {
+          const p = webrtcPeers[pid];
+          if (p && !shouldHostConnectWithPeerInBreakout(pid, p.name)) {
+            removeRemotePeerCard(pid, p.name);
+          }
+        });
+      }
+
+      try {
+        roomChannel.send({
+          type: 'broadcast',
+          event: 'BREAKOUT_START',
+          payload: {
+            active: true,
+            rooms: breakoutRooms,
+            hostActiveRoom: hostActiveBreakoutRoom
+          }
+        });
+      } catch (e) {
+        console.warn('[Breakout] Error transmitiendo BREAKOUT_START:', e);
+      }
+
+      updateBreakoutIndicatorUI();
+      renderBreakoutRoomsModal();
+    }
+
+    function closeAllBreakoutRoomsExecution() {
+      if (!breakoutRoomsActive) return;
+      breakoutRoomsActive = false;
+      hostActiveBreakoutRoom = null;
+      if (breakoutTimerInterval) {
+        clearInterval(breakoutTimerInterval);
+        breakoutTimerInterval = null;
+      }
+
+      try {
+        if (roomChannel) {
+          roomChannel.send({
+            type: 'broadcast',
+            event: 'BREAKOUT_CLOSE',
+            payload: { active: false }
+          });
+        }
+      } catch (e) {
+        console.warn('[Breakout] Error transmitiendo BREAKOUT_CLOSE:', e);
+      }
+
+      // Re-anuncio escalonado para re-enlazar la malla completa (Salvaguarda 2)
+      if (typeof announceWebRTCPresence === 'function') {
+        announceWebRTCPresence();
+        setTimeout(() => {
+          if (typeof announceWebRTCPresence === 'function') announceWebRTCPresence();
+        }, 150);
+        setTimeout(() => {
+          if (typeof announceWebRTCPresence === 'function') announceWebRTCPresence();
+          if (typeof refreshAllP2PBitrateProfiles === 'function') refreshAllP2PBitrateProfiles();
+        }, 900);
+      }
+
+      updateBreakoutIndicatorUI();
+      window.closeBreakoutRoomsModal();
+    }
+
+    function hostEnterBreakoutRoomAction(roomId) {
+      if (!breakoutRoomsActive || !roomId || !roomChannel) return;
+      hostActiveBreakoutRoom = roomId;
+
+      if (currentVideoMode === 'p2p') {
+        Object.keys(webrtcPeers).forEach(pid => {
+          const p = webrtcPeers[pid];
+          if (p && !shouldHostConnectWithPeerInBreakout(pid, p.name)) {
+            removeRemotePeerCard(pid, p.name);
+          }
+        });
+      }
+
+      try {
+        roomChannel.send({
+          type: 'broadcast',
+          event: 'BREAKOUT_HOST_JOIN',
+          payload: {
+            hostActiveRoom: roomId,
+            roomName: getBreakoutRoomName(roomId)
+          }
+        });
+      } catch (e) {}
+
+      if (typeof announceWebRTCPresence === 'function') {
+        announceWebRTCPresence();
+      }
+
+      renderBreakoutActiveView();
+    }
+
+    function hostLeaveBreakoutRoomAction() {
+      if (!breakoutRoomsActive || !roomChannel) return;
+      hostActiveBreakoutRoom = null;
+
+      if (currentVideoMode === 'p2p') {
+        Object.keys(webrtcPeers).forEach(pid => {
+          const p = webrtcPeers[pid];
+          if (p && !shouldHostConnectWithPeerInBreakout(pid, p.name)) {
+            removeRemotePeerCard(pid, p.name);
+          }
+        });
+      }
+
+      try {
+        roomChannel.send({
+          type: 'broadcast',
+          event: 'BREAKOUT_HOST_JOIN',
+          payload: {
+            hostActiveRoom: null,
+            roomName: 'Aula Principal'
+          }
+        });
+      } catch (e) {}
+
+      renderBreakoutActiveView();
+    }
+
+    function sendBreakoutBroadcastMessage(text) {
+      const clean = String(text || '').trim();
+      if (!clean || !roomChannel) return;
+      try {
+        roomChannel.send({
+          type: 'broadcast',
+          event: 'BREAKOUT_BROADCAST_MSG',
+          payload: {
+            message: clean,
+            timestamp: Date.now()
+          }
+        });
+        const input = document.getElementById('breakoutBroadcastInput');
+        if (input) input.value = '';
+      } catch (e) {
+        console.warn('[Breakout] Error enviando mensaje de difusión:', e);
+      }
+    }
+
+    let hostBreakoutToastTimer = null;
+    function showHostBreakoutHelpToast(studentName, roomName, roomId) {
+      const toast = document.getElementById('hostBreakoutHelpToast');
+      const text = document.getElementById('hostBreakoutHelpText');
+      const sub = document.getElementById('hostBreakoutHelpSub');
+      if (!toast || !text || !sub) return;
+
+      breakoutTargetHelpRoomId = roomId;
+      text.textContent = `${studentName} solicita ayuda`;
+      sub.textContent = `En ${roomName || 'su sala'}`;
+      toast.classList.remove('hidden');
+      toast.classList.add('flex');
+
+      if (hostBreakoutToastTimer) clearTimeout(hostBreakoutToastTimer);
+      hostBreakoutToastTimer = setTimeout(() => {
+        toast.classList.remove('flex');
+        toast.classList.add('hidden');
+      }, 12000);
+    }
+
+    function initBreakoutRoomsUI() {
+      const hBtn = document.getElementById('headerBreakoutBtn');
+      const bBtn = document.getElementById('bottomBreakoutBtn');
+      if (hBtn) hBtn.onclick = window.openBreakoutRoomsModal;
+      if (bBtn) bBtn.onclick = window.openBreakoutRoomsModal;
+
+      const cBtn = document.getElementById('btnCloseBreakoutModal');
+      const cancelBtn = document.getElementById('btnCancelBreakoutModal');
+      if (cBtn) cBtn.onclick = window.closeBreakoutRoomsModal;
+      if (cancelBtn) cancelBtn.onclick = window.closeBreakoutRoomsModal;
+
+      const shuffleBtn = document.getElementById('btnAutoShuffleBreakout');
+      if (shuffleBtn) {
+        shuffleBtn.onclick = () => autoAssignBreakoutRooms(breakoutDesiredRoomsCount);
+      }
+
+      const countSelector = document.getElementById('breakoutRoomCountSelector');
+      if (countSelector) {
+        countSelector.querySelectorAll('button').forEach(btn => {
+          btn.onclick = () => {
+            const r = parseInt(btn.getAttribute('data-rooms'), 10) || 2;
+            autoAssignBreakoutRooms(r);
+          };
+        });
+      }
+
+      const startBtn = document.getElementById('btnStartBreakoutRooms');
+      if (startBtn) startBtn.onclick = startBreakoutRoomsExecution;
+
+      const closeAllBtn = document.getElementById('btnCloseAllBreakoutRooms');
+      if (closeAllBtn) closeAllBtn.onclick = closeAllBreakoutRoomsExecution;
+
+      const sendBroadcastBtn = document.getElementById('btnSendBreakoutBroadcast');
+      const broadcastInput = document.getElementById('breakoutBroadcastInput');
+      if (sendBroadcastBtn && broadcastInput) {
+        sendBroadcastBtn.onclick = () => sendBreakoutBroadcastMessage(broadcastInput.value);
+        broadcastInput.onkeydown = (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            sendBreakoutBroadcastMessage(broadcastInput.value);
+          }
+        };
+      }
+
+      const enterHelpBtn = document.getElementById('btnHostEnterHelpRoom');
+      const dismissHelpBtn = document.getElementById('btnDismissHostBreakoutHelp');
+      if (enterHelpBtn) {
+        enterHelpBtn.onclick = () => {
+          if (breakoutTargetHelpRoomId) {
+            hostEnterBreakoutRoomAction(breakoutTargetHelpRoomId);
+            const toast = document.getElementById('hostBreakoutHelpToast');
+            if (toast) {
+              toast.classList.remove('flex');
+              toast.classList.add('hidden');
+            }
+          }
+        };
+      }
+      if (dismissHelpBtn) {
+        dismissHelpBtn.onclick = () => {
+          const toast = document.getElementById('hostBreakoutHelpToast');
+          if (toast) {
+            toast.classList.remove('flex');
+            toast.classList.add('hidden');
+          }
+        };
+      }
+    }
+    initBreakoutRoomsUI();
 
     // ==================== COPIAR PIN DE LA SESIÓN AL PORTAPAPELES ====================
     let copyPinFeedbackTimer = null;

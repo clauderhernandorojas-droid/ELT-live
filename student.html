@@ -227,11 +227,13 @@
       #zmChatDockResizeLeft {
         display: none !important;
       }
-      #webrtcVideoStrip {
+      #webrtcVideoStrip:not(.gallery-mode) {
         max-width: 95% !important;
       }
       /* Modo Galería Zoom en pantallas móviles (max-width: 768px): tarjetas ocupando el alto responsivo */
       #webrtcVideoStrip.gallery-mode {
+        width: 100% !important;
+        max-width: 100% !important;
         padding: 0.75rem !important;
         gap: 0.75rem !important;
       }
@@ -555,7 +557,7 @@
         <div id="webrtcVideoStrip" class="absolute bottom-14 right-3 z-50 bg-[#18191b]/95 border-2 border-[#2e323b] rounded-2xl p-1.5 shadow-2xl flex items-center gap-2 max-w-[82%] select-none cursor-move transition-shadow hover:border-indigo-500/40" title="Arrastra para mover las cámaras a cualquier esquina">
           <!-- Indicador de arrastre lateral + Cuerpo Expandido de Cámaras -->
           <div id="webrtcStripExpandedBody" class="flex items-center gap-2 overflow-x-auto">
-            <div id="webrtcDragHandle" class="flex flex-col items-center justify-center px-1 py-2 text-slate-500 hover:text-slate-300 cursor-move shrink-0" title="Arrastrar cámaras">
+            <div id="webrtcDragHandle" class="hidden md:flex flex-col items-center justify-center px-1 py-2 text-slate-500 hover:text-slate-300 cursor-move shrink-0" title="Arrastrar cámaras">
               <i class="fa-solid fa-grip-vertical text-xs"></i>
             </div>
             <!-- Miniatura Local (Estudiante) -->
@@ -1241,7 +1243,42 @@
   <script>
     const SUPABASE_URL = "https://pctvqffjpyiamlfprome.supabase.co";
     const SUPABASE_ANON_KEY = "sb_publishable_vhkbA_a6QYKRnpHCGxYiGA_JJSvorDJ";
-    const sbClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const sbClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false
+      }
+    });
+
+    // Wrapper seguro de almacenamiento para navegadores con Smart Anti-Tracking (Samsung Internet / Incógnito)
+    const _inMemoryStorage = {};
+    const safeStorage = {
+      getItem(key) {
+        try {
+          if (typeof window !== 'undefined' && 'localStorage' in window && window.localStorage) {
+            return window.localStorage.getItem(key);
+          }
+        } catch (e) {}
+        return _inMemoryStorage[key] || null;
+      },
+      setItem(key, value) {
+        try {
+          if (typeof window !== 'undefined' && 'localStorage' in window && window.localStorage) {
+            window.localStorage.setItem(key, value);
+          }
+        } catch (e) {}
+        _inMemoryStorage[key] = String(value);
+      },
+      removeItem(key) {
+        try {
+          if (typeof window !== 'undefined' && 'localStorage' in window && window.localStorage) {
+            window.localStorage.removeItem(key);
+          }
+        } catch (e) {}
+        delete _inMemoryStorage[key];
+      }
+    };
 
     let myChannel = null;
     let myName = "";
@@ -2174,13 +2211,11 @@
       }
       currentRoomPin = pin;
 
-      // Persistir nombre y PIN de la sala en localStorage para recordar la sesión
+      // Persistir nombre y PIN de la sala de forma segura para recordar la sesión
       try {
-        localStorage.setItem('elt_student_name', myName);
-        localStorage.setItem('elt_student_pin', pin);
-      } catch (err) {
-        console.warn('No se pudo guardar en localStorage:', err);
-      }
+        safeStorage.setItem('elt_student_name', myName);
+        safeStorage.setItem('elt_student_pin', pin);
+      } catch (err) {}
 
       isAdmittedToClass = false;
       // Retención estricta en Sala de Espera hasta aprobación del profesor
@@ -5653,6 +5688,7 @@
       }
       try {
         const participantCount = Object.keys(webrtcPeers).length + 1;
+        const isMobileScreen = typeof window !== 'undefined' && window.innerWidth <= 768;
         const idealWidth = participantCount >= 3 ? 320 : 480;
         const idealHeight = participantCount >= 3 ? 240 : 360;
         const idealFps = participantCount >= 3 ? 15 : 20;
@@ -5660,16 +5696,18 @@
         if (!p2pLocalStream) {
           let stream = null;
           if (wantVideo) {
-            // Nivel 1: Constraints adaptadas según número de participantes
+            // Nivel 1: Constraints adaptadas a móvil (vertical) vs desktop (apaisado)
             try {
               stream = await navigator.mediaDevices.getUserMedia({
                 audio: Boolean(wantAudio),
-                video: {
-                  facingMode: 'user',
-                  width: { ideal: idealWidth },
-                  height: { ideal: idealHeight },
-                  frameRate: { ideal: idealFps, max: idealFps }
-                }
+                video: isMobileScreen
+                  ? { facingMode: 'user' }
+                  : {
+                      facingMode: 'user',
+                      width: { ideal: idealWidth },
+                      height: { ideal: idealHeight },
+                      frameRate: { ideal: idealFps, max: idealFps }
+                    }
               });
             } catch (err1) {
               console.warn('[P2P Cam Fallback 1] Falló ideal constraints, intentando facingMode básico:', err1);
@@ -5746,12 +5784,14 @@
             let vStream = null;
             try {
               vStream = await navigator.mediaDevices.getUserMedia({
-                video: {
-                  facingMode: 'user',
-                  width: { ideal: idealWidth },
-                  height: { ideal: idealHeight },
-                  frameRate: { ideal: idealFps, max: idealFps }
-                }
+                video: isMobileScreen
+                  ? { facingMode: 'user' }
+                  : {
+                      facingMode: 'user',
+                      width: { ideal: idealWidth },
+                      height: { ideal: idealHeight },
+                      frameRate: { ideal: idealFps, max: idealFps }
+                    }
               });
             } catch (errFallback1) {
               console.warn('[P2P Cam AddTrack Fallback 1] Falló ideal constraints:', errFallback1);
@@ -5778,8 +5818,8 @@
           }
         }
 
-        // Si ya hay pista activa y hay 3+ participantes, aplicar constraints en vivo
-        if (p2pLocalStream && originalCamTrack && participantCount >= 3 && originalCamTrack.applyConstraints) {
+        // Si ya hay pista activa y hay 3+ participantes en PC, optimizar resolución de transmisión
+        if (!isMobileScreen && p2pLocalStream && originalCamTrack && participantCount >= 3 && originalCamTrack.applyConstraints) {
           try {
             await originalCamTrack.applyConstraints({ width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 15, max: 15 } });
           } catch (e) {}
@@ -5937,10 +5977,18 @@
 
       // Transceivers sendrecv bidireccionales
       try {
-        const aTr = pc.addTransceiver('audio', { direction: 'sendrecv' });
-        webrtcPeers[remotePeerId].audioSender = aTr.sender;
-        const vTr = pc.addTransceiver('video', { direction: 'sendrecv' });
-        webrtcPeers[remotePeerId].videoSender = vTr.sender;
+        if (pc.getTransceivers().length === 0) {
+          const aTr = pc.addTransceiver('audio', { direction: 'sendrecv' });
+          webrtcPeers[remotePeerId].audioSender = aTr.sender;
+          const vTr = pc.addTransceiver('video', { direction: 'sendrecv' });
+          webrtcPeers[remotePeerId].videoSender = vTr.sender;
+        } else {
+          const transceivers = pc.getTransceivers();
+          const aTr = transceivers.find(t => t.receiver && t.receiver.track && t.receiver.track.kind === 'audio') || transceivers[0];
+          const vTr = transceivers.find(t => t.receiver && t.receiver.track && t.receiver.track.kind === 'video') || transceivers[1];
+          if (aTr) webrtcPeers[remotePeerId].audioSender = aTr.sender;
+          if (vTr) webrtcPeers[remotePeerId].videoSender = vTr.sender;
+        }
       } catch (trErr) {
         console.warn('[P2P] Error configurando transceivers en Estudiante:', trErr);
       }
@@ -6054,9 +6102,10 @@
         vidEl.setAttribute('playsinline', '');
         vidEl.setAttribute('webkit-playsinline', '');
         vidEl.setAttribute('autoplay', '');
+        vidEl.muted = true;
+        vidEl.setAttribute('muted', '');
         if (currentVideoMode === 'p2p' && peerObj.stream && vidEl.srcObject !== peerObj.stream) {
           vidEl.srcObject = peerObj.stream;
-          vidEl.muted = false;
         }
 
         if (!vidEl.__frameDetectionAttached) {
@@ -6355,40 +6404,56 @@
 
     async function toggleLocalVideo() {
       try {
-        webrtcVideoEnabled = !webrtcVideoEnabled;
+        const nextState = !webrtcVideoEnabled;
         if (currentVideoMode === 'livekit' && livekitRoom) {
           try {
-            if (webrtcVideoEnabled) {
+            if (nextState) {
               try {
                 await livekitRoom.localParticipant.setCameraEnabled(true, { facingMode: 'user' });
               } catch (lkErr) {
                 console.warn('[LiveKit] Falló setCameraEnabled con facingMode, reintentando básico:', lkErr);
                 await livekitRoom.localParticipant.setCameraEnabled(true);
               }
+              webrtcVideoEnabled = true;
             } else {
               await livekitRoom.localParticipant.setCameraEnabled(false);
+              webrtcVideoEnabled = false;
             }
             try { handleStudentLocalCameraTrack(); } catch (e) {}
           } catch (err) {
             console.error('[LiveKit] Error al alternar cámara en Estudiante:', err);
-            webrtcVideoEnabled = !webrtcVideoEnabled;
-            showMediaAlert('No se pudo encender la cámara frontal: ' + (err.message || err.name || err));
+            webrtcVideoEnabled = false;
+            showMediaAlert('No se pudo encender la cámara: ' + (err.message || err.name || err));
           }
         } else if (currentVideoMode === 'p2p') {
-          if (!p2pLocalStream || (webrtcVideoEnabled && (!p2pLocalStream.getVideoTracks().length || !p2pLocalStream.getVideoTracks().some(t => t.readyState === 'live')))) {
-            await ensureP2PLocalStream(webrtcAudioEnabled, webrtcVideoEnabled);
+          if (nextState) {
+            const stream = await ensureP2PLocalStream(webrtcAudioEnabled, true);
+            const hasLiveVideo = stream && stream.getVideoTracks().some(t => t.readyState === 'live');
+            if (hasLiveVideo) {
+              webrtcVideoEnabled = true;
+              stream.getVideoTracks().forEach(t => { t.enabled = true; });
+              try { handleP2PLocalVideoUI(); } catch (e) {}
+              await syncP2PTracksToAllPeers();
+            } else {
+              webrtcVideoEnabled = false;
+              showMediaAlert('No se pudo activar la cámara. Verifica los permisos de tu navegador.');
+            }
+          } else {
+            webrtcVideoEnabled = false;
+            if (p2pLocalStream) {
+              p2pLocalStream.getVideoTracks().forEach(t => { t.enabled = false; });
+            }
+            try { handleP2PLocalVideoUI(); } catch (e) {}
+            await syncP2PTracksToAllPeers();
           }
-          if (p2pLocalStream) {
-            p2pLocalStream.getVideoTracks().forEach(t => { t.enabled = webrtcVideoEnabled; });
-          }
-          try { handleP2PLocalVideoUI(); } catch (e) {}
-          await syncP2PTracksToAllPeers();
         }
       } catch (fatalCamErr) {
         console.error('[toggleLocalVideo] Error atrapado y blindado:', fatalCamErr);
+        webrtcVideoEnabled = false;
       } finally {
         try { updateLocalMediaUI(); } catch (e) {}
         try { broadcastWebRTCMediaState(); } catch (e) {}
+        try { unlockAllP2PRemoteAudio(); } catch (e) {}
       }
     }
 
@@ -6762,8 +6827,8 @@
         });
         const remoteVideos = document.querySelectorAll('#webrtcRemoteCards video, #webrtcVideoStrip video:not(#webrtcLocalVideo)');
         remoteVideos.forEach(v => {
-          v.muted = false;
-          v.volume = 1.0;
+          v.muted = true;
+          v.setAttribute('muted', '');
           v.play().catch(() => {});
         });
       } catch (e) {}
@@ -7100,6 +7165,21 @@
             }
             peerObj.pendingIce = [];
           }
+
+          // Asignar o refrescar senders desde los transceivers creados/actualizados por setRemoteDescription
+          try {
+            const transceivers = pc.getTransceivers();
+            transceivers.forEach(tr => {
+              if (tr.sender) {
+                if (tr.sender.track && tr.sender.track.kind === 'audio') peerObj.audioSender = tr.sender;
+                else if (tr.sender.track && tr.sender.track.kind === 'video') peerObj.videoSender = tr.sender;
+                else if (tr.receiver && tr.receiver.track) {
+                  if (tr.receiver.track.kind === 'audio' && !peerObj.audioSender) peerObj.audioSender = tr.sender;
+                  if (tr.receiver.track.kind === 'video' && !peerObj.videoSender) peerObj.videoSender = tr.sender;
+                }
+              }
+            });
+          } catch (trMapErr) {}
 
           // Asignar pistas locales del estudiante a los transceivers antes de crear la respuesta
           if (p2pLocalStream) {
@@ -7860,7 +7940,7 @@ window.setVideoStripMinimized = function(minimized) {
         pinInput.focus();
       }
       try {
-        localStorage.removeItem('elt_student_pin');
+        safeStorage.removeItem('elt_student_pin');
       } catch (e) {}
     }
 
@@ -8020,11 +8100,11 @@ window.setVideoStripMinimized = function(minimized) {
     centerWhiteboardView(1);
     updateWbOverlayInteractivity();
 
-    // Autorrellenar nombre y PIN si están guardados en localStorage
+    // Autorrellenar nombre y PIN si están guardados de forma segura
     (function restoreStudentCredentials() {
       try {
-        const savedName = localStorage.getItem('elt_student_name');
-        const savedPin = localStorage.getItem('elt_student_pin');
+        const savedName = safeStorage.getItem('elt_student_name');
+        const savedPin = safeStorage.getItem('elt_student_pin');
         const nameInput = document.getElementById('studentNameInput');
         const pinInput = document.getElementById('roomPinInput');
 
@@ -8034,9 +8114,7 @@ window.setVideoStripMinimized = function(minimized) {
         if (savedPin && pinInput && !pinInput.value) {
           pinInput.value = savedPin;
         }
-      } catch (err) {
-        console.warn('No se pudo leer de localStorage:', err);
-      }
+      } catch (err) {}
     })();
   </script>
 </body>

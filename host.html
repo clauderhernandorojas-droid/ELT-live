@@ -1459,7 +1459,13 @@
   <script>
     const SUPABASE_URL = "https://pctvqffjpyiamlfprome.supabase.co";
     const SUPABASE_ANON_KEY = "sb_publishable_vhkbA_a6QYKRnpHCGxYiGA_JJSvorDJ";
-    const sbClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const sbClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false
+      }
+    });
 
     let rawLessonHTML = "";
     let lessonId = "";
@@ -5704,10 +5710,18 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
 
       // Transceivers sendrecv bidireccionales
       try {
-        const aTr = pc.addTransceiver('audio', { direction: 'sendrecv' });
-        webrtcPeers[remotePeerId].audioSender = aTr.sender;
-        const vTr = pc.addTransceiver('video', { direction: 'sendrecv' });
-        webrtcPeers[remotePeerId].videoSender = vTr.sender;
+        if (pc.getTransceivers().length === 0) {
+          const aTr = pc.addTransceiver('audio', { direction: 'sendrecv' });
+          webrtcPeers[remotePeerId].audioSender = aTr.sender;
+          const vTr = pc.addTransceiver('video', { direction: 'sendrecv' });
+          webrtcPeers[remotePeerId].videoSender = vTr.sender;
+        } else {
+          const transceivers = pc.getTransceivers();
+          const aTr = transceivers.find(t => t.receiver && t.receiver.track && t.receiver.track.kind === 'audio') || transceivers[0];
+          const vTr = transceivers.find(t => t.receiver && t.receiver.track && t.receiver.track.kind === 'video') || transceivers[1];
+          if (aTr) webrtcPeers[remotePeerId].audioSender = aTr.sender;
+          if (vTr) webrtcPeers[remotePeerId].videoSender = vTr.sender;
+        }
       } catch (trErr) {
         console.warn('[P2P] Error configurando transceivers:', trErr);
       }
@@ -6590,6 +6604,21 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
             }
             peerObj.pendingIce = [];
           }
+
+          // Asignar o refrescar senders desde los transceivers creados/actualizados por setRemoteDescription
+          try {
+            const transceivers = pc.getTransceivers();
+            transceivers.forEach(tr => {
+              if (tr.sender) {
+                if (tr.sender.track && tr.sender.track.kind === 'audio') peerObj.audioSender = tr.sender;
+                else if (tr.sender.track && tr.sender.track.kind === 'video') peerObj.videoSender = tr.sender;
+                else if (tr.receiver && tr.receiver.track) {
+                  if (tr.receiver.track.kind === 'audio' && !peerObj.audioSender) peerObj.audioSender = tr.sender;
+                  if (tr.receiver.track.kind === 'video' && !peerObj.videoSender) peerObj.videoSender = tr.sender;
+                }
+              }
+            });
+          } catch (trMapErr) {}
 
           // Asignar pistas locales de host antes de crear respuesta
           if (p2pLocalStream) {

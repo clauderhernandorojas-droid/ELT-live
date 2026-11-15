@@ -739,27 +739,14 @@
       });
 
       try {
-        // 1. Intentar insertar con columna JSONB `data`
-        let res = await sbClient
+        const res = await sbClient
           .from('elt_live_schedule')
           .insert([{
             type: recordType,
-            data: payloadData
+            data: payloadData,
+            updated_at: new Date().toISOString()
           }])
           .select();
-
-        if (res.error) {
-          // 2. Fallback: insertar combinando columnas comunes y JSON en `notes`
-          res = await sbClient
-            .from('elt_live_schedule')
-            .insert([{
-              type: recordType,
-              name: fallbackName,
-              pin: fallbackPin,
-              notes: JSON.stringify(Object.assign({ type: recordType }, payloadData))
-            }])
-            .select();
-        }
 
         if (!res.error && Array.isArray(res.data) && res.data[0]) {
           return normalizeScheduleRow(res.data[0]);
@@ -787,29 +774,15 @@
       });
 
       try {
-        // 1. Intentar actualizar columna JSONB `data` en Supabase
-        let res = await sbClient
+        const res = await sbClient
           .from('elt_live_schedule')
           .update({
             type: recordType,
-            data: updatedData
+            data: updatedData,
+            updated_at: new Date().toISOString()
           })
           .eq('id', recordId)
           .select();
-
-        if (res.error) {
-          // 2. Fallback: actualizar columnas comunes y JSON en `notes`
-          res = await sbClient
-            .from('elt_live_schedule')
-            .update({
-              type: recordType,
-              name: fallbackName,
-              pin: fallbackPin,
-              notes: JSON.stringify(Object.assign({ type: recordType }, updatedData))
-            })
-            .eq('id', recordId)
-            .select();
-        }
 
         if (!res.error && Array.isArray(res.data) && res.data[0]) {
           return normalizeScheduleRow(res.data[0]);
@@ -1019,7 +992,7 @@
         const { data, error } = await sbClient
           .from('elt_live_schedule')
           .select('*')
-          .order('created_at', { ascending: true });
+          .order('updated_at', { ascending: true });
 
         if (error) throw error;
         if (Array.isArray(data)) {

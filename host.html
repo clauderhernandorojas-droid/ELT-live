@@ -5383,6 +5383,7 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
       if (typeof updateMinimizedVideoStripSummary === 'function') {
         updateMinimizedVideoStripSummary();
       }
+      try { refreshAllP2PBitrateProfiles(); } catch (e) {}
     }
 
     function handleRemoteTrackUnsubscribed(track, publication, participant) {
@@ -5410,6 +5411,7 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
       if (typeof updateMinimizedVideoStripSummary === 'function') {
         updateMinimizedVideoStripSummary();
       }
+      try { refreshAllP2PBitrateProfiles(); } catch (e) {}
     }
 
     function setupLiveKitRoomEvents(room) {
@@ -5562,10 +5564,12 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
         return null;
       }
       try {
-        const participantCount = Object.keys(webrtcPeers).length + 1;
-        const videoConstraints = participantCount >= 3
+        const participantCount = typeof getActiveP2PParticipantsCount === 'function' ? getActiveP2PParticipantsCount() : (Object.keys(webrtcPeers).length + 1);
+        const videoConstraints = participantCount >= 4
           ? { facingMode: 'user', width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 15, max: 15 } }
-          : { facingMode: 'user', width: { ideal: 480 }, height: { ideal: 360 }, frameRate: { max: 20 } };
+          : (participantCount === 3
+            ? { facingMode: 'user', width: { ideal: 480 }, height: { ideal: 360 }, frameRate: { ideal: 20, max: 20 } }
+            : { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { max: 24 } });
 
         if (!p2pLocalStream) {
           try {
@@ -5608,10 +5612,14 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
           }
         }
 
-        // Si ya hay pista de video y cambiamos a 3+ participantes, aplicar constraints en vivo
-        if (p2pLocalStream && originalCamTrack && participantCount >= 3 && originalCamTrack.applyConstraints) {
+        // Si ya hay pista de video y cambia el conteo de participantes, optimizar constraints en vivo
+        if (p2pLocalStream && originalCamTrack && originalCamTrack.applyConstraints) {
           try {
-            await originalCamTrack.applyConstraints({ width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 15, max: 15 } });
+            if (participantCount >= 4) {
+              await originalCamTrack.applyConstraints({ width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 15, max: 15 } });
+            } else if (participantCount === 3) {
+              await originalCamTrack.applyConstraints({ width: { ideal: 480 }, height: { ideal: 360 }, frameRate: { ideal: 20, max: 20 } });
+            }
           } catch (e) {}
         }
 
@@ -5645,6 +5653,73 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
       }
     }
 
+    function getActiveP2PParticipantsCount() {
+      let connectedPeers = 0;
+      for (const pid of Object.keys(webrtcPeers)) {
+        const p = webrtcPeers[pid];
+        if (p && p.pc && p.pc.connectionState !== 'closed' && p.pc.connectionState !== 'failed') {
+          connectedPeers++;
+        }
+      }
+      return connectedPeers + 1;
+    }
+
+    async function applyP2PBitrateProfile(sender, isScreen) {
+      if (!sender || typeof sender.getParameters !== 'function' || typeof sender.setParameters !== 'function') return;
+      try {
+        const params = sender.getParameters();
+        if (!params) return;
+        if (!params.encodings || !params.encodings.length) {
+          params.encodings = [{}];
+        }
+
+        const totalParticipants = getActiveP2PParticipantsCount();
+        const isSharing = Boolean(isScreen ?? isSharingScreen);
+
+        if (isSharing) {
+          // Pantalla compartida: alta fidelidad para textos, lecciones y pizarras
+          try { params.degradationPreference = 'maintain-resolution'; } catch (e) {}
+          params.encodings.forEach(enc => {
+            enc.maxBitrate = 1200000; // 1.2 Mbps
+            delete enc.maxFramerate;
+            delete enc.scaleResolutionDownBy;
+          });
+        } else {
+          // Cámara web
+          if (totalParticipants >= 4) {
+            // Perfil de grupo ligero (4 a 8 participantes): 280 kbps, 15 fps
+            try { params.degradationPreference = 'maintain-framerate'; } catch (e) {}
+            params.encodings.forEach(enc => {
+              enc.maxBitrate = 280000; // 280 kbps
+              enc.maxFramerate = 15;
+            });
+          } else {
+            // Perfil estándar (1 a 3 participantes): 600 kbps, 20 fps
+            try { params.degradationPreference = 'balanced'; } catch (e) {}
+            params.encodings.forEach(enc => {
+              enc.maxBitrate = 600000; // 600 kbps
+              enc.maxFramerate = 20;
+              delete enc.scaleResolutionDownBy;
+            });
+          }
+        }
+
+        await sender.setParameters(params);
+      } catch (errParam) {
+        // Blindaje silencioso para navegadores que no permitan modificar parámetros
+      }
+    }
+
+    async function refreshAllP2PBitrateProfiles() {
+      if (currentVideoMode !== 'p2p') return;
+      for (const remotePeerId of Object.keys(webrtcPeers)) {
+        const peerObj = webrtcPeers[remotePeerId];
+        if (peerObj && peerObj.videoSender) {
+          await applyP2PBitrateProfile(peerObj.videoSender, isSharingScreen);
+        }
+      }
+    }
+
     async function syncP2PTracksToAllPeers() {
       if (currentVideoMode !== 'p2p') return;
       for (const remotePeerId of Object.keys(webrtcPeers)) {
@@ -5659,9 +5734,11 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
 
         if (peerObj.videoSender) {
           try { await peerObj.videoSender.replaceTrack(currentVideo || null); } catch (e) {}
+          applyP2PBitrateProfile(peerObj.videoSender, isSharingScreen);
         } else if (currentVideo) {
           try {
             peerObj.videoSender = pc.addTrack(currentVideo, p2pLocalStream);
+            applyP2PBitrateProfile(peerObj.videoSender, isSharingScreen);
           } catch (e) {}
         }
 
@@ -5797,15 +5874,19 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
 
       pc.onconnectionstatechange = () => {
         const state = pc.connectionState;
-        if (state === 'failed' || state === 'closed') {
+        if (state === 'connected') {
+          refreshAllP2PBitrateProfiles();
+        } else if (state === 'failed' || state === 'closed') {
           removeRemotePeerCard(remotePeerId, webrtcPeers[remotePeerId]?.name);
           syncHostScreenShareStage();
+          refreshAllP2PBitrateProfiles();
         } else if (state === 'disconnected') {
           setTimeout(() => {
             if (webrtcPeers[remotePeerId] && webrtcPeers[remotePeerId].pc === pc) {
               if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
                 removeRemotePeerCard(remotePeerId, webrtcPeers[remotePeerId]?.name);
                 syncHostScreenShareStage();
+                refreshAllP2PBitrateProfiles();
               }
             }
           }, 4500);
@@ -5881,6 +5962,7 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
           try { await peerObj.videoSender.replaceTrack(screenVideoTrack); } catch (e) {}
         }
       }
+      try { await refreshAllP2PBitrateProfiles(); } catch (e) {}
 
       updateShareButtonUI();
       syncHostScreenShareStage();
@@ -5903,6 +5985,7 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
           try { await peerObj.videoSender.replaceTrack(restoreTrack); } catch (e) {}
         }
       }
+      try { await refreshAllP2PBitrateProfiles(); } catch (e) {}
 
       updateShareButtonUI();
       syncHostScreenShareStage();
@@ -6280,6 +6363,7 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
       if (typeof updateMinimizedVideoStripSummary === 'function') {
         updateMinimizedVideoStripSummary();
       }
+      try { refreshAllP2PBitrateProfiles(); } catch (e) {}
     }
 
     function cleanupOrphanRemotePeerCards(activePeerIds, activeStudentNames) {
@@ -6332,6 +6416,7 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
       if (typeof updateMinimizedVideoStripSummary === 'function') {
         updateMinimizedVideoStripSummary();
       }
+      try { refreshAllP2PBitrateProfiles(); } catch (e) {}
     }
 
     function ensureRemotePeerCard(peerId, peerName) {
@@ -6657,6 +6742,9 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
             }
           });
           updateRemotePeerCardMedia(fromId);
+          if (peerObj && peerObj.videoSender) {
+            applyP2PBitrateProfile(peerObj.videoSender, isSharingScreen);
+          }
         } catch (e) {
           console.warn('[P2P] Error respondiendo oferta:', e);
         }
@@ -6683,6 +6771,9 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
               peerObj.pendingIce = [];
             }
             updateRemotePeerCardMedia(fromId);
+            if (peerObj.videoSender) {
+              applyP2PBitrateProfile(peerObj.videoSender, isSharingScreen);
+            }
           }
         } catch (e) {
           console.warn('[P2P] Error aplicando respuesta:', e);

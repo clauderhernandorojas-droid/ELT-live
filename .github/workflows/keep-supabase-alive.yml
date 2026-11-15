@@ -1,0 +1,21 @@
+﻿name: Mantener Supabase Activo (ELT LIVE)
+
+on:
+  schedule:
+    - cron: '0 14 */3 * *'
+  workflow_dispatch:
+
+jobs:
+  ping-supabase:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hacer ping a Supabase Auth Settings
+        run: |
+          STATUS_CODE=$(curl -s -o /tmp/resp.txt -w "%{http_code}" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            "${{ secrets.SUPABASE_URL }}/auth/v1/settings")
+          echo "Respuesta de Supabase HTTP: $STATUS_CODE"
+          if [ "$STATUS_CODE" -ne 200 ]; then
+            cat /tmp/resp.txt
+            exit 1
+          fi

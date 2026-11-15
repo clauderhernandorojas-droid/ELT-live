@@ -1495,10 +1495,13 @@
         <div id="breakoutConfigView" class="space-y-4">
           <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-3 space-y-2">
             <label class="font-bold text-slate-200 block text-xs">1. Número de Salas Deseadas</label>
-            <div class="flex items-center gap-2" id="breakoutRoomCountSelector">
-              <button type="button" data-rooms="2" class="breakout-count-btn px-3 py-1.5 rounded-lg border border-indigo-600 bg-indigo-600/30 text-white font-bold text-xs transition cursor-pointer">2 Salas</button>
-              <button type="button" data-rooms="3" class="breakout-count-btn px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800 text-slate-300 font-bold text-xs hover:border-slate-500 transition cursor-pointer">3 Salas</button>
-              <button type="button" data-rooms="4" class="breakout-count-btn px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800 text-slate-300 font-bold text-xs hover:border-slate-500 transition cursor-pointer">4 Salas</button>
+            <div class="flex items-center gap-3" id="breakoutRoomCountSelector">
+              <div class="inline-flex items-center bg-slate-950 border border-slate-700 rounded-xl p-1 shadow-inner">
+                <button id="btnDecBreakoutRooms" type="button" title="Reducir salas" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white flex items-center justify-center font-bold text-sm transition cursor-pointer active:scale-95 select-none">−</button>
+                <input type="number" id="breakoutRoomCountInput" min="1" max="15" value="2" class="w-14 text-center bg-transparent border-0 text-white font-extrabold text-sm focus:outline-none focus:ring-0 select-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none">
+                <button id="btnIncBreakoutRooms" type="button" title="Aumentar salas" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white flex items-center justify-center font-bold text-sm transition cursor-pointer active:scale-95 select-none">+</button>
+              </div>
+              <span id="breakoutRoomCountLabel" class="text-xs font-bold text-indigo-300">2 salas configuradas</span>
             </div>
             <p class="text-[10px] text-slate-400" id="breakoutEstimateNotice">Calculando participantes conectados...</p>
           </div>
@@ -7116,7 +7119,16 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
     }
 
     function autoAssignBreakoutRooms(numRooms) {
-      breakoutDesiredRoomsCount = Math.max(2, Math.min(6, parseInt(numRooms, 10) || 2));
+      breakoutDesiredRoomsCount = Math.max(1, Math.min(15, parseInt(numRooms, 10) || 2));
+      const countInput = document.getElementById('breakoutRoomCountInput');
+      if (countInput && parseInt(countInput.value, 10) !== breakoutDesiredRoomsCount) {
+        countInput.value = breakoutDesiredRoomsCount;
+      }
+      const countLbl = document.getElementById('breakoutRoomCountLabel');
+      if (countLbl) {
+        countLbl.textContent = `${breakoutDesiredRoomsCount} ${breakoutDesiredRoomsCount === 1 ? 'sala configurada' : 'salas configuradas'}`;
+      }
+
       const students = getActiveConnectedStudents();
       const shuffled = [...students].sort(() => Math.random() - 0.5);
 
@@ -7144,22 +7156,23 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
     function renderBreakoutConfigView() {
       const notice = document.getElementById('breakoutEstimateNotice');
       const list = document.getElementById('breakoutAssignmentsList');
-      const countSelector = document.getElementById('breakoutRoomCountSelector');
-      if (countSelector) {
-        countSelector.querySelectorAll('button').forEach(btn => {
-          const rNum = parseInt(btn.getAttribute('data-rooms'), 10);
-          if (rNum === breakoutDesiredRoomsCount) {
-            btn.className = 'breakout-count-btn px-3 py-1.5 rounded-lg border border-indigo-600 bg-indigo-600/30 text-white font-bold text-xs transition cursor-pointer';
-          } else {
-            btn.className = 'breakout-count-btn px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800 text-slate-300 font-bold text-xs hover:border-slate-500 transition cursor-pointer';
-          }
-        });
+      const countInput = document.getElementById('breakoutRoomCountInput');
+      if (countInput && parseInt(countInput.value, 10) !== breakoutDesiredRoomsCount) {
+        countInput.value = breakoutDesiredRoomsCount;
+      }
+      const countLbl = document.getElementById('breakoutRoomCountLabel');
+      if (countLbl) {
+        countLbl.textContent = `${breakoutDesiredRoomsCount} ${breakoutDesiredRoomsCount === 1 ? 'sala configurada' : 'salas configuradas'}`;
       }
 
       const students = getActiveConnectedStudents();
       const perRoomEst = Math.ceil(students.length / breakoutDesiredRoomsCount);
       if (notice) {
-        notice.textContent = `${students.length} participante(s) detectado(s) (~${perRoomEst} por sala).`;
+        if (students.length === 0) {
+          notice.textContent = `0 participantes detectados (${breakoutDesiredRoomsCount} ${breakoutDesiredRoomsCount === 1 ? 'sala' : 'salas'} preparadas).`;
+        } else {
+          notice.textContent = `${students.length} participante(s) detectado(s) (~${perRoomEst} por sala).`;
+        }
       }
 
       if (!list) return;
@@ -7534,14 +7547,39 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
         shuffleBtn.onclick = () => autoAssignBreakoutRooms(breakoutDesiredRoomsCount);
       }
 
-      const countSelector = document.getElementById('breakoutRoomCountSelector');
-      if (countSelector) {
-        countSelector.querySelectorAll('button').forEach(btn => {
-          btn.onclick = () => {
-            const r = parseInt(btn.getAttribute('data-rooms'), 10) || 2;
-            autoAssignBreakoutRooms(r);
-          };
-        });
+      const countInput = document.getElementById('breakoutRoomCountInput');
+      const btnDec = document.getElementById('btnDecBreakoutRooms');
+      const btnInc = document.getElementById('btnIncBreakoutRooms');
+
+      if (btnDec) {
+        btnDec.onclick = () => {
+          const cur = parseInt(countInput?.value, 10) || breakoutDesiredRoomsCount;
+          const next = Math.max(1, cur - 1);
+          if (countInput) countInput.value = next;
+          autoAssignBreakoutRooms(next);
+        };
+      }
+
+      if (btnInc) {
+        btnInc.onclick = () => {
+          const cur = parseInt(countInput?.value, 10) || breakoutDesiredRoomsCount;
+          const next = Math.min(15, cur + 1);
+          if (countInput) countInput.value = next;
+          autoAssignBreakoutRooms(next);
+        };
+      }
+
+      if (countInput) {
+        countInput.onchange = () => {
+          const val = parseInt(countInput.value, 10);
+          autoAssignBreakoutRooms(val);
+        };
+        countInput.oninput = () => {
+          const val = parseInt(countInput.value, 10);
+          if (!isNaN(val) && val >= 1 && val <= 15) {
+            autoAssignBreakoutRooms(val);
+          }
+        };
       }
 
       const startBtn = document.getElementById('btnStartBreakoutRooms');

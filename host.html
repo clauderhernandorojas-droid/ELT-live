@@ -1810,7 +1810,12 @@
                     <p class="text-xs font-bold text-white">${name}</p>
                     <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
                   </div>
-                  <span class="text-slate-500 text-[10px]">${toggleIcon}</span>
+                  <div class="flex items-center gap-1.5">
+                    <button type="button" onclick="event.stopPropagation(); kickStudent('${name}')" title="Expulsar de la clase" class="text-slate-400 hover:text-rose-400 p-1 rounded hover:bg-rose-500/10 transition-colors">
+                      <i class="fa-solid fa-user-xmark text-xs"></i>
+                    </button>
+                    <span class="text-slate-500 text-[10px]">${toggleIcon}</span>
+                  </div>
                 </div>
                 <div class="flex items-center justify-between">
                    ${activityStatus}
@@ -1826,6 +1831,64 @@
     }
 
     setInterval(renderStudentsDashboard, 1000);
+
+    // ==================== EXPULSIÓN DE ESTUDIANTE EN VIVO (KICK) ====================
+    window.kickStudent = function(studentName) {
+      if (!studentName) return;
+      const confirmKick = confirm(`¿Estás seguro de que deseas desconectar a "${studentName}" de la clase?`);
+      if (!confirmKick) return;
+
+      // 1. Notificar expulsión por Supabase Broadcast a toda la sala
+      if (roomChannel) {
+        roomChannel.send({
+          type: 'broadcast',
+          event: 'KICK_STUDENT',
+          payload: {
+            studentName: studentName,
+            roomPin: roomPin
+          }
+        });
+      }
+
+      // 2. Limpiar del estado local del Host
+      if (studentsState[studentName]) {
+        delete studentsState[studentName];
+      }
+
+      // 3. Remover de la lista de admitidos y sala de espera
+      for (const sid of Array.from(admittedStudentIds)) {
+        if (waitingRoomStudents[sid]?.name === studentName) {
+          admittedStudentIds.delete(sid);
+          delete waitingRoomStudents[sid];
+        }
+      }
+
+      // 4. Remover tarjeta WebRTC y cerrar conexión P2P dedicada
+      const cleanTarget = (typeof normalizeStudentPeerKey === 'function')
+        ? normalizeStudentPeerKey(studentName)
+        : String(studentName).trim().toLowerCase();
+
+      let targetPeerId = (window.__latestPeerIdByStudent && window.__latestPeerIdByStudent[cleanTarget]) || null;
+      if (!targetPeerId && typeof webrtcPeers === 'object') {
+        Object.keys(webrtcPeers).forEach(pid => {
+          const pNameClean = (typeof normalizeStudentPeerKey === 'function')
+            ? normalizeStudentPeerKey(webrtcPeers[pid]?.name)
+            : String(webrtcPeers[pid]?.name || '').trim().toLowerCase();
+          if (pNameClean === cleanTarget) {
+            targetPeerId = pid;
+          }
+        });
+      }
+
+      if (typeof removeRemotePeerCard === 'function') {
+        removeRemotePeerCard(targetPeerId || null, studentName);
+      }
+
+      // 5. Refrescar interfaz del Host
+      renderStudentsDashboard();
+      if (typeof renderChatParticipantsDropdown === 'function') renderChatParticipantsDropdown();
+      if (typeof syncHostScreenShareStage === 'function') syncHostScreenShareStage();
+    };
 
     // ==================== GESTIÓN DE SALA DE ESPERA (WAITING ROOM) EN EL PROFESOR ====================
     const waitingRoomStudents = {}; // studentId -> { studentId, name, peerId, joinedAt, lastMsg, messages: [], draftText: '' }
@@ -2112,10 +2175,24 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
         const remainingForKey = Array.isArray(state[key]) ? state[key].filter(Boolean) : [];
         if (remainingForKey.length === 0 && Array.isArray(leftPresences)) {
           leftPresences.forEach(lp => {
-            if (lp && lp.peerId && typeof removeRemotePeerCard === 'function') {
-              removeRemotePeerCard(lp.peerId, lp.name);
+            if (lp) {
+              const studentName = lp.name || key;
+              if (studentName && studentsState[studentName]) {
+                delete studentsState[studentName];
+              }
+              for (const sid of Array.from(admittedStudentIds)) {
+                if (waitingRoomStudents[sid]?.name === studentName || sid === lp.studentId) {
+                  admittedStudentIds.delete(sid);
+                }
+              }
+              if (typeof removeRemotePeerCard === 'function') {
+                removeRemotePeerCard(lp.peerId, studentName);
+              }
             }
           });
+          renderStudentsDashboard();
+          if (typeof renderChatParticipantsDropdown === 'function') renderChatParticipantsDropdown();
+          if (typeof syncHostScreenShareStage === 'function') syncHostScreenShareStage();
         }
       });
 
@@ -5110,20 +5187,15 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
     document.getElementById('headerBtnVideoModeP2P')?.addEventListener('click', () => setHostVideoMode('p2p'));
     document.getElementById('headerBtnVideoModeLiveKit')?.addEventListener('click', () => setHostVideoMode('livekit'));
 
-    // Configuración STUN + TURN OpenRelay gratuito para conexiones WebRTC Nativas
+    // Configuración STUN pool de alta disponibilidad para conexiones WebRTC Nativas
     const WEBRTC_ICE_SERVERS = {
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
-        {
-          urls: [
-            'turn:openrelay.metered.ca:80',
-            'turn:openrelay.metered.ca:443',
-            'turns:openrelay.metered.ca:443?transport=tcp'
-          ],
-          username: 'openrelayproject',
-          credential: 'openrelayproject'
-        }
+        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun3.l.google.com:19302' },
+        { urls: 'stun:stun4.l.google.com:19302' },
+        { urls: 'stun:global.stun.twilio.com:3478' }
       ],
       iceCandidatePoolSize: 10
     };
@@ -5664,8 +5736,13 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
             payload: {
               fromPeerId: webrtcMyPeerId,
               from: webrtcMyPeerId,
+              fromName: webrtcMyDisplayName,
+              name: webrtcMyDisplayName,
+              role: 'host',
               toPeerId: remotePeerId,
               to: remotePeerId,
+              toName: remoteName,
+              targetName: remoteName,
               candidate: evt.candidate
             }
           });
@@ -5747,6 +5824,8 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
             role: 'host',
             toPeerId: remotePeerId,
             to: remotePeerId,
+            toName: remoteName,
+            targetName: remoteName,
             sdp: pc.localDescription,
             audioEnabled: webrtcAudioEnabled,
             videoEnabled: webrtcVideoEnabled,
@@ -6466,7 +6545,8 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
         const fromId = payload && (payload.fromPeerId || payload.from || payload.peerId);
         const toId = payload && (payload.toPeerId || payload.to);
         if (!fromId || fromId === webrtcMyPeerId) return;
-        if (toId && toId !== webrtcMyPeerId) return;
+        const isForMe = !toId || toId === webrtcMyPeerId || toId === 'host' || toId === 'host_presence' || payload.role === 'host' || payload.toRole === 'host';
+        if (!isForMe) return;
         const remoteName = payload.fromName || payload.name || 'Alumno';
 
         if (currentVideoMode === 'p2p') {
@@ -6485,7 +6565,8 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
         if (currentVideoMode !== 'p2p') return;
         const fromId = payload && (payload.fromPeerId || payload.from);
         const toId = payload && (payload.toPeerId || payload.to);
-        if (!fromId || toId !== webrtcMyPeerId || fromId === webrtcMyPeerId) return;
+        const isForMe = toId === webrtcMyPeerId || toId === 'host' || toId === 'host_presence' || payload.role === 'host' || payload.toRole === 'host';
+        if (!fromId || !isForMe || fromId === webrtcMyPeerId) return;
 
         try {
           const remoteName = payload.fromName || payload.name || 'Alumno';
@@ -6538,6 +6619,8 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
               role: 'host',
               toPeerId: fromId,
               to: fromId,
+              toName: remoteName,
+              targetName: remoteName,
               sdp: pc.localDescription,
               audioEnabled: webrtcAudioEnabled,
               videoEnabled: webrtcVideoEnabled,
@@ -6554,7 +6637,8 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
         if (currentVideoMode !== 'p2p') return;
         const fromId = payload && (payload.fromPeerId || payload.from);
         const toId = payload && (payload.toPeerId || payload.to);
-        if (!fromId || toId !== webrtcMyPeerId || fromId === webrtcMyPeerId) return;
+        const isForMe = toId === webrtcMyPeerId || toId === 'host' || toId === 'host_presence' || payload.role === 'host' || payload.toRole === 'host';
+        if (!fromId || !isForMe || fromId === webrtcMyPeerId) return;
 
         try {
           const peerObj = webrtcPeers[fromId];
@@ -6580,7 +6664,8 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
         if (currentVideoMode !== 'p2p') return;
         const fromId = payload && (payload.fromPeerId || payload.from);
         const toId = payload && (payload.toPeerId || payload.to);
-        if (!fromId || toId !== webrtcMyPeerId || fromId === webrtcMyPeerId) return;
+        const isForMe = toId === webrtcMyPeerId || toId === 'host' || toId === 'host_presence' || payload.role === 'host' || payload.toRole === 'host';
+        if (!fromId || !isForMe || fromId === webrtcMyPeerId) return;
 
         try {
           const peerObj = webrtcPeers[fromId];
@@ -6636,7 +6721,17 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
         const remoteId = payload && (payload.peerId || payload.fromPeerId || payload.from);
         const remoteName = payload && (payload.name || payload.fromName);
         if (!remoteId || remoteId === webrtcMyPeerId) return;
+        if (remoteName && studentsState[remoteName]) {
+          delete studentsState[remoteName];
+        }
+        for (const sid of Array.from(admittedStudentIds)) {
+          if (waitingRoomStudents[sid]?.name === remoteName) {
+            admittedStudentIds.delete(sid);
+          }
+        }
         removeRemotePeerCard(remoteId, remoteName);
+        renderStudentsDashboard();
+        if (typeof renderChatParticipantsDropdown === 'function') renderChatParticipantsDropdown();
         syncHostScreenShareStage();
       });
     }

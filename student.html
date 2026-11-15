@@ -2301,6 +2301,34 @@
         await leaveStudentSession();
       });
 
+      // Expulsión del estudiante por el profesor
+      myChannel.on('broadcast', { event: 'KICK_STUDENT' }, async ({ payload }) => {
+        if (!payload) return;
+        const targetName = String(payload.studentName || '').trim().toLowerCase();
+        const myClean = String(myName || '').trim().toLowerCase();
+        const myDisplayClean = (typeof getMyDisplayNameForWebRTC === 'function')
+          ? String(getMyDisplayNameForWebRTC()).trim().toLowerCase()
+          : '';
+
+        if (targetName && (targetName === myClean || targetName === myDisplayClean)) {
+          alert('Has sido desconectado de la clase por el profesor.');
+          if (typeof leaveStudentSession === 'function') {
+            await leaveStudentSession();
+          } else {
+            window.location.reload();
+          }
+          return;
+        }
+
+        // Si otro estudiante fue expulsado, remover su tarjeta y recalcular galería
+        if (targetName && typeof removeStudentRemoteVideoCard === 'function') {
+          removeStudentRemoteVideoCard(null, payload.studentName, 'student');
+          if (typeof syncVideoGalleryMode === 'function') {
+            syncVideoGalleryMode();
+          }
+        }
+      });
+
       // Eventos de Sala de Espera (Waiting Room)
       myChannel.on('broadcast', { event: 'WAITING_ROOM_MSG' }, ({ payload }) => {
         if (!payload || isAdmittedToClass) return;
@@ -5173,20 +5201,15 @@
     // ==================== ARQUITECTURA DUAL DE VIDEO: P2P GRATIS ILIMITADO / LIVEKIT SFU ====================
     let currentVideoMode = 'p2p'; // 'p2p' | 'livekit' (controlado automáticamente por el profesor de la sala)
 
-    // Configuración STUN + TURN OpenRelay gratuito para conexiones WebRTC Nativas
+    // Configuración STUN pool de alta disponibilidad para conexiones WebRTC Nativas
     const WEBRTC_ICE_SERVERS = {
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
-        {
-          urls: [
-            'turn:openrelay.metered.ca:80',
-            'turn:openrelay.metered.ca:443',
-            'turns:openrelay.metered.ca:443?transport=tcp'
-          ],
-          username: 'openrelayproject',
-          credential: 'openrelayproject'
-        }
+        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun3.l.google.com:19302' },
+        { urls: 'stun:stun4.l.google.com:19302' },
+        { urls: 'stun:global.stun.twilio.com:3478' }
       ],
       iceCandidatePoolSize: 10
     };
@@ -5866,6 +5889,8 @@
             role: 'student',
             toPeerId: remotePeerId,
             to: remotePeerId,
+            toName: remoteName,
+            targetName: remoteName,
             sdp: pc.localDescription,
             audioEnabled: webrtcAudioEnabled,
             videoEnabled: webrtcVideoEnabled,
@@ -5945,8 +5970,13 @@
             payload: {
               fromPeerId: webrtcPeerId,
               from: webrtcPeerId,
+              fromName: getMyDisplayNameForWebRTC(),
+              name: getMyDisplayNameForWebRTC(),
+              role: 'student',
               toPeerId: remotePeerId,
               to: remotePeerId,
+              toName: remoteName,
+              targetName: remoteName,
               candidate: evt.candidate
             }
           });
@@ -6255,6 +6285,10 @@
         }
         if (typeof closeAllP2PConnections === 'function') {
           closeAllP2PConnections();
+        }
+        if (typeof ensureRemoteVideoCard === 'function') {
+          const hostPeerId = (window.__studentLatestPeerByKey && window.__studentLatestPeerByKey['__host__']) || 'host_presence';
+          ensureRemoteVideoCard(hostPeerId, 'Profesor (Host)', 'host');
         }
         if (typeof announceWebRTCPresence === 'function') {
           announceWebRTCPresence();
@@ -7030,7 +7064,15 @@
         if (!isAdmittedToClass || currentVideoMode !== 'p2p') return;
         const fromId = payload && (payload.fromPeerId || payload.from);
         const toId = payload && (payload.toPeerId || payload.to);
-        if (!fromId || toId !== webrtcPeerId || fromId === webrtcPeerId) return;
+        const toName = payload && (payload.toName || payload.targetName);
+        const myDisplay = (typeof getMyDisplayNameForWebRTC === 'function') ? getMyDisplayNameForWebRTC() : myName;
+        const myCleanName = String(myDisplay || '').trim().toLowerCase();
+        const myRawName = String(myName || '').trim().toLowerCase();
+
+        const isForMe = toId === webrtcPeerId ||
+          (toName && (String(toName).trim().toLowerCase() === myCleanName || String(toName).trim().toLowerCase() === myRawName)) ||
+          (payload && (payload.to === myName || payload.to === myDisplay));
+        if (!fromId || !isForMe || fromId === webrtcPeerId) return;
 
         try {
           const remoteRole = payload.role || (fromId.startsWith('host_') || (payload.name && payload.name.includes('Profesor')) ? 'host' : 'student');
@@ -7088,6 +7130,8 @@
               role: 'student',
               toPeerId: fromId,
               to: fromId,
+              toName: remoteName,
+              targetName: remoteName,
               sdp: pc.localDescription,
               audioEnabled: webrtcAudioEnabled,
               videoEnabled: webrtcVideoEnabled,
@@ -7105,7 +7149,15 @@
         if (!isAdmittedToClass || currentVideoMode !== 'p2p') return;
         const fromId = payload && (payload.fromPeerId || payload.from);
         const toId = payload && (payload.toPeerId || payload.to);
-        if (!fromId || toId !== webrtcPeerId || fromId === webrtcPeerId) return;
+        const toName = payload && (payload.toName || payload.targetName);
+        const myDisplay = (typeof getMyDisplayNameForWebRTC === 'function') ? getMyDisplayNameForWebRTC() : myName;
+        const myCleanName = String(myDisplay || '').trim().toLowerCase();
+        const myRawName = String(myName || '').trim().toLowerCase();
+
+        const isForMe = toId === webrtcPeerId ||
+          (toName && (String(toName).trim().toLowerCase() === myCleanName || String(toName).trim().toLowerCase() === myRawName)) ||
+          (payload && (payload.to === myName || payload.to === myDisplay));
+        if (!fromId || !isForMe || fromId === webrtcPeerId) return;
 
         try {
           const peerObj = webrtcPeers[fromId];
@@ -7131,7 +7183,15 @@
         if (!isAdmittedToClass || currentVideoMode !== 'p2p') return;
         const fromId = payload && (payload.fromPeerId || payload.from);
         const toId = payload && (payload.toPeerId || payload.to);
-        if (!fromId || toId !== webrtcPeerId || fromId === webrtcPeerId) return;
+        const toName = payload && (payload.toName || payload.targetName);
+        const myDisplay = (typeof getMyDisplayNameForWebRTC === 'function') ? getMyDisplayNameForWebRTC() : myName;
+        const myCleanName = String(myDisplay || '').trim().toLowerCase();
+        const myRawName = String(myName || '').trim().toLowerCase();
+
+        const isForMe = toId === webrtcPeerId ||
+          (toName && (String(toName).trim().toLowerCase() === myCleanName || String(toName).trim().toLowerCase() === myRawName)) ||
+          (payload && (payload.to === myName || payload.to === myDisplay));
+        if (!fromId || !isForMe || fromId === webrtcPeerId) return;
 
         try {
           const peerObj = webrtcPeers[fromId];
@@ -7185,9 +7245,53 @@
         if (!remoteId || remoteId === webrtcPeerId) return;
         removeStudentRemoteVideoCard(remoteId, payload.name, payload.role);
       });
+
+      channel.on('broadcast', { event: 'KICK_STUDENT' }, async ({ payload }) => {
+        if (!payload) return;
+        const targetName = String(payload.studentName || '').trim().toLowerCase();
+        const myClean = String(myName || '').trim().toLowerCase();
+        const myDisplayClean = (typeof getMyDisplayNameForWebRTC === 'function')
+          ? String(getMyDisplayNameForWebRTC()).trim().toLowerCase()
+          : '';
+
+        if (targetName && (targetName === myClean || targetName === myDisplayClean)) {
+          alert('Has sido desconectado de la clase por el profesor.');
+          if (typeof leaveStudentSession === 'function') {
+            await leaveStudentSession();
+          } else {
+            window.location.reload();
+          }
+          return;
+        }
+
+        if (targetName && typeof removeStudentRemoteVideoCard === 'function') {
+          removeStudentRemoteVideoCard(null, payload.studentName, 'student');
+          if (typeof syncVideoGalleryMode === 'function') {
+            syncVideoGalleryMode();
+          }
+        }
+      });
     }
 
     window.addEventListener('beforeunload', () => {
+      try {
+        if (myChannel) {
+          myChannel.send({
+            type: 'broadcast',
+            event: 'WEBRTC_LEAVE',
+            payload: {
+              peerId: webrtcPeerId,
+              fromPeerId: webrtcPeerId,
+              from: webrtcPeerId,
+              name: getMyDisplayNameForWebRTC(),
+              fromName: getMyDisplayNameForWebRTC(),
+              role: 'student'
+            }
+          });
+          myChannel.untrack();
+        }
+      } catch (e) {}
+
       if (livekitRoom) {
         try { livekitRoom.disconnect(); } catch (e) {}
       }

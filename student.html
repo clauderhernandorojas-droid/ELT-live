@@ -6010,13 +6010,19 @@
         } catch (e) {}
 
         // Disparar renegociación SDP hacia el par remoto para que reciba la pista de inmediato
-        await createAndSendP2POffer(remotePeerId, peerObj.name, peerObj.role);
+        if (peerObj.role === 'host' || webrtcPeerId < remotePeerId) {
+          await createAndSendP2POffer(remotePeerId, peerObj.name, peerObj.role);
+        }
       }
     }
 
     async function createAndSendP2POffer(remotePeerId, remoteName, remoteRole, offerOptions) {
       if (!myChannel || currentVideoMode !== 'p2p' || !isAdmittedToClass) return;
       const role = remoteRole || (remotePeerId.startsWith('host_') || (remoteName && remoteName.includes('Profesor')) ? 'host' : 'student');
+      // En la malla estudiante <-> estudiante, solo el peer con ID menor crea la oferta inicial para evitar colisiones (glare)
+      if (role !== 'host' && webrtcPeerId >= remotePeerId && !offerOptions?.iceRestart) {
+        return;
+      }
       const pc = getOrCreateP2PPeerConnection(remotePeerId, remoteName, role);
       const peerObj = webrtcPeers[remotePeerId];
       if (!pc || !peerObj) return;
@@ -7431,10 +7437,14 @@
 
         try {
           const peerObj = webrtcPeers[fromId];
-          if (peerObj && peerObj.pc && peerObj.pc.signalingState === 'have-local-offer') {
-            if (payload.audioEnabled !== undefined) peerObj.audioEnabled = Boolean(payload.audioEnabled);
-            if (payload.videoEnabled !== undefined) peerObj.videoEnabled = Boolean(payload.videoEnabled);
-            await peerObj.pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+          if (!peerObj || !peerObj.pc) return;
+          if (peerObj.pc.signalingState !== 'have-local-offer') {
+            console.warn(`[P2P] Omitiendo WEBRTC_ANSWER de ${fromId} porque signalingState es '${peerObj.pc.signalingState}' (esperado: have-local-offer).`);
+            return;
+          }
+          if (payload.audioEnabled !== undefined) peerObj.audioEnabled = Boolean(payload.audioEnabled);
+          if (payload.videoEnabled !== undefined) peerObj.videoEnabled = Boolean(payload.videoEnabled);
+          await peerObj.pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
 
             if (peerObj.pendingIce && peerObj.pendingIce.length > 0) {
               for (const cand of peerObj.pendingIce) {
@@ -7446,7 +7456,6 @@
             if (peerObj && peerObj.videoSender) {
               applyP2PBitrateProfile(peerObj.videoSender, isSharingScreen);
             }
-          }
         } catch (e) {
           console.warn('[P2P] Error aplicando respuesta en Estudiante:', e);
         }

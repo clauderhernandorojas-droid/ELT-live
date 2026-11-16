@@ -1590,22 +1590,29 @@
     </div>
   </div>
 
-  <!-- Toast Flotante de Sugerencia de Fallback a LiveKit SFU (Red Móvil / Firewall) -->
-  <div id="hostLiveKitSwitchToast" class="hidden fixed bottom-16 right-6 z-[100] max-w-md bg-slate-900/95 border border-indigo-500/80 text-white p-3.5 rounded-2xl shadow-2xl flex items-center justify-between gap-3 backdrop-blur-md">
-    <div class="flex items-center gap-2.5 min-w-0">
-      <span class="w-8 h-8 rounded-full bg-indigo-500/20 border border-indigo-400/50 flex items-center justify-center text-indigo-400 shrink-0">
-        <i class="fa-solid fa-tower-broadcast text-sm"></i>
+  <!-- Banner Flotante Persistente de Activación Automática de LiveKit SFU (Red Móvil 4G/5G) -->
+  <div id="hostLiveKitSwitchToast" class="hidden fixed bottom-16 right-6 z-[100] max-w-lg bg-gradient-to-r from-amber-950/95 via-slate-900/95 to-amber-950/95 border-2 border-amber-500/90 text-white p-4 rounded-2xl shadow-[0_0_30px_rgba(245,158,11,0.35)] flex items-center justify-between gap-3.5 backdrop-blur-md">
+    <div class="flex items-start gap-3 min-w-0">
+      <span class="w-9 h-9 rounded-full bg-amber-500/20 border border-amber-400/70 flex items-center justify-center text-amber-400 shrink-0 text-base shadow-sm">
+        <i class="fa-solid fa-bolt"></i>
       </span>
-      <div class="flex flex-col leading-tight min-w-0">
-        <span id="hostLiveKitSwitchTitle" class="text-xs font-bold text-indigo-200 truncate">Red celular detectada</span>
-        <span id="hostLiveKitSwitchSub" class="text-[10px] text-slate-300">Alumno con NAT estricto. Cambia a LiveKit SFU.</span>
+      <div class="flex flex-col leading-snug min-w-0">
+        <span id="hostLiveKitSwitchTitle" class="text-xs font-black text-amber-300 tracking-wide uppercase flex items-center gap-1.5">
+          ⚡ LiveKit SFU activado automáticamente
+        </span>
+        <span id="hostLiveKitSwitchSub" class="text-[11px] text-amber-100 font-medium mt-0.5 leading-normal">
+          Se detectó bloqueo de red móvil (4G/5G). Esta sesión está usando minutos de tu cuota gratuita de LiveKit (5,000 min/mes).
+        </span>
       </div>
     </div>
-    <div class="flex items-center gap-1.5 shrink-0">
-      <button id="btnHostSwitchToLiveKit" type="button" class="bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg transition shadow cursor-pointer">
+    <div class="flex items-center gap-2 shrink-0">
+      <button id="btnHostRevertToP2P" type="button" class="bg-slate-800/90 hover:bg-slate-700 border border-amber-400/60 hover:border-amber-300 text-amber-200 hover:text-white text-[11px] font-bold px-3 py-1.5 rounded-xl transition shadow cursor-pointer whitespace-nowrap">
+        Volver a Gratis (Nativo)
+      </button>
+      <button id="btnHostSwitchToLiveKit" type="button" class="hidden">
         ⚡ Activar LiveKit
       </button>
-      <button id="btnDismissHostLiveKitSwitch" type="button" class="text-slate-400 hover:text-white p-1 text-xs cursor-pointer">
+      <button id="btnDismissHostLiveKitSwitch" type="button" class="text-amber-400/80 hover:text-white hover:bg-amber-500/20 p-1.5 rounded-lg text-sm cursor-pointer transition">
         ✕
       </button>
     </div>
@@ -5305,9 +5312,13 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
       try { localStorage.setItem('elt_host_video_mode', 'p2p'); } catch (e) {}
     }
     let currentVideoMode = (rawStoredMode === 'livekit') ? 'livekit' : 'p2p';
+    let hasAutoSwitchedToLiveKit = false;
 
     function setHostVideoMode(mode) {
       currentVideoMode = (mode === 'livekit') ? 'livekit' : 'p2p';
+      if (currentVideoMode === 'p2p') {
+        hasAutoSwitchedToLiveKit = false;
+      }
       try {
         localStorage.setItem('elt_host_video_mode', currentVideoMode);
       } catch (e) {}
@@ -6071,6 +6082,9 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
             clearTimeout(peerObj.disconnectTimer);
             peerObj.disconnectTimer = null;
           }
+          if (peerObj) {
+            peerObj.iceRestartAttempts = 0;
+          }
           refreshAllP2PBitrateProfiles();
         } else if (state === 'closed') {
           if (peerObj?.disconnectTimer) {
@@ -6081,12 +6095,11 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
           syncHostScreenShareStage();
           refreshAllP2PBitrateProfiles();
         } else if (state === 'disconnected' || state === 'failed') {
-          // Auto-recuperación con pc.restartIce() (control antirebote de 10 segundos)
-          const now = Date.now();
-          const lastRestart = peerObj?.lastIceRestartTime || 0;
-          if (now - lastRestart > 10000) {
-            if (peerObj) peerObj.lastIceRestartTime = now;
-            console.log(`[P2P] Disparando pc.restartIce() para ${peerObj?.name || remotePeerId} (${state})...`);
+          // Auto-recuperación con pc.restartIce() (máximo 1 intento por incidente)
+          const attempts = peerObj?.iceRestartAttempts || 0;
+          if (attempts < 1) {
+            if (peerObj) peerObj.iceRestartAttempts = attempts + 1;
+            console.log(`[P2P] Disparando pc.restartIce() (intento 1/1) para ${peerObj?.name || remotePeerId} (${state})...`);
             if (typeof pc.restartIce === 'function') {
               try { pc.restartIce(); } catch (e) {}
             }
@@ -6095,21 +6108,27 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
             }
           }
 
-          // Ventana de gracia de 7 segundos antes de limpiar la tarjeta
+          // Ventana de gracia de 4.5 segundos antes de cambiar automáticamente a LiveKit SFU y limpiar la tarjeta
           if (!peerObj?.disconnectTimer) {
             peerObj.disconnectTimer = setTimeout(() => {
               if (webrtcPeers[remotePeerId] && webrtcPeers[remotePeerId].pc === pc) {
                 if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
-                  console.warn(`[P2P] Conexión con ${peerObj?.name || remotePeerId} no se recuperó tras 7s. Sugiriendo LiveKit SFU.`);
-                  if (typeof showHostSwitchToLiveKitToast === 'function') {
-                    showHostSwitchToLiveKitToast(peerObj?.name || remoteName);
+                  const failedStudentName = peerObj?.name || remoteName || 'un alumno';
+                  console.warn(`[P2P] Conexión con ${failedStudentName} (${remotePeerId}) no se recuperó tras 4.5s (bloqueo móvil 4G/5G).`);
+                  if (currentVideoMode === 'p2p' && !hasAutoSwitchedToLiveKit) {
+                    hasAutoSwitchedToLiveKit = true;
+                    console.log(`[P2P -> LiveKit] Activando LiveKit SFU automáticamente debido a bloqueo de red móvil en ${failedStudentName}.`);
+                    setHostVideoMode('livekit');
+                    if (typeof showHostSwitchToLiveKitToast === 'function') {
+                      showHostSwitchToLiveKitToast(failedStudentName);
+                    }
                   }
                   removeRemotePeerCard(remotePeerId, webrtcPeers[remotePeerId]?.name);
                   syncHostScreenShareStage();
                   refreshAllP2PBitrateProfiles();
                 }
               }
-            }, 7000);
+            }, 4500);
           }
         }
       };
@@ -7651,23 +7670,21 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
 
     let hostLiveKitSwitchTimer = null;
     function showHostSwitchToLiveKitToast(studentName) {
-      if (currentVideoMode === 'livekit') return;
       const toast = document.getElementById('hostLiveKitSwitchToast');
       const title = document.getElementById('hostLiveKitSwitchTitle');
       const sub = document.getElementById('hostLiveKitSwitchSub');
       if (!toast || !title || !sub) return;
 
-      const name = studentName || 'Un participante';
-      title.textContent = `Falla de red celular: ${name}`;
-      sub.textContent = `${name} no pudo enlazar en P2P directo (NAT móvil estricto). ¿Activar LiveKit SFU?`;
+      const name = studentName || 'un alumno';
+      title.textContent = '⚡ LiveKit SFU activado automáticamente';
+      sub.textContent = `Se detectó bloqueo de red móvil (4G/5G) en ${name}. Esta sesión está usando minutos de tu cuota gratuita de LiveKit (5,000 min/mes).`;
       toast.classList.remove('hidden');
       toast.classList.add('flex');
 
-      if (hostLiveKitSwitchTimer) clearTimeout(hostLiveKitSwitchTimer);
-      hostLiveKitSwitchTimer = setTimeout(() => {
-        toast.classList.remove('flex');
-        toast.classList.add('hidden');
-      }, 15000);
+      if (hostLiveKitSwitchTimer) {
+        clearTimeout(hostLiveKitSwitchTimer);
+        hostLiveKitSwitchTimer = null;
+      }
     }
 
     function initBreakoutRoomsUI() {
@@ -7765,9 +7782,21 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
 
       const btnSwitchLK = document.getElementById('btnHostSwitchToLiveKit');
       const btnDismissLK = document.getElementById('btnDismissHostLiveKitSwitch');
+      const btnRevertP2P = document.getElementById('btnHostRevertToP2P');
       if (btnSwitchLK) {
         btnSwitchLK.onclick = () => {
           setHostVideoMode('livekit');
+          const toast = document.getElementById('hostLiveKitSwitchToast');
+          if (toast) {
+            toast.classList.remove('flex');
+            toast.classList.add('hidden');
+          }
+        };
+      }
+      if (btnRevertP2P) {
+        btnRevertP2P.onclick = () => {
+          hasAutoSwitchedToLiveKit = false;
+          setHostVideoMode('p2p');
           const toast = document.getElementById('hostLiveKitSwitchToast');
           if (toast) {
             toast.classList.remove('flex');

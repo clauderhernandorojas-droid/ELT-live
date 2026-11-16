@@ -5253,16 +5253,29 @@
     // ==================== ARQUITECTURA DUAL DE VIDEO: P2P GRATIS ILIMITADO / LIVEKIT SFU ====================
     let currentVideoMode = 'p2p'; // 'p2p' | 'livekit' (controlado automáticamente por el profesor de la sala)
 
-    // Configuración STUN pool de alta disponibilidad para conexiones WebRTC Nativas
+    // Configuración STUN + TURN pool de alta disponibilidad para conexiones WebRTC Nativas
     const WEBRTC_ICE_SERVERS = {
       iceServers: [
+        // STUN Pools de Google y Twilio (enlaces directos P2P sin costo)
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
         { urls: 'stun:stun2.l.google.com:19302' },
         { urls: 'stun:stun3.l.google.com:19302' },
         { urls: 'stun:stun4.l.google.com:19302' },
-        { urls: 'stun:global.stun.twilio.com:3478' }
+        { urls: 'stun:global.stun.twilio.com:3478' },
+        // Servidores TURN gratuitos de Metered / OpenRelay (Relay para datos móviles 4G/5G y NAT simétrico)
+        {
+          urls: [
+            'turn:openrelay.metered.ca:80',
+            'turn:openrelay.metered.ca:443',
+            'turn:openrelay.metered.ca:443?transport=tcp',
+            'turns:openrelay.metered.ca:443?transport=tcp'
+          ],
+          username: 'openrelayproject',
+          credential: 'openrelayproject'
+        }
       ],
+      iceTransportPolicy: 'all',
       iceCandidatePoolSize: 10
     };
 
@@ -5995,7 +6008,7 @@
       }
     }
 
-    async function createAndSendP2POffer(remotePeerId, remoteName, remoteRole) {
+    async function createAndSendP2POffer(remotePeerId, remoteName, remoteRole, offerOptions) {
       if (!myChannel || currentVideoMode !== 'p2p' || !isAdmittedToClass) return;
       const role = remoteRole || (remotePeerId.startsWith('host_') || (remoteName && remoteName.includes('Profesor')) ? 'host' : 'student');
       const pc = getOrCreateP2PPeerConnection(remotePeerId, remoteName, role);
@@ -6005,7 +6018,7 @@
 
       peerObj.isNegotiating = true;
       try {
-        const offer = await pc.createOffer();
+        const offer = await pc.createOffer(offerOptions || {});
         if (pc.signalingState !== 'stable') return;
         await pc.setLocalDescription(offer);
         myChannel.send({
@@ -6062,7 +6075,9 @@
         isSharingScreen: Boolean(webrtcPeers[remotePeerId].isSharingScreen),
         videoSender: null,
         audioSender: null,
-        isNegotiating: false
+        isNegotiating: false,
+        lastIceRestartTime: webrtcPeers[remotePeerId].lastIceRestartTime || 0,
+        disconnectTimer: null
       });
 
       // Transceivers sendrecv bidireccionales
@@ -6155,22 +6170,69 @@
 
       pc.onconnectionstatechange = () => {
         const state = pc.connectionState;
+        const peerObj = webrtcPeers[remotePeerId];
         if (state === 'connected') {
+          if (peerObj?.disconnectTimer) {
+            clearTimeout(peerObj.disconnectTimer);
+            peerObj.disconnectTimer = null;
+          }
           refreshAllP2PBitrateProfiles();
-        } else if (state === 'failed' || state === 'closed') {
-          removeStudentRemoteVideoCard(remotePeerId, webrtcPeers[remotePeerId]?.name, role);
+        } else if (state === 'closed') {
+          if (peerObj?.disconnectTimer) {
+            clearTimeout(peerObj.disconnectTimer);
+            peerObj.disconnectTimer = null;
+          }
+          removeStudentRemoteVideoCard(remotePeerId, peerObj?.name, role);
           syncStudentRemoteScreenShareOverlay();
           refreshAllP2PBitrateProfiles();
-        } else if (state === 'disconnected') {
-          setTimeout(() => {
-            if (webrtcPeers[remotePeerId] && webrtcPeers[remotePeerId].pc === pc) {
-              if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
-                removeStudentRemoteVideoCard(remotePeerId, webrtcPeers[remotePeerId]?.name, role);
-                syncStudentRemoteScreenShareOverlay();
-                refreshAllP2PBitrateProfiles();
-              }
+        } else if (state === 'disconnected' || state === 'failed') {
+          // Auto-recuperación con pc.restartIce() (control antirebote de 10 segundos)
+          const now = Date.now();
+          const lastRestart = peerObj?.lastIceRestartTime || 0;
+          if (now - lastRestart > 10000) {
+            if (peerObj) peerObj.lastIceRestartTime = now;
+            console.log(`[P2P] Disparando pc.restartIce() en Estudiante para ${peerObj?.name || remotePeerId} (${state})...`);
+            if (typeof pc.restartIce === 'function') {
+              try { pc.restartIce(); } catch (e) {}
             }
-          }, 4500);
+            if (role !== 'host' && webrtcPeerId < remotePeerId) {
+              if (typeof createAndSendP2POffer === 'function') {
+                createAndSendP2POffer(remotePeerId, peerObj?.name || remoteName, role, { iceRestart: true }).catch(() => {});
+              }
+            } else if (myChannel) {
+              myChannel.send({
+                type: 'broadcast',
+                event: 'WEBRTC_ANNOUNCE',
+                payload: {
+                  fromPeerId: webrtcPeerId,
+                  from: webrtcPeerId,
+                  fromName: getMyDisplayNameForWebRTC(),
+                  name: getMyDisplayNameForWebRTC(),
+                  role: 'student',
+                  videoMode: currentVideoMode,
+                  toPeerId: remotePeerId,
+                  to: remotePeerId,
+                  audioEnabled: webrtcAudioEnabled,
+                  videoEnabled: webrtcVideoEnabled,
+                  isSharingScreen: isSharingScreen
+                }
+              });
+            }
+          }
+
+          // Ventana de gracia de 7 segundos antes de limpiar la tarjeta
+          if (!peerObj?.disconnectTimer) {
+            peerObj.disconnectTimer = setTimeout(() => {
+              if (webrtcPeers[remotePeerId] && webrtcPeers[remotePeerId].pc === pc) {
+                if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+                  console.warn(`[P2P] Conexión con ${peerObj?.name || remotePeerId} no se recuperó tras 7s. Limpiando tarjeta.`);
+                  removeStudentRemoteVideoCard(remotePeerId, webrtcPeers[remotePeerId]?.name, role);
+                  syncStudentRemoteScreenShareOverlay();
+                  refreshAllP2PBitrateProfiles();
+                }
+              }
+            }, 7000);
+          }
         }
       };
 
@@ -6672,6 +6734,10 @@
       const dedupKey = getParticipantDedupKey(resolvedName, inferredRole);
 
       if (peerId && webrtcPeers[peerId]) {
+        if (webrtcPeers[peerId].disconnectTimer) {
+          clearTimeout(webrtcPeers[peerId].disconnectTimer);
+          webrtcPeers[peerId].disconnectTimer = null;
+        }
         if (webrtcPeers[peerId].pc) {
           try {
             webrtcPeers[peerId].pc.onicecandidate = null;

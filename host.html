@@ -1590,6 +1590,27 @@
     </div>
   </div>
 
+  <!-- Toast Flotante de Sugerencia de Fallback a LiveKit SFU (Red Móvil / Firewall) -->
+  <div id="hostLiveKitSwitchToast" class="hidden fixed bottom-16 right-6 z-[100] max-w-md bg-slate-900/95 border border-indigo-500/80 text-white p-3.5 rounded-2xl shadow-2xl flex items-center justify-between gap-3 backdrop-blur-md">
+    <div class="flex items-center gap-2.5 min-w-0">
+      <span class="w-8 h-8 rounded-full bg-indigo-500/20 border border-indigo-400/50 flex items-center justify-center text-indigo-400 shrink-0">
+        <i class="fa-solid fa-tower-broadcast text-sm"></i>
+      </span>
+      <div class="flex flex-col leading-tight min-w-0">
+        <span id="hostLiveKitSwitchTitle" class="text-xs font-bold text-indigo-200 truncate">Red celular detectada</span>
+        <span id="hostLiveKitSwitchSub" class="text-[10px] text-slate-300">Alumno con NAT estricto. Cambia a LiveKit SFU.</span>
+      </div>
+    </div>
+    <div class="flex items-center gap-1.5 shrink-0">
+      <button id="btnHostSwitchToLiveKit" type="button" class="bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg transition shadow cursor-pointer">
+        ⚡ Activar LiveKit
+      </button>
+      <button id="btnDismissHostLiveKitSwitch" type="button" class="text-slate-400 hover:text-white p-1 text-xs cursor-pointer">
+        ✕
+      </button>
+    </div>
+  </div>
+
   <script>
     const SUPABASE_URL = "https://pctvqffjpyiamlfprome.supabase.co";
     const SUPABASE_ANON_KEY = "sb_publishable_vhkbA_a6QYKRnpHCGxYiGA_JJSvorDJ";
@@ -5342,7 +5363,7 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
     document.getElementById('headerBtnVideoModeP2P')?.addEventListener('click', () => setHostVideoMode('p2p'));
     document.getElementById('headerBtnVideoModeLiveKit')?.addEventListener('click', () => setHostVideoMode('livekit'));
 
-    // Configuración STUN + TURN pool de alta disponibilidad para conexiones WebRTC Nativas
+    // Configuración STUN pool de alta disponibilidad para conexiones WebRTC Nativas
     const WEBRTC_ICE_SERVERS = {
       iceServers: [
         // STUN Pools de Google y Twilio (enlaces directos P2P sin costo)
@@ -5351,18 +5372,7 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
         { urls: 'stun:stun2.l.google.com:19302' },
         { urls: 'stun:stun3.l.google.com:19302' },
         { urls: 'stun:stun4.l.google.com:19302' },
-        { urls: 'stun:global.stun.twilio.com:3478' },
-        // Servidores TURN gratuitos de Metered / OpenRelay (Relay para datos móviles 4G/5G y NAT simétrico)
-        {
-          urls: [
-            'turn:openrelay.metered.ca:80',
-            'turn:openrelay.metered.ca:443',
-            'turn:openrelay.metered.ca:443?transport=tcp',
-            'turns:openrelay.metered.ca:443?transport=tcp'
-          ],
-          username: 'openrelayproject',
-          credential: 'openrelayproject'
-        }
+        { urls: 'stun:global.stun.twilio.com:3478' }
       ],
       iceTransportPolicy: 'all',
       iceCandidatePoolSize: 10
@@ -5493,6 +5503,19 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
       if (!participant) return;
       const pId = participant.identity;
       const pName = participant.name || 'Alumno';
+
+      // Filtro para Breakout Rooms en LiveKit SFU
+      if (breakoutRoomsActive && typeof shouldHostConnectWithPeerInBreakout === 'function') {
+        const allow = shouldHostConnectWithPeerInBreakout(pId, pName);
+        if (!allow) {
+          try {
+            if (publication && typeof publication.setSubscribed === 'function') {
+              publication.setSubscribed(false);
+            }
+          } catch (e) {}
+          return;
+        }
+      }
 
       if (track.kind === LivekitClient.Track.Kind.Video || track.kind === 'video') {
         const isScreen = track.source === LivekitClient.Track.Source.ScreenShare || publication.isScreenShare;
@@ -5711,6 +5734,10 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
             }
           });
         });
+
+        if (breakoutRoomsActive && typeof syncLiveKitBreakoutSubscriptions === 'function') {
+          syncLiveKitBreakoutSubscriptions();
+        }
 
       } catch (err) {
         console.error('[LiveKit] Error conectando a LiveKit:', err);
@@ -6073,7 +6100,10 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
             peerObj.disconnectTimer = setTimeout(() => {
               if (webrtcPeers[remotePeerId] && webrtcPeers[remotePeerId].pc === pc) {
                 if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
-                  console.warn(`[P2P] Conexión con ${peerObj?.name || remotePeerId} no se recuperó tras 7s. Limpiando tarjeta.`);
+                  console.warn(`[P2P] Conexión con ${peerObj?.name || remotePeerId} no se recuperó tras 7s. Sugiriendo LiveKit SFU.`);
+                  if (typeof showHostSwitchToLiveKitToast === 'function') {
+                    showHostSwitchToLiveKitToast(peerObj?.name || remoteName);
+                  }
                   removeRemotePeerCard(remotePeerId, webrtcPeers[remotePeerId]?.name);
                   syncHostScreenShareStage();
                   refreshAllP2PBitrateProfiles();
@@ -7423,6 +7453,8 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
             removeRemotePeerCard(pid, p.name);
           }
         });
+      } else if (currentVideoMode === 'livekit') {
+        syncLiveKitBreakoutSubscriptions();
       }
 
       try {
@@ -7476,6 +7508,10 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
         }, 900);
       }
 
+      if (currentVideoMode === 'livekit') {
+        syncLiveKitBreakoutSubscriptions();
+      }
+
       updateBreakoutIndicatorUI();
       window.closeBreakoutRoomsModal();
     }
@@ -7491,6 +7527,8 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
             removeRemotePeerCard(pid, p.name);
           }
         });
+      } else if (currentVideoMode === 'livekit') {
+        syncLiveKitBreakoutSubscriptions();
       }
 
       try {
@@ -7522,6 +7560,8 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
             removeRemotePeerCard(pid, p.name);
           }
         });
+      } else if (currentVideoMode === 'livekit') {
+        syncLiveKitBreakoutSubscriptions();
       }
 
       try {
@@ -7557,6 +7597,38 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
       }
     }
 
+    function syncLiveKitBreakoutSubscriptions() {
+      if (currentVideoMode !== 'livekit' || !livekitRoom) return;
+      try {
+        livekitRoom.remoteParticipants.forEach(participant => {
+          const pId = participant.identity;
+          const pName = participant.name || 'Alumno';
+          const allow = !breakoutRoomsActive || (typeof shouldHostConnectWithPeerInBreakout === 'function' ? shouldHostConnectWithPeerInBreakout(pId, pName) : true);
+
+          participant.trackPublications.forEach(pub => {
+            try {
+              if (typeof pub.setSubscribed === 'function') {
+                pub.setSubscribed(allow);
+              }
+            } catch (e) {}
+          });
+
+          if (!allow) {
+            removeRemotePeerCard(pId, pName);
+          } else {
+            ensureRemotePeerCard(pId, pName);
+            participant.trackPublications.forEach(pub => {
+              if (pub.isSubscribed && pub.track) {
+                handleRemoteTrackSubscribed(pub.track, pub, participant);
+              }
+            });
+          }
+        });
+      } catch (e) {
+        console.warn('[LiveKit Breakout] Error sincronizando suscripciones de Host:', e);
+      }
+    }
+
     let hostBreakoutToastTimer = null;
     function showHostBreakoutHelpToast(studentName, roomName, roomId) {
       const toast = document.getElementById('hostBreakoutHelpToast');
@@ -7575,6 +7647,27 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
         toast.classList.remove('flex');
         toast.classList.add('hidden');
       }, 12000);
+    }
+
+    let hostLiveKitSwitchTimer = null;
+    function showHostSwitchToLiveKitToast(studentName) {
+      if (currentVideoMode === 'livekit') return;
+      const toast = document.getElementById('hostLiveKitSwitchToast');
+      const title = document.getElementById('hostLiveKitSwitchTitle');
+      const sub = document.getElementById('hostLiveKitSwitchSub');
+      if (!toast || !title || !sub) return;
+
+      const name = studentName || 'Un participante';
+      title.textContent = `Falla de red celular: ${name}`;
+      sub.textContent = `${name} no pudo enlazar en P2P directo (NAT móvil estricto). ¿Activar LiveKit SFU?`;
+      toast.classList.remove('hidden');
+      toast.classList.add('flex');
+
+      if (hostLiveKitSwitchTimer) clearTimeout(hostLiveKitSwitchTimer);
+      hostLiveKitSwitchTimer = setTimeout(() => {
+        toast.classList.remove('flex');
+        toast.classList.add('hidden');
+      }, 15000);
     }
 
     function initBreakoutRoomsUI() {
@@ -7663,6 +7756,28 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
       if (dismissHelpBtn) {
         dismissHelpBtn.onclick = () => {
           const toast = document.getElementById('hostBreakoutHelpToast');
+          if (toast) {
+            toast.classList.remove('flex');
+            toast.classList.add('hidden');
+          }
+        };
+      }
+
+      const btnSwitchLK = document.getElementById('btnHostSwitchToLiveKit');
+      const btnDismissLK = document.getElementById('btnDismissHostLiveKitSwitch');
+      if (btnSwitchLK) {
+        btnSwitchLK.onclick = () => {
+          setHostVideoMode('livekit');
+          const toast = document.getElementById('hostLiveKitSwitchToast');
+          if (toast) {
+            toast.classList.remove('flex');
+            toast.classList.add('hidden');
+          }
+        };
+      }
+      if (btnDismissLK) {
+        btnDismissLK.onclick = () => {
+          const toast = document.getElementById('hostLiveKitSwitchToast');
           if (toast) {
             toast.classList.remove('flex');
             toast.classList.add('hidden');

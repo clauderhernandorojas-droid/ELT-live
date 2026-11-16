@@ -5253,7 +5253,7 @@
     // ==================== ARQUITECTURA DUAL DE VIDEO: P2P GRATIS ILIMITADO / LIVEKIT SFU ====================
     let currentVideoMode = 'p2p'; // 'p2p' | 'livekit' (controlado automáticamente por el profesor de la sala)
 
-    // Configuración STUN + TURN pool de alta disponibilidad para conexiones WebRTC Nativas
+    // Configuración STUN pool de alta disponibilidad para conexiones WebRTC Nativas
     const WEBRTC_ICE_SERVERS = {
       iceServers: [
         // STUN Pools de Google y Twilio (enlaces directos P2P sin costo)
@@ -5262,18 +5262,7 @@
         { urls: 'stun:stun2.l.google.com:19302' },
         { urls: 'stun:stun3.l.google.com:19302' },
         { urls: 'stun:stun4.l.google.com:19302' },
-        { urls: 'stun:global.stun.twilio.com:3478' },
-        // Servidores TURN gratuitos de Metered / OpenRelay (Relay para datos móviles 4G/5G y NAT simétrico)
-        {
-          urls: [
-            'turn:openrelay.metered.ca:80',
-            'turn:openrelay.metered.ca:443',
-            'turn:openrelay.metered.ca:443?transport=tcp',
-            'turns:openrelay.metered.ca:443?transport=tcp'
-          ],
-          username: 'openrelayproject',
-          credential: 'openrelayproject'
-        }
+        { urls: 'stun:global.stun.twilio.com:3478' }
       ],
       iceTransportPolicy: 'all',
       iceCandidatePoolSize: 10
@@ -5466,6 +5455,19 @@
         || pId.startsWith('host_')
         || pName.includes('Profesor');
       const role = isHost ? 'host' : 'student';
+
+      // Filtro para Breakout Rooms en LiveKit SFU
+      if (breakoutRoomsActive && typeof shouldStudentConnectWithPeerInBreakout === 'function') {
+        const allow = shouldStudentConnectWithPeerInBreakout(pId, pName, role);
+        if (!allow) {
+          try {
+            if (publication && typeof publication.setSubscribed === 'function') {
+              publication.setSubscribed(false);
+            }
+          } catch (e) {}
+          return;
+        }
+      }
 
       if (track.kind === LivekitClient.Track.Kind.Video || track.kind === 'video') {
         const isScreen = track.source === LivekitClient.Track.Source.ScreenShare || publication.isScreenShare;
@@ -5701,6 +5703,10 @@
             }
           });
         });
+
+        if (breakoutRoomsActive && typeof syncStudentLiveKitBreakoutSubscriptions === 'function') {
+          syncStudentLiveKitBreakoutSubscriptions();
+        }
 
       } catch (err) {
         console.error('[LiveKit] Error al conectar a LiveKit:', err);
@@ -7641,6 +7647,43 @@
       return remoteRoomId === currentBreakoutRoom;
     }
 
+    function syncStudentLiveKitBreakoutSubscriptions() {
+      if (currentVideoMode !== 'livekit' || !livekitRoom) return;
+      try {
+        livekitRoom.remoteParticipants.forEach(participant => {
+          const pId = participant.identity;
+          const pName = participant.name || 'Participante';
+          const isHost = (participant.metadata && participant.metadata.includes('"isHost":true'))
+            || pId.startsWith('host_')
+            || pName.includes('Profesor');
+          const role = isHost ? 'host' : 'student';
+
+          const allow = !breakoutRoomsActive || (typeof shouldStudentConnectWithPeerInBreakout === 'function' ? shouldStudentConnectWithPeerInBreakout(pId, pName, role) : true);
+
+          participant.trackPublications.forEach(pub => {
+            try {
+              if (typeof pub.setSubscribed === 'function') {
+                pub.setSubscribed(allow);
+              }
+            } catch (e) {}
+          });
+
+          if (!allow) {
+            removeStudentRemoteVideoCard(pId, pName, role);
+          } else {
+            ensureRemoteVideoCard(pId, pName, role);
+            participant.trackPublications.forEach(pub => {
+              if (pub.isSubscribed && pub.track) {
+                handleStudentRemoteTrackSubscribed(pub.track, pub, participant);
+              }
+            });
+          }
+        });
+      } catch (e) {
+        console.warn('[LiveKit Breakout] Error sincronizando suscripciones de estudiante:', e);
+      }
+    }
+
     function handleBreakoutStart(payload) {
       breakoutRoomsActive = true;
       breakoutRoomsData = payload.rooms || [];
@@ -7693,6 +7736,8 @@
         if (typeof announceWebRTCPresence === 'function') {
           announceWebRTCPresence();
         }
+      } else if (currentVideoMode === 'livekit') {
+        syncStudentLiveKitBreakoutSubscriptions();
       }
     }
 
@@ -7707,12 +7752,18 @@
         }
       } else if (previousHostRoom === currentBreakoutRoom && hostActiveBreakoutRoom !== currentBreakoutRoom) {
         showStudentBreakoutToast('El profesor ha salido de tu sala.', 3000);
-        Object.keys(webrtcPeers).forEach(pid => {
-          const p = webrtcPeers[pid];
-          if (p && (p.role === 'host' || pid.startsWith('host_') || String(p.name).includes('Profesor'))) {
-            removeStudentRemoteVideoCard(pid, p.name, p.role);
-          }
-        });
+        if (currentVideoMode === 'p2p') {
+          Object.keys(webrtcPeers).forEach(pid => {
+            const p = webrtcPeers[pid];
+            if (p && (p.role === 'host' || pid.startsWith('host_') || String(p.name).includes('Profesor'))) {
+              removeStudentRemoteVideoCard(pid, p.name, p.role);
+            }
+          });
+        }
+      }
+
+      if (currentVideoMode === 'livekit') {
+        syncStudentLiveKitBreakoutSubscriptions();
       }
     }
 
@@ -7741,6 +7792,10 @@
           if (typeof announceWebRTCPresence === 'function') announceWebRTCPresence();
           if (typeof refreshAllP2PBitrateProfiles === 'function') refreshAllP2PBitrateProfiles();
         }, 900);
+      }
+
+      if (currentVideoMode === 'livekit') {
+        syncStudentLiveKitBreakoutSubscriptions();
       }
     }
 

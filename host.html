@@ -6094,7 +6094,26 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
           removeRemotePeerCard(remotePeerId, peerObj?.name);
           syncHostScreenShareStage();
           refreshAllP2PBitrateProfiles();
-        } else if (state === 'disconnected' || state === 'failed') {
+        } else if (state === 'failed' || pc.iceConnectionState === 'failed') {
+          // Disparo INMEDIATO al fallar la conexión (bloqueo por NAT móvil estricto 4G/5G)
+          if (peerObj?.disconnectTimer) {
+            clearTimeout(peerObj.disconnectTimer);
+            peerObj.disconnectTimer = null;
+          }
+          const failedStudentName = peerObj?.name || remoteName || 'un alumno';
+          console.warn(`[P2P] Falla inmediata de conexión ('failed') con ${failedStudentName} (${remotePeerId}).`);
+          if (currentVideoMode === 'p2p' && !hasAutoSwitchedToLiveKit) {
+            hasAutoSwitchedToLiveKit = true;
+            console.log(`[P2P -> LiveKit] Activando LiveKit SFU al instante debido a 'failed' en ${failedStudentName}.`);
+            setHostVideoMode('livekit');
+            if (typeof showHostSwitchToLiveKitToast === 'function') {
+              showHostSwitchToLiveKitToast(failedStudentName);
+            }
+          }
+          removeRemotePeerCard(remotePeerId, webrtcPeers[remotePeerId]?.name);
+          syncHostScreenShareStage();
+          refreshAllP2PBitrateProfiles();
+        } else if (state === 'disconnected') {
           // Auto-recuperación con pc.restartIce() (máximo 1 intento por incidente)
           const attempts = peerObj?.iceRestartAttempts || 0;
           if (attempts < 1) {
@@ -6130,6 +6149,12 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
               }
             }, 4500);
           }
+        }
+      };
+
+      pc.oniceconnectionstatechange = () => {
+        if (pc.iceConnectionState === 'failed') {
+          if (pc.onconnectionstatechange) pc.onconnectionstatechange();
         }
       };
 

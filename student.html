@@ -1747,6 +1747,7 @@
       if (data.type === 'ELT_SLIDE_REPORT' && Array.isArray(data.answers)) {
         latestPostMessageAnswers = data.answers;
         const curSlideNum = getStudentSlideNumber() || assignedSlide;
+        saveStudentAnswersForSlide(curSlideNum);
         if (myChannel) {
           myChannel.send({
             type: 'broadcast',
@@ -1819,6 +1820,7 @@
           studentSlideBadge.textContent = `● Diapositiva ${cur}`;
           injectLiveAnalytics(doc);
           activeSyncTimer = null;
+          restoreStudentAnswersForSlide(cur);
           setTimeout(() => scrapeStudentAnswersAndReport(false), 120);
           return;
         }
@@ -1852,6 +1854,249 @@
         }
       } catch (e) {}
       return docs;
+    }
+
+    // ==================== PERSISTENCIA Y RESTAURACIÓN AUTOMÁTICA DE RESPUESTAS ====================
+    function getStudentSessionStorageKey() {
+      const pin = String(currentRoomPin || safeStorage.getItem('elt_student_pin') || '').trim();
+      const name = String(myName || safeStorage.getItem('elt_student_name') || '').trim();
+      if (!pin || !name) return null;
+      return `elt_saved_answers_${pin}_${name}`;
+    }
+
+    function saveStudentAnswersForSlide(slideNum) {
+      try {
+        const key = getStudentSessionStorageKey();
+        if (!key) return;
+        const curSlide = slideNum || assignedSlide || getStudentSlideNumber() || 1;
+        const docs = getAccessibleLessonDocs();
+        if (!docs || docs.length === 0) return;
+
+        const slideState = {
+          inputs: [],
+          buttons: []
+        };
+
+        let inputIdx = 0;
+        let buttonIdx = 0;
+
+        docs.forEach((doc, docIdx) => {
+          // 1. Inputs, textareas y selects
+          const formEls = doc.querySelectorAll('input, textarea, select');
+          formEls.forEach((el) => {
+            const tag = el.tagName.toLowerCase();
+            const type = (el.type || tag).toLowerCase();
+            if (type === 'submit' || type === 'button' || type === 'reset' || type === 'hidden') return;
+            const elClasses = (el.className || '').toLowerCase();
+            const rowText = (el.parentElement && el.parentElement.parentElement && el.parentElement.parentElement.textContent) || '';
+            if (el.disabled && (elClasses.includes('cursor-not-allowed') || rowText.includes('Example'))) return;
+
+            let item = {
+              docIdx,
+              inputIdx: inputIdx++,
+              id: el.id || null,
+              name: el.name || null,
+              tag: tag,
+              type: type
+            };
+
+            if (type === 'checkbox' || type === 'radio') {
+              item.checked = el.checked;
+              item.value = el.value;
+            } else if (tag === 'select') {
+              item.value = el.value;
+              item.selectedIndex = el.selectedIndex;
+            } else {
+              item.value = el.value;
+            }
+            slideState.inputs.push(item);
+          });
+
+          // 2. Botones de opción múltiple / selección interactiva
+          const optEls = doc.querySelectorAll('.option-btn, [role="button"], button.choice, button[class*="option"], .question-card button, [aria-pressed]');
+          optEls.forEach((btn) => {
+            const txt = (btn.textContent || '').trim().toLowerCase();
+            const id = (btn.id || '').toLowerCase();
+            const cls = (btn.className || '').toString().toLowerCase();
+            const isNav = id.includes('next') || id.includes('prev') || cls.includes('next') || cls.includes('prev') ||
+                          txt === 'next' || txt === 'prev' || txt.includes('check') || txt.includes('comprobar') ||
+                          txt.includes('reset') || txt.includes('reiniciar');
+            if (isNav) return;
+
+            const isSelected = btn.getAttribute('data-elt-picked') === '1' ||
+                               btn.getAttribute('aria-pressed') === 'true' ||
+                               cls.includes('selected') ||
+                               cls.includes('active') ||
+                               cls.includes('bg-indigo-600') ||
+                               cls.includes('bg-rose-600') ||
+                               cls.includes('border-indigo-600') ||
+                               cls.includes('ring-2');
+
+            slideState.buttons.push({
+              docIdx,
+              buttonIdx: buttonIdx++,
+              id: btn.id || null,
+              text: (btn.textContent || '').trim(),
+              selected: Boolean(isSelected)
+            });
+          });
+        });
+
+        // Evitar sobrescribir si la diapositiva no contenía ningún elemento interactivo detectable
+        if (slideState.inputs.length === 0 && slideState.buttons.length === 0) return;
+
+        let sessionMap = {};
+        try {
+          const raw = localStorage.getItem(key);
+          if (raw) sessionMap = JSON.parse(raw) || {};
+        } catch (e) {}
+
+        sessionMap[curSlide] = slideState;
+        localStorage.setItem(key, JSON.stringify(sessionMap));
+      } catch (err) {
+        console.warn('[ELT Live] Error guardando respuestas en localStorage:', err);
+      }
+    }
+
+    function restoreStudentAnswersForSlide(slideNum, isRetry = false) {
+      try {
+        const key = getStudentSessionStorageKey();
+        if (!key) return false;
+        const curSlide = slideNum || assignedSlide || getStudentSlideNumber() || 1;
+
+        let sessionMap = null;
+        try {
+          const raw = localStorage.getItem(key);
+          if (raw) sessionMap = JSON.parse(raw);
+        } catch (e) {}
+
+        if (!sessionMap || !sessionMap[curSlide]) return false;
+        const slideState = sessionMap[curSlide];
+        const docs = getAccessibleLessonDocs();
+        if (!docs || docs.length === 0) {
+          if (!isRetry) setTimeout(() => restoreStudentAnswersForSlide(curSlide, true), 200);
+          return false;
+        }
+
+        let restoredCount = 0;
+        let totalCandidateInputs = 0;
+
+        docs.forEach((doc, docIdx) => {
+          // 1. Restaurar inputs, textareas y selects
+          if (Array.isArray(slideState.inputs) && slideState.inputs.length > 0) {
+            const formEls = doc.querySelectorAll('input, textarea, select');
+            let formIdx = 0;
+            formEls.forEach((el) => {
+              const tag = el.tagName.toLowerCase();
+              const type = (el.type || tag).toLowerCase();
+              if (type === 'submit' || type === 'button' || type === 'reset' || type === 'hidden') return;
+              const elClasses = (el.className || '').toLowerCase();
+              const rowText = (el.parentElement && el.parentElement.parentElement && el.parentElement.parentElement.textContent) || '';
+              if (el.disabled && (elClasses.includes('cursor-not-allowed') || rowText.includes('Example'))) return;
+
+              totalCandidateInputs++;
+
+              const savedItem = slideState.inputs.find(item =>
+                (el.id && item.id === el.id) ||
+                (item.docIdx === docIdx && item.inputIdx === formIdx) ||
+                (el.name && item.name === el.name && item.type === type)
+              );
+
+              if (savedItem) {
+                if (type === 'checkbox' || type === 'radio') {
+                  if (typeof savedItem.checked === 'boolean' && el.checked !== savedItem.checked) {
+                    el.checked = savedItem.checked;
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                    restoredCount++;
+                  }
+                } else if (tag === 'select') {
+                  if (savedItem.value !== undefined && el.value !== savedItem.value) {
+                    el.value = savedItem.value;
+                    if (el.selectedIndex < 0 && typeof savedItem.selectedIndex === 'number') {
+                      el.selectedIndex = savedItem.selectedIndex;
+                    }
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                    restoredCount++;
+                  }
+                } else {
+                  if (savedItem.value !== undefined && el.value !== savedItem.value) {
+                    el.value = savedItem.value;
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                    restoredCount++;
+                  }
+                }
+              }
+              formIdx++;
+            });
+          }
+
+          // 2. Restaurar selección de botones de opción
+          if (Array.isArray(slideState.buttons) && slideState.buttons.length > 0) {
+            const optEls = doc.querySelectorAll('.option-btn, [role="button"], button.choice, button[class*="option"], .question-card button, [aria-pressed]');
+            let btnIdx = 0;
+            optEls.forEach((btn) => {
+              const txt = (btn.textContent || '').trim().toLowerCase();
+              const id = (btn.id || '').toLowerCase();
+              const cls = (btn.className || '').toString().toLowerCase();
+              const isNav = id.includes('next') || id.includes('prev') || cls.includes('next') || cls.includes('prev') ||
+                            txt === 'next' || txt === 'prev' || txt.includes('check') || txt.includes('comprobar') ||
+                            txt.includes('reset') || txt.includes('reiniciar');
+              if (isNav) return;
+
+              const savedBtn = slideState.buttons.find(b =>
+                (btn.id && b.id === btn.id) ||
+                (b.docIdx === docIdx && b.buttonIdx === btnIdx) ||
+                (b.text && b.text === (btn.textContent || '').trim())
+              );
+
+              if (savedBtn && savedBtn.selected) {
+                const isCurrentlySelected = btn.getAttribute('data-elt-picked') === '1' ||
+                                            btn.getAttribute('aria-pressed') === 'true' ||
+                                            cls.includes('selected') ||
+                                            cls.includes('active') ||
+                                            cls.includes('bg-indigo-600') ||
+                                            cls.includes('bg-rose-600');
+                if (!isCurrentlySelected) {
+                  try {
+                    btn.click();
+                    restoredCount++;
+                  } catch (e) {}
+                }
+              }
+              btnIdx++;
+            });
+          }
+        });
+
+        // Si la diapositiva aún no había renderizado sus inputs y no encontramos candidatos, reintentar una vez
+        if (!isRetry && totalCandidateInputs === 0 && Array.isArray(slideState.inputs) && slideState.inputs.length > 0) {
+          setTimeout(() => restoreStudentAnswersForSlide(curSlide, true), 250);
+        }
+
+        if (restoredCount > 0) {
+          console.log(`[ELT Live] Restauradas ${restoredCount} respuestas para diapositiva ${curSlide}`);
+          setTimeout(() => scrapeStudentAnswersAndReport(false), 100);
+        }
+        return true;
+      } catch (err) {
+        console.warn('[ELT Live] Error restaurando respuestas desde localStorage:', err);
+        return false;
+      }
+    }
+
+    function clearStudentSavedAnswers(pinToClear, nameToClear) {
+      try {
+        const pin = String(pinToClear || currentRoomPin || safeStorage.getItem('elt_student_pin') || '').trim();
+        const name = String(nameToClear || myName || safeStorage.getItem('elt_student_name') || '').trim();
+        if (pin && name) {
+          localStorage.removeItem(`elt_saved_answers_${pin}_${name}`);
+        }
+        const currentKey = getStudentSessionStorageKey();
+        if (currentKey) {
+          localStorage.removeItem(currentKey);
+        }
+      } catch (e) {}
     }
 
     // Escáner robusto de respuestas (documento principal + sub-iframes + puente postMessage)
@@ -1946,6 +2191,7 @@
     function scrapeStudentAnswersAndReport(isCheckAction = false) {
       try {
         const curSlideNum = assignedSlide || getStudentSlideNumber() || 1;
+        saveStudentAnswersForSlide(curSlideNum);
         const answers = scrapeAnswersNow();
 
         if (myChannel) {
@@ -2015,11 +2261,21 @@
         }
       }, true);
 
-      targetDoc.addEventListener('keyup', () => setTimeout(() => scrapeStudentAnswersAndReport(false), 100), true);
-      targetDoc.addEventListener('input', () => setTimeout(() => scrapeStudentAnswersAndReport(false), 100), true);
-      targetDoc.addEventListener('change', () => setTimeout(() => scrapeStudentAnswersAndReport(false), 100), true);
+      targetDoc.addEventListener('keyup', () => {
+        saveStudentAnswersForSlide();
+        setTimeout(() => scrapeStudentAnswersAndReport(false), 100);
+      }, true);
+      targetDoc.addEventListener('input', () => {
+        saveStudentAnswersForSlide();
+        setTimeout(() => scrapeStudentAnswersAndReport(false), 100);
+      }, true);
+      targetDoc.addEventListener('change', () => {
+        saveStudentAnswersForSlide();
+        setTimeout(() => scrapeStudentAnswersAndReport(false), 100);
+      }, true);
 
       targetDoc.addEventListener('click', (e) => {
+        saveStudentAnswersForSlide();
         try {
           const target = e.target;
           const clickable = (target && typeof target.closest === 'function')
@@ -2059,6 +2315,7 @@
                 try {
                   const subDoc = frameEl.contentDocument || (frameEl.contentWindow && frameEl.contentWindow.document);
                   bindAnalyticsToSingleDoc(subDoc);
+                  restoreStudentAnswersForSlide(assignedSlide || getStudentSlideNumber());
                   setTimeout(() => scrapeStudentAnswersAndReport(false), 150);
                 } catch (err) {}
               });
@@ -2359,6 +2616,20 @@
       myName = name;
       currentRoomPin = pin;
 
+      // Si el estudiante inicia sesión con un PIN distinto, limpiar borradores de sesiones previas
+      try {
+        const prevPin = safeStorage.getItem('elt_student_pin');
+        if (prevPin && String(prevPin).trim() !== String(pin).trim()) {
+          clearStudentSavedAnswers(prevPin, myName || safeStorage.getItem('elt_student_name'));
+          for (let i = localStorage.length - 1; i >= 0; i--) {
+            const k = localStorage.key(i);
+            if (k && k.startsWith('elt_saved_answers_') && !k.startsWith(`elt_saved_answers_${pin}_`)) {
+              localStorage.removeItem(k);
+            }
+          }
+        }
+      } catch (err) {}
+
       // Persistir nombre y PIN de la sala de forma segura para recordar la sesión
       try {
         safeStorage.setItem('elt_student_name', myName);
@@ -2514,6 +2785,7 @@
         console.log('[ELT Live] El profesor ha finalizado la sesión.');
         try {
           sessionStorage.removeItem('elt_active_session');
+          clearStudentSavedAnswers(currentRoomPin, myName);
         } catch (e) {}
         alert('La clase ha finalizado. El profesor ha cerrado la sesión.');
         await leaveStudentSession();

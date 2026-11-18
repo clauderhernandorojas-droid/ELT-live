@@ -1857,6 +1857,20 @@
       });
     }
 
+    let slideSyncHeartbeatInterval = null;
+    function startSlideSyncHeartbeat() {
+      if (slideSyncHeartbeatInterval) clearInterval(slideSyncHeartbeatInterval);
+      slideSyncHeartbeatInterval = setInterval(() => {
+        if (roomChannel && rawLessonHTML && currentSlide) {
+          roomChannel.send({
+            type: 'broadcast',
+            event: 'SYNC_SLIDE_NUMBER',
+            payload: { targetSlide: currentSlide, isHeartbeat: true }
+          });
+        }
+      }, 5000);
+    }
+
     window.toggleStudentView = function(studentName) {
       if (expandedStudent === studentName) expandedStudent = null;
       else expandedStudent = studentName;
@@ -2198,9 +2212,13 @@
           studentName: st.name,
           videoMode: currentVideoMode,
           videoEngine: currentVideoMode,
-          roomPin: roomPin
+          roomPin: roomPin,
+          targetSlide: currentSlide,
+          lessonId: lessonId
         }
       });
+      if (rawLessonHTML) broadcastDeckToStudents();
+      if (currentSlide) broadcastTargetSlide(currentSlide);
     };
 
     window.rejectWaitingStudent = function(studentId) {
@@ -2446,6 +2464,14 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
             ensureRemotePeerCard(peerId, stName);
           }
         }
+
+        // Retransmisión inmediata de lección y diapositiva actual para sincronizar al alumno recién unido
+        if (rawLessonHTML) {
+          broadcastDeckToStudents();
+        }
+        if (currentSlide) {
+          broadcastTargetSlide(currentSlide);
+        }
       });
 
       roomChannel.on('broadcast', { event: 'REQUEST_LESSON' }, () => {
@@ -2453,6 +2479,7 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
           syncBreakoutStateToLateStudent();
         }
         if (rawLessonHTML) broadcastDeckToStudents();
+        if (currentSlide) broadcastTargetSlide(currentSlide);
         if (wbIsOpen) {
           roomChannel.send({ type: 'broadcast', event: 'WB_TOGGLE', payload: { active: true } });
         }
@@ -2523,6 +2550,7 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
             broadcastVideoModeConfig(currentVideoMode);
           }
           if (rawLessonHTML) broadcastDeckToStudents();
+          startSlideSyncHeartbeat();
           if (typeof announceWebRTCPresence === 'function') announceWebRTCPresence();
         }
       });

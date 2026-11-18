@@ -945,9 +945,9 @@
         <!-- Barra Inferior de Controles de Reunión y Navegación (Acotada al Área de Trabajo) -->
         <div id="zmBottomBarHoverZone" data-role="bottomToolbar" class="fixed bottom-0 left-0 right-0 z-[9999] bg-[#090d16] border-t border-slate-800/90 flex flex-col" style="position: fixed; bottom: 0; left: 0; right: 0; z-index: 9999; display: flex !important; padding-bottom: env(safe-area-inset-bottom, 12px);">
           <div id="zmBottomMeetingBar" class="w-full h-[54px] px-2 sm:px-3 flex items-center justify-between bg-[#090d16] text-slate-200 select-none overflow-x-auto no-scrollbar">
-            <!-- Extremo Izquierdo: Botón Azul Redondeado "← Prev" -->
+            <!-- Extremo Izquierdo: Botón "← Prev" (Oculto para Alumnos; controlado por el Profesor) -->
             <div class="flex items-center shrink-0">
-              <button id="bottomPrevSlideBtn" type="button" class="bg-[#0e72ed] hover:bg-[#0b5ed7] active:scale-95 text-white text-[11px] sm:text-xs font-bold px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-xl shadow-md flex items-center gap-1 transition">
+              <button id="bottomPrevSlideBtn" type="button" class="hidden" style="display: none !important;" disabled aria-hidden="true">
                 <span>← Prev</span>
               </button>
             </div>
@@ -998,7 +998,7 @@
                 <span class="text-[10px] text-rose-200 font-medium mt-0.5">End</span>
               </button>
 
-              <button id="bottomNextSlideBtn" type="button" class="bg-[#0e72ed] hover:bg-[#0b5ed7] active:scale-95 text-white text-xs font-bold px-4 py-2 rounded-xl shadow-md flex items-center gap-1.5 transition ml-1">
+              <button id="bottomNextSlideBtn" type="button" class="hidden" style="display: none !important;" disabled aria-hidden="true">
                 <span>Next →</span>
               </button>
             </div>
@@ -1358,24 +1358,78 @@
             width: 100% !important;
             border-radius: 0 !important;
           }
+          /* Bloqueo total de controles de navegación de diapositivas del deck para alumnos */
+          #nextBtn, #prevBtn, #btnNext, #btnPrev, .next-btn, .prev-btn,
+          [data-action="next"], [data-action="prev"],
+          .swiper-button-next, .swiper-button-prev,
+          .slick-next, .slick-prev,
+          .carousel-control-next, .carousel-control-prev,
+          button.next, button.prev, a.next, a.prev,
+          .slide-nav, .deck-nav, .navigation-controls,
+          .reveal .controls, .reveal .progress, .reveal aside.controls {
+            display: none !important;
+            pointer-events: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
+          }
         `;
         doc.head.appendChild(style);
       }
     }
 
+    function isEditableElement(el) {
+      if (!el) return false;
+      const tag = (el.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return true;
+      if (el.isContentEditable) return true;
+      if (typeof el.closest === 'function' && el.closest('input, textarea, select, [contenteditable="true"]')) return true;
+      return false;
+    }
+
+    function preventStudentSlideKeys(e) {
+      const slideKeys = ['ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Home', 'End'];
+      if (slideKeys.includes(e.key) || (e.key === ' ' || e.key === 'Spacebar' || e.code === 'Space')) {
+        if (!isEditableElement(e.target)) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          return false;
+        }
+      }
+    }
+    window.addEventListener('keydown', preventStudentSlideKeys, true);
+
     function getStudentSlideNumber() {
       try {
-        const doc = studentFrame.contentDocument || studentFrame.contentWindow.document;
-        if (!doc || !doc.body) return null;
+        const docs = (typeof getAccessibleLessonDocs === 'function') ? getAccessibleLessonDocs() : [];
+        const rootDoc = studentFrame ? (studentFrame.contentDocument || studentFrame.contentWindow?.document) : null;
+        if (rootDoc && !docs.includes(rootDoc)) docs.unshift(rootDoc);
 
-        const elements = doc.querySelectorAll('span, div, p, b, strong');
-        for (let i = 0; i < elements.length; i++) {
-          const el = elements[i];
-          if (el.children.length <= 2) {
-            const txt = (el.textContent || '').trim();
-            if (txt.length <= 12) {
-              const match = txt.match(/^(\d+)\s*\/\s*(\d+)$/);
-              if (match) return parseInt(match[1], 10);
+        for (let d = 0; d < docs.length; d++) {
+          const doc = docs[d];
+          if (!doc || !doc.body) continue;
+
+          const win = doc.defaultView;
+          if (win) {
+            if (typeof win.currentSlide === 'number' && win.currentSlide >= 1) return win.currentSlide;
+            if (typeof win.currentSlideIndex === 'number' && win.currentSlideIndex >= 0) return win.currentSlideIndex + 1;
+            if (win.Reveal && typeof win.Reveal.getIndices === 'function') {
+              const idx = win.Reveal.getIndices();
+              if (idx && typeof idx.h === 'number') return idx.h + 1;
+            }
+          }
+
+          const elements = doc.querySelectorAll('span, div, p, b, strong');
+          for (let i = 0; i < elements.length; i++) {
+            const el = elements[i];
+            if (el.children.length <= 2) {
+              const txt = (el.textContent || '').trim();
+              if (txt.length <= 15) {
+                const match = txt.match(/^(\d+)\s*\/\s*(\d+)$/);
+                if (match) return parseInt(match[1], 10);
+                const match2 = txt.match(/^(?:slide|diapositiva|página|pag|pág\.?)\s*(\d+)(?:\s*(?:\/|de|of)\s*(\d+))?$/i);
+                if (match2) return parseInt(match2[1], 10);
+              }
             }
           }
         }
@@ -1711,47 +1765,73 @@
       }
     });
 
+    let activeSyncTimer = null;
+
     function syncStudentToSlide(target) {
       if (!target) return;
       if (assignedSlide !== target) {
         latestPostMessageAnswers = [];
       }
       assignedSlide = target;
+
+      if (activeSyncTimer) {
+        clearTimeout(activeSyncTimer);
+        activeSyncTimer = null;
+      }
+
       let attempts = 0;
+      const MAX_ATTEMPTS = 40;
 
       function step() {
-        if (attempts >= 15) return;
+        if (attempts >= MAX_ATTEMPTS) {
+          activeSyncTimer = null;
+          return;
+        }
         attempts++;
 
         const doc = studentFrame.contentDocument || studentFrame.contentWindow.document;
         const win = studentFrame.contentWindow;
         optimizeStudentLayout(doc);
 
-        // Si la lección expone show(idx) (0-indexed), saltar directamente a la diapositiva
-        if (attempts === 1 && win && typeof win.show === 'function') {
-          try {
-            win.show(target - 1);
-          } catch (e) {}
+        // Priorizar métodos directos de salto de diapositiva expuestos por el deck
+        if (win) {
+          if (typeof win.show === 'function') {
+            try { win.show(target - 1); } catch (e) {}
+          } else if (typeof win.goToSlide === 'function') {
+            try { win.goToSlide(target); } catch (e) {}
+          } else if (typeof win.gotoSlide === 'function') {
+            try { win.gotoSlide(target); } catch (e) {}
+          } else if (typeof win.setSlide === 'function') {
+            try { win.setSlide(target); } catch (e) {}
+          } else if (win.Reveal && typeof win.Reveal.slide === 'function') {
+            try { win.Reveal.slide(target - 1); } catch (e) {}
+          }
         }
 
         const cur = getStudentSlideNumber();
-        if (!cur) return;
+        // Si aún no se detecta la diapositiva porque el iframe sigue cargando, reprogramar reintento en 100ms
+        if (!cur) {
+          activeSyncTimer = setTimeout(step, 100);
+          return;
+        }
 
         if (cur === target) {
           studentSlideBadge.textContent = `● Diapositiva ${cur}`;
           injectLiveAnalytics(doc);
+          activeSyncTimer = null;
           setTimeout(() => scrapeStudentAnswersAndReport(false), 120);
           return;
         }
 
         if (cur < target) {
           clickButtonInStudent('NEXT');
-          setTimeout(step, 70);
+          activeSyncTimer = setTimeout(step, 90);
         } else if (cur > target) {
           clickButtonInStudent('PREV');
-          setTimeout(step, 70);
+          activeSyncTimer = setTimeout(step, 90);
         }
       }
+
       step();
     }
 
@@ -1865,7 +1945,7 @@
 
     function scrapeStudentAnswersAndReport(isCheckAction = false) {
       try {
-        const curSlideNum = getStudentSlideNumber() || assignedSlide;
+        const curSlideNum = assignedSlide || getStudentSlideNumber() || 1;
         const answers = scrapeAnswersNow();
 
         if (myChannel) {
@@ -1895,6 +1975,45 @@
           (targetDoc.body || targetDoc.head || targetDoc.documentElement).appendChild(s);
         }
       } catch (e) {}
+
+      // Bloquear teclas de navegación de diapositivas dentro del iframe para el alumno
+      targetDoc.addEventListener('keydown', preventStudentSlideKeys, true);
+
+      // Bloquear clics humanos directos en controles de diapositivas dentro del deck
+      targetDoc.addEventListener('click', (e) => {
+        if (e.isTrusted) {
+          const target = e.target;
+          const clickable = (target && typeof target.closest === 'function')
+            ? target.closest('button, a, [role="button"], input[type="button"]')
+            : target;
+          if (clickable) {
+            const id = (clickable.id || '').toLowerCase();
+            const cls = (clickable.className || '').toString().toLowerCase();
+            const txt = (clickable.textContent || '').trim().toLowerCase();
+            const action = (clickable.getAttribute?.('data-action') || '').toLowerCase();
+
+            const isSlideNav = id.includes('next') || id.includes('prev') ||
+              cls.includes('next') || cls.includes('prev') ||
+              action === 'next' || action === 'prev' ||
+              txt === 'next' || txt === 'prev' || txt === 'next →' || txt === '← prev' ||
+              txt === '>' || txt === '<' || txt === '»' || txt === '«';
+
+            const isExerciseAction = txt.includes('check') || txt.includes('comprobar') ||
+              txt.includes('verify') || txt.includes('verificar') ||
+              txt.includes('reset') || txt.includes('reiniciar') ||
+              txt.includes('play') || txt.includes('audio') || txt.includes('escuchar') ||
+              cls.includes('option-btn') || cls.includes('check-btn') ||
+              clickable.tagName === 'INPUT' || clickable.tagName === 'SELECT' || clickable.tagName === 'TEXTAREA';
+
+            if (isSlideNav && !isExerciseAction) {
+              e.preventDefault();
+              e.stopPropagation();
+              e.stopImmediatePropagation();
+              return false;
+            }
+          }
+        }
+      }, true);
 
       targetDoc.addEventListener('keyup', () => setTimeout(() => scrapeStudentAnswersAndReport(false), 100), true);
       targetDoc.addEventListener('input', () => setTimeout(() => scrapeStudentAnswersAndReport(false), 100), true);
@@ -2020,6 +2139,14 @@
         if (analyticsInterval) clearInterval(analyticsInterval);
         analyticsInterval = setInterval(() => {
           injectLiveAnalytics(studentFrame.contentDocument || studentFrame.contentWindow.document);
+
+          // Guardián activo: si la diapositiva detectada difiere de la asignada por el profesor, forzar resincronización
+          const detected = getStudentSlideNumber();
+          if (detected && assignedSlide && detected !== assignedSlide) {
+            console.warn(`[Slide Guard] Desincronización detectada (detectada: ${detected}, asignada: ${assignedSlide}). Resincronizando...`);
+            syncStudentToSlide(assignedSlide);
+          }
+
           scrapeStudentAnswersAndReport(false);
         }, 1000);
 
@@ -2398,6 +2525,9 @@
         if (!isAdmittedToClass) {
           // Admitir solo si coincide con el studentId o studentName de este alumno
           if ((targetId && targetId === myStudentId) || (targetName && targetName === currentName)) {
+            if (payload.targetSlide) {
+              assignedSlide = payload.targetSlide;
+            }
             if (payload.videoMode || payload.videoEngine) {
               assignedVideoMode = (payload.videoMode === 'livekit' || payload.videoEngine === 'livekit') ? 'livekit' : 'p2p';
             }
@@ -2469,6 +2599,13 @@
                 joinedAt: new Date().toISOString()
               });
             } catch (e) {}
+
+            // Re-emitir REQUEST_LESSON para sincronizar lección y diapositiva actual tras reconexión
+            myChannel.send({
+              type: 'broadcast',
+              event: 'REQUEST_LESSON',
+              payload: { studentName: myName, peerId: webrtcPeerId }
+            });
             return;
           }
 
@@ -8263,12 +8400,15 @@ window.setVideoStripMinimized = function(minimized) {
     })();
 
     // ==================== EVENTOS DE LA BARRA INFERIOR DE REUNIÓN Y AUTO-OCULTAMIENTO ====================
-    document.getElementById('bottomPrevSlideBtn')?.addEventListener('click', () => {
-      clickButtonInStudent('PREV');
+    // Navegación de diapositivas bloqueada para alumnos: controlada exclusivamente por el profesor (Host)
+    document.getElementById('bottomPrevSlideBtn')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
     });
 
-    document.getElementById('bottomNextSlideBtn')?.addEventListener('click', () => {
-      clickButtonInStudent('NEXT');
+    document.getElementById('bottomNextSlideBtn')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
     });
 
     document.getElementById('bottomAudioBtn')?.addEventListener('click', () => {

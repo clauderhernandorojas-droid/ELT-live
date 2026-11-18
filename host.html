@@ -1936,7 +1936,9 @@
           : `<span class="bg-amber-950 text-amber-400 border border-amber-800 text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">Diapositiva ${st.slide || '?'}</span>`;
         
         let activityStatus = `<p class="text-[10px] text-slate-400 mt-0.5 truncate">Estado: Conectado</p>`;
-        if (st.lastActivityTime) {
+        if (st.isReconnecting) {
+          activityStatus = `<p class="text-[10px] text-amber-400 font-bold mt-0.5 animate-pulse truncate">Reconectando (señal débil)...</p>`;
+        } else if (st.lastActivityTime) {
            const secondsAgo = Math.floor((Date.now() - st.lastActivityTime) / 1000);
            if (secondsAgo < 6) activityStatus = `<p class="text-[10px] text-indigo-400 mt-0.5 font-medium truncate">Actualizando ahora...</p>`;
            else activityStatus = `<p class="text-[10px] text-slate-400 mt-0.5 truncate">Última acción hace ${secondsAgo}s</p>`;
@@ -2302,6 +2304,8 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
 
       if (roomChannel) roomChannel.unsubscribe();
 
+      const studentDisconnectTimers = window.__studentDisconnectTimers || (window.__studentDisconnectTimers = {});
+
       roomChannel = sbClient.channel(`room_${roomPin}`, {
         config: { presence: { key: 'host' } }
       });
@@ -2328,10 +2332,19 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
             const cleanName = String(user.name).trim().toLowerCase();
             activeStudentNames.add(cleanName);
 
+            // Si el alumno volvió antes de expirar el período de gracia, cancelar su temporizador de desconexión
+            if (studentDisconnectTimers[cleanName]) {
+              clearTimeout(studentDisconnectTimers[cleanName]);
+              delete studentDisconnectTimers[cleanName];
+            }
+
             if (!studentsState[user.name]) {
-              studentsState[user.name] = { joined: true, slide: currentSlide, answers: [], slideHistory: {} };
-            } else if (!studentsState[user.name].slideHistory) {
-              studentsState[user.name].slideHistory = {};
+              studentsState[user.name] = { joined: true, slide: currentSlide, answers: [], slideHistory: {}, isReconnecting: false };
+            } else {
+              studentsState[user.name].isReconnecting = false;
+              if (!studentsState[user.name].slideHistory) {
+                studentsState[user.name].slideHistory = {};
+              }
             }
 
             // Preferir el peerId más reciente registrado por broadcast si ya reconectó
@@ -2369,22 +2382,38 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
           leftPresences.forEach(lp => {
             if (lp) {
               const studentName = lp.name || key;
+              const cleanName = String(studentName).trim().toLowerCase();
+
+              // Marcar como reconectando de inmediato para informar visualmente al Host
               if (studentName && studentsState[studentName]) {
-                delete studentsState[studentName];
+                studentsState[studentName].isReconnecting = true;
               }
-              for (const sid of Array.from(admittedStudentIds)) {
-                if (waitingRoomStudents[sid]?.name === studentName || sid === lp.studentId) {
-                  admittedStudentIds.delete(sid);
+
+              // Iniciar período de gracia de 30 segundos antes de eliminar al estudiante (resiliencia ante señal débil en móviles)
+              if (studentDisconnectTimers[cleanName]) {
+                clearTimeout(studentDisconnectTimers[cleanName]);
+              }
+              studentDisconnectTimers[cleanName] = setTimeout(() => {
+                delete studentDisconnectTimers[cleanName];
+                if (studentName && studentsState[studentName]) {
+                  delete studentsState[studentName];
                 }
-              }
-              if (typeof removeRemotePeerCard === 'function') {
-                removeRemotePeerCard(lp.peerId, studentName);
-              }
+                for (const sid of Array.from(admittedStudentIds)) {
+                  if (waitingRoomStudents[sid]?.name === studentName || sid === lp.studentId) {
+                    admittedStudentIds.delete(sid);
+                  }
+                }
+                if (typeof removeRemotePeerCard === 'function') {
+                  removeRemotePeerCard(lp.peerId, studentName);
+                }
+                renderStudentsDashboard();
+                if (typeof renderChatParticipantsDropdown === 'function') renderChatParticipantsDropdown();
+                if (typeof syncHostScreenShareStage === 'function') syncHostScreenShareStage();
+              }, 30000);
             }
           });
           renderStudentsDashboard();
           if (typeof renderChatParticipantsDropdown === 'function') renderChatParticipantsDropdown();
-          if (typeof syncHostScreenShareStage === 'function') syncHostScreenShareStage();
         }
       });
 
@@ -2444,12 +2473,19 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
       roomChannel.on('broadcast', { event: 'STUDENT_JOIN' }, ({ payload }) => {
         if (!payload || !payload.studentName) return;
         const stName = payload.studentName;
+        const cleanStName = String(stName).trim().toLowerCase();
+        if (studentDisconnectTimers[cleanStName]) {
+          clearTimeout(studentDisconnectTimers[cleanStName]);
+          delete studentDisconnectTimers[cleanStName];
+        }
         if (payload.studentId && waitingRoomStudents[payload.studentId]) {
           delete waitingRoomStudents[payload.studentId];
           renderHostWaitingRoom();
         }
         if (!studentsState[stName]) {
-          studentsState[stName] = { joined: true, slide: currentSlide, answers: [], slideHistory: {}, officialScoreHistory: {} };
+          studentsState[stName] = { joined: true, slide: currentSlide, answers: [], slideHistory: {}, officialScoreHistory: {}, isReconnecting: false };
+        } else {
+          studentsState[stName].isReconnecting = false;
         }
         renderStudentsDashboard();
 

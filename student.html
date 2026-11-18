@@ -2272,6 +2272,16 @@
 
       console.log('[ELT Live] Estudiante admitido oficialmente a la clase:', myName, 'Modo asignado:', assignedVideoMode);
 
+      // Persistir sesión activa en sessionStorage para Auto-Rejoin silencioso ante recarga o caída de pestaña
+      try {
+        sessionStorage.setItem('elt_active_session', JSON.stringify({
+          pin: currentRoomPin,
+          studentName: myName,
+          admitted: true,
+          videoMode: assignedVideoMode || currentVideoMode || 'p2p'
+        }));
+      } catch (e) {}
+
       if (waitingRoomPingInterval) {
         clearInterval(waitingRoomPingInterval);
         waitingRoomPingInterval = null;
@@ -2345,14 +2355,8 @@
 
     const completeStudentAdmissionToClass = admitStudentToClass;
 
-    document.getElementById('joinBtn').addEventListener('click', () => {
-      myName = document.getElementById('studentNameInput').value.trim();
-      const pin = document.getElementById('roomPinInput').value.trim();
-
-      if (!myName || pin.length !== 4) {
-        alert("Ingresa tu nombre y el PIN de 4 dígitos.");
-        return;
-      }
+    function initiateStudentSession(pin, name, isAutoRejoin = false) {
+      myName = name;
       currentRoomPin = pin;
 
       // Persistir nombre y PIN de la sala de forma segura para recordar la sesión
@@ -2361,11 +2365,43 @@
         safeStorage.setItem('elt_student_pin', pin);
       } catch (err) {}
 
-      isAdmittedToClass = false;
-      // Retención estricta en Sala de Espera hasta aprobación del profesor
-      document.getElementById('joinScreen').classList.add('hidden');
-      document.getElementById('liveScreen').classList.add('hidden');
-      document.getElementById('waitingRoomScreen').classList.remove('hidden');
+      if (isAutoRejoin) {
+        isAdmittedToClass = true;
+        try {
+          sessionStorage.setItem('elt_active_session', JSON.stringify({
+            pin: pin,
+            studentName: myName,
+            admitted: true,
+            videoMode: assignedVideoMode || currentVideoMode || 'p2p'
+          }));
+        } catch (e) {}
+
+        if (waitingRoomPingInterval) {
+          clearInterval(waitingRoomPingInterval);
+          waitingRoomPingInterval = null;
+        }
+
+        document.getElementById('joinScreen').classList.add('hidden');
+        document.getElementById('waitingRoomScreen').classList.add('hidden');
+        document.getElementById('liveScreen').classList.remove('hidden');
+
+        if (typeof updateLocalMediaUI === 'function') updateLocalMediaUI();
+
+        if (typeof ensureRemoteVideoCard === 'function') {
+          const hostPeerId = (window.__studentLatestPeerByKey && window.__studentLatestPeerByKey['__host__']) || 'host_presence';
+          ensureRemoteVideoCard(hostPeerId, 'Profesor (Host)', 'host');
+        }
+
+        if (typeof startStudentVideoEngine === 'function') {
+          startStudentVideoEngine(assignedVideoMode || 'p2p');
+        }
+      } else {
+        isAdmittedToClass = false;
+        // Retención estricta en Sala de Espera hasta aprobación del profesor
+        document.getElementById('joinScreen').classList.add('hidden');
+        document.getElementById('liveScreen').classList.add('hidden');
+        document.getElementById('waitingRoomScreen').classList.remove('hidden');
+      }
 
       document.getElementById('displayStudentName').textContent = myName;
       const pinHeaderEl = document.getElementById('studentHeaderPinLabel');
@@ -2476,6 +2512,9 @@
       // El estudiante solo abandona la sala cuando el profesor finaliza la sesión o hace clic en Salir
       myChannel.on('broadcast', { event: 'SESSION_ENDED' }, async () => {
         console.log('[ELT Live] El profesor ha finalizado la sesión.');
+        try {
+          sessionStorage.removeItem('elt_active_session');
+        } catch (e) {}
         alert('La clase ha finalizado. El profesor ha cerrado la sesión.');
         await leaveStudentSession();
       });
@@ -2490,6 +2529,9 @@
           : '';
 
         if (targetName && (targetName === myClean || targetName === myDisplayClean)) {
+          try {
+            sessionStorage.removeItem('elt_active_session');
+          } catch (e) {}
           alert('Has sido desconectado de la clase por el profesor.');
           if (typeof leaveStudentSession === 'function') {
             await leaveStudentSession();
@@ -2600,12 +2642,30 @@
               });
             } catch (e) {}
 
-            // Re-emitir REQUEST_LESSON para sincronizar lección y diapositiva actual tras reconexión
+            // Re-emitir STUDENT_JOIN y REQUEST_LESSON para sincronizar presencia, lección y diapositiva actual tras reconexión
+            myChannel.send({
+              type: 'broadcast',
+              event: 'STUDENT_JOIN',
+              payload: { studentId: myStudentId, studentName: myName, peerId: webrtcPeerId }
+            });
             myChannel.send({
               type: 'broadcast',
               event: 'REQUEST_LESSON',
               payload: { studentName: myName, peerId: webrtcPeerId }
             });
+            myChannel.send({
+              type: 'broadcast',
+              event: 'WB_REQUEST_STATE',
+              payload: { studentName: myName }
+            });
+
+            if (typeof announceWebRTCPresence === 'function') {
+              announceWebRTCPresence();
+            }
+            if (typeof syncVideoGalleryMode === 'function') {
+              syncVideoGalleryMode();
+            }
+            try { refreshAllP2PBitrateProfiles(); } catch (e) {}
             return;
           }
 
@@ -2631,6 +2691,17 @@
           waitingRoomPingInterval = setInterval(sendWaitingJoin, 4000);
         }
       });
+    }
+
+    document.getElementById('joinBtn').addEventListener('click', () => {
+      myName = document.getElementById('studentNameInput').value.trim();
+      const pin = document.getElementById('roomPinInput').value.trim();
+
+      if (!myName || pin.length !== 4) {
+        alert("Ingresa tu nombre y el PIN de 4 dígitos.");
+        return;
+      }
+      initiateStudentSession(pin, myName, false);
     });
 
     // ==================== MOTOR DE PIZARRA COLABORATIVA ZOOM STYLE (ESTUDIANTE) ====================
@@ -5821,7 +5892,9 @@
         }
         if (webrtcVideoEnabled) {
           try {
-            await room.localParticipant.setCameraEnabled(true, { facingMode: 'user' });
+            const isMob = (typeof window !== 'undefined' && Math.min(window.innerWidth, window.innerHeight) <= 768) || /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+            const lkCamOpts = isMob ? { facingMode: 'user', resolution: { width: 320, height: 240, frameRate: 15 } } : { facingMode: 'user' };
+            await room.localParticipant.setCameraEnabled(true, lkCamOpts);
             handleStudentLocalCameraTrack();
           } catch (camErr) {
             console.error('[LiveKit] Error al activar cámara frontal en móvil:', camErr);
@@ -5861,20 +5934,25 @@
       }
       try {
         const participantCount = typeof getActiveP2PParticipantsCount === 'function' ? getActiveP2PParticipantsCount() : (Object.keys(webrtcPeers).length + 1);
-        const isMobileScreen = typeof window !== 'undefined' && window.innerWidth <= 768;
-        const idealWidth = participantCount >= 4 ? 320 : (participantCount === 3 ? 480 : 640);
-        const idealHeight = participantCount >= 4 ? 240 : (participantCount === 3 ? 360 : 480);
-        const idealFps = participantCount >= 4 ? 15 : (participantCount === 3 ? 20 : 24);
+        const isMobileScreen = (typeof window !== 'undefined' && Math.min(window.innerWidth, window.innerHeight) <= 768) || /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+        const idealWidth = isMobileScreen ? 320 : (participantCount >= 4 ? 320 : (participantCount === 3 ? 480 : 640));
+        const idealHeight = isMobileScreen ? 240 : (participantCount >= 4 ? 240 : (participantCount === 3 ? 360 : 480));
+        const idealFps = isMobileScreen ? 15 : (participantCount >= 4 ? 15 : (participantCount === 3 ? 20 : 24));
 
         if (!p2pLocalStream) {
           let stream = null;
           if (wantVideo) {
-            // Nivel 1: Constraints adaptadas a móvil (vertical) vs desktop (apaisado)
+            // Nivel 1: Constraints adaptadas a móvil (vertical / bajo consumo) vs desktop (apaisado)
             try {
               stream = await navigator.mediaDevices.getUserMedia({
-                audio: Boolean(wantAudio),
+                audio: Boolean(wantAudio) ? { echoCancellation: true, noiseSuppression: true, autoGainControl: true } : false,
                 video: isMobileScreen
-                  ? { facingMode: 'user' }
+                  ? {
+                      facingMode: 'user',
+                      width: { ideal: 320, max: 480 },
+                      height: { ideal: 240, max: 360 },
+                      frameRate: { ideal: 15, max: 15 }
+                    }
                   : {
                       facingMode: 'user',
                       width: { ideal: idealWidth },
@@ -5888,7 +5966,7 @@
               try {
                 stream = await navigator.mediaDevices.getUserMedia({
                   audio: Boolean(wantAudio),
-                  video: { facingMode: 'user' }
+                  video: isMobileScreen ? { facingMode: 'user', frameRate: { max: 15 } } : { facingMode: 'user' }
                 });
               } catch (err2) {
                 console.warn('[P2P Cam Fallback 2] Falló facingMode user, intentando video: true genérico:', err2);
@@ -5958,7 +6036,12 @@
             try {
               vStream = await navigator.mediaDevices.getUserMedia({
                 video: isMobileScreen
-                  ? { facingMode: 'user' }
+                  ? {
+                      facingMode: 'user',
+                      width: { ideal: 320, max: 480 },
+                      height: { ideal: 240, max: 360 },
+                      frameRate: { ideal: 15, max: 15 }
+                    }
                   : {
                       facingMode: 'user',
                       width: { ideal: idealWidth },
@@ -5970,7 +6053,7 @@
               console.warn('[P2P Cam AddTrack Fallback 1] Falló ideal constraints:', errFallback1);
               try {
                 vStream = await navigator.mediaDevices.getUserMedia({
-                  video: { facingMode: 'user' }
+                  video: isMobileScreen ? { facingMode: 'user', frameRate: { max: 15 } } : { facingMode: 'user' }
                 });
               } catch (errFallback2) {
                 console.warn('[P2P Cam AddTrack Fallback 2] Falló facingMode user:', errFallback2);
@@ -6065,6 +6148,7 @@
 
         const totalParticipants = getActiveP2PParticipantsCount();
         const isSharing = Boolean(isScreen ?? isSharingScreen);
+        const isMobileScreen = (typeof window !== 'undefined' && Math.min(window.innerWidth, window.innerHeight) <= 768) || /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
 
         if (isSharing) {
           // Pantalla compartida: alta fidelidad para textos, lecciones y pizarras
@@ -6076,7 +6160,15 @@
           });
         } else {
           // Cámara web
-          if (totalParticipants >= 4) {
+          if (isMobileScreen) {
+            // Perfil móvil ultra-ligero y resiliente (redes 4G/5G con baja cobertura): 180 kbps, 15 fps
+            try { params.degradationPreference = 'maintain-framerate'; } catch (e) {}
+            params.encodings.forEach(enc => {
+              enc.maxBitrate = 180000; // 180 kbps
+              enc.maxFramerate = 15;
+              enc.scaleResolutionDownBy = 1.5;
+            });
+          } else if (totalParticipants >= 4) {
             // Perfil de grupo ligero (4 a 8 participantes): 280 kbps, 15 fps
             try { params.degradationPreference = 'maintain-framerate'; } catch (e) {}
             params.encodings.forEach(enc => {
@@ -6716,8 +6808,10 @@
         if (currentVideoMode === 'livekit' && livekitRoom) {
           try {
             if (nextState) {
+              const isMob = (typeof window !== 'undefined' && Math.min(window.innerWidth, window.innerHeight) <= 768) || /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+              const lkCamOpts = isMob ? { facingMode: 'user', resolution: { width: 320, height: 240, frameRate: 15 } } : { facingMode: 'user' };
               try {
-                await livekitRoom.localParticipant.setCameraEnabled(true, { facingMode: 'user' });
+                await livekitRoom.localParticipant.setCameraEnabled(true, lkCamOpts);
               } catch (lkErr) {
                 console.warn('[LiveKit] Falló setCameraEnabled con facingMode, reintentando básico:', lkErr);
                 await livekitRoom.localParticipant.setCameraEnabled(true);
@@ -8539,6 +8633,7 @@ window.setVideoStripMinimized = function(minimized) {
       }
       try {
         safeStorage.removeItem('elt_student_pin');
+        sessionStorage.removeItem('elt_active_session');
       } catch (e) {}
     }
 
@@ -8713,6 +8808,98 @@ window.setVideoStripMinimized = function(minimized) {
           pinInput.value = savedPin;
         }
       } catch (err) {}
+    })();
+
+    // ==================== RESILIENCIA ANTE SEÑAL DÉBIL Y SEGUNDO PLANO EN MÓVILES ====================
+    let isRestoringConnection = false;
+
+    async function verifyAndRestoreStudentConnection() {
+      if (!isAdmittedToClass || !currentRoomPin || !myName || isRestoringConnection) return;
+      isRestoringConnection = true;
+      console.log('[ELT Live] Verificando estado de conexión al volver de segundo plano / red online...');
+
+      try {
+        const channelState = myChannel ? myChannel.state : null;
+        if (!myChannel || channelState === 'closed' || channelState === 'errored') {
+          console.warn('[ELT Live] Canal de señalización reconectando...');
+          try {
+            if (myChannel) myChannel.unsubscribe();
+          } catch (e) {}
+          initiateStudentSession(currentRoomPin, myName, true);
+          return;
+        }
+
+        // Renovar presencia activa en el canal de Supabase
+        try {
+          await myChannel.track({
+            name: myName,
+            role: 'student',
+            peerId: webrtcPeerId,
+            studentId: myStudentId,
+            audioEnabled: webrtcAudioEnabled,
+            videoEnabled: webrtcVideoEnabled,
+            joinedAt: new Date().toISOString()
+          });
+        } catch (e) {}
+
+        // Enviar aviso de presencia y solicitar lección y diapositiva actual
+        myChannel.send({
+          type: 'broadcast',
+          event: 'STUDENT_JOIN',
+          payload: { studentId: myStudentId, studentName: myName, peerId: webrtcPeerId }
+        });
+        myChannel.send({
+          type: 'broadcast',
+          event: 'REQUEST_LESSON',
+          payload: { studentName: myName, peerId: webrtcPeerId }
+        });
+
+        // Verificar y recuperar motor de video activo
+        if (currentVideoMode === 'livekit') {
+          if (!livekitRoom || livekitRoom.state === 'disconnected') {
+            console.warn('[LiveKit] Reconectando sala de LiveKit tras volver a primer plano...');
+            startStudentVideoEngine('livekit');
+          }
+        } else if (currentVideoMode === 'p2p') {
+          if (typeof announceWebRTCPresence === 'function') {
+            announceWebRTCPresence();
+          }
+          try { refreshAllP2PBitrateProfiles(); } catch (e) {}
+        }
+      } catch (err) {
+        console.warn('[ELT Live] Error en verifyAndRestoreStudentConnection:', err);
+      } finally {
+        setTimeout(() => { isRestoringConnection = false; }, 2000);
+      }
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        verifyAndRestoreStudentConnection();
+      }
+    });
+
+    window.addEventListener('online', () => {
+      verifyAndRestoreStudentConnection();
+    });
+
+    // Auto-Rejoin silencioso tras recarga o caída de pestaña móvil
+    (function checkSilentAutoRejoin() {
+      try {
+        const rawSession = sessionStorage.getItem('elt_active_session');
+        if (rawSession) {
+          const session = JSON.parse(rawSession);
+          if (session && session.pin && session.studentName && session.admitted) {
+            console.log('[ELT Live] Auto-Rejoin detectado:', session.studentName, 'PIN:', session.pin);
+            if (session.videoMode) {
+              assignedVideoMode = session.videoMode;
+            }
+            initiateStudentSession(session.pin, session.studentName, true);
+          }
+        }
+      } catch (e) {
+        console.warn('[ELT Live] Error evaluando Auto-Rejoin:', e);
+      }
     })();
   </script>
 </body>

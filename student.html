@@ -2474,6 +2474,13 @@
 
     function loadLessonIntoStudent(lessonId, htmlContent, targetSlide) {
       if (lessonId && currentLoadedLessonId === lessonId) {
+        hasLoadedLesson = true;
+        window.hasLoadedLesson = true;
+        if (waitingCover) {
+          waitingCover.classList.add('hidden');
+          waitingCover.style.setProperty('display', 'none', 'important');
+        }
+        if (typeof syncVideoGalleryMode === 'function') syncVideoGalleryMode();
         syncStudentToSlide(targetSlide || 1);
         return;
       }
@@ -2695,6 +2702,26 @@
         event: 'REQUEST_LESSON',
         payload: { studentName: myName, peerId: webrtcPeerId }
       });
+
+      // Reintento resiliente de REQUEST_LESSON tras admisión (hasta 3 intentos cada 2500 ms)
+      let requestLessonAttempts = 0;
+      const requestLessonRetry = () => {
+        if (!isAdmittedToClass || hasLoadedLesson || !myChannel) return;
+        requestLessonAttempts++;
+        console.log(`[ELT Live] Reintentando REQUEST_LESSON (intento ${requestLessonAttempts}/3)...`);
+        try {
+          myChannel.send({
+            type: 'broadcast',
+            event: 'REQUEST_LESSON',
+            payload: { studentName: myName, peerId: webrtcPeerId }
+          });
+        } catch (e) {}
+        if (requestLessonAttempts < 3) {
+          setTimeout(requestLessonRetry, 2500);
+        }
+      };
+      setTimeout(requestLessonRetry, 2500);
+
       myChannel.send({
         type: 'broadcast',
         event: 'WB_REQUEST_STATE',

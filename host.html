@@ -1721,15 +1721,28 @@
       const docs = [];
       try {
         if (!hostFrame) return docs;
-        const rootDoc = hostFrame.contentDocument || (hostFrame.contentWindow && hostFrame.contentWindow.document);
+        let rootDoc = null;
+        try {
+          rootDoc = hostFrame.contentDocument || (hostFrame.contentWindow && hostFrame.contentWindow.document);
+        } catch (e) {}
         if (!rootDoc) return docs;
         docs.push(rootDoc);
 
-        const nestedFrames = rootDoc.querySelectorAll('iframe');
+        let nestedFrames = [];
+        try {
+          nestedFrames = rootDoc.querySelectorAll('iframe');
+        } catch (e) {}
+
         for (let i = 0; i < nestedFrames.length; i++) {
           try {
-            const subDoc = nestedFrames[i].contentDocument || (nestedFrames[i].contentWindow && nestedFrames[i].contentWindow.document);
-            if (subDoc && subDoc.body && !docs.includes(subDoc)) docs.push(subDoc);
+            const frame = nestedFrames[i];
+            let subDoc = null;
+            try {
+              subDoc = frame.contentDocument || (frame.contentWindow && frame.contentWindow.document);
+            } catch (err) {}
+            if (subDoc && subDoc.body && !docs.includes(subDoc)) {
+              docs.push(subDoc);
+            }
           } catch (err) {}
         }
       } catch (e) {}
@@ -1739,42 +1752,70 @@
     // Lectura robusta y profunda del número de diapositiva en el deck del Host
     function readHostSlideNumber() {
       try {
-        const docs = getAccessibleHostLessonDocs();
-        if (!docs.length && hostFrame) {
-          const rootDoc = hostFrame.contentDocument || (hostFrame.contentWindow && hostFrame.contentWindow.document);
-          if (rootDoc) docs.push(rootDoc);
+        let rootWin = null;
+        let rootDoc = null;
+        try { rootWin = hostFrame?.contentWindow; } catch (e) {}
+        try { rootDoc = hostFrame?.contentDocument || (rootWin && rootWin.document); } catch (e) {}
+
+        // 1. Detección rápida y directa en el deck principal (ej. #counter en 1a.html: "1 / 4")
+        if (rootDoc) {
+          try {
+            const counterEl = rootDoc.getElementById('counter');
+            if (counterEl) {
+              const txt = (counterEl.textContent || '').trim();
+              const match = txt.match(/^(\d+)\s*\/\s*(\d+)$/);
+              if (match) return parseInt(match[1], 10);
+            }
+          } catch (e) {}
         }
 
+        if (rootWin) {
+          try {
+            if (typeof rootWin.currentSlide === 'number' && rootWin.currentSlide >= 1) return rootWin.currentSlide;
+            if (typeof rootWin.currentSlideIndex === 'number' && rootWin.currentSlideIndex >= 0) return rootWin.currentSlideIndex + 1;
+            if (typeof rootWin.activeSlideIndex === 'number' && rootWin.activeSlideIndex >= 0) return rootWin.activeSlideIndex + 1;
+            if (rootWin.Reveal && typeof rootWin.Reveal.getIndices === 'function') {
+              const idx = rootWin.Reveal.getIndices();
+              if (idx && typeof idx.h === 'number') return idx.h + 1;
+            }
+          } catch (e) {}
+        }
+
+        // 2. Detección profunda en todos los documentos accesibles
+        const docs = getAccessibleHostLessonDocs();
         for (let d = 0; d < docs.length; d++) {
           const doc = docs[d];
           if (!doc || !doc.body) continue;
 
-          // 1. Detección por propiedades globales en el window del deck (Reveal, bespoke, slideIndex)
-          const win = doc.defaultView;
+          let win = null;
+          try { win = doc.defaultView; } catch (e) {}
           if (win) {
-            if (typeof win.currentSlide === 'number' && win.currentSlide >= 1) return win.currentSlide;
-            if (typeof win.currentSlideIndex === 'number' && win.currentSlideIndex >= 0) return win.currentSlideIndex + 1;
-            if (typeof win.activeSlideIndex === 'number' && win.activeSlideIndex >= 0) return win.activeSlideIndex + 1;
-            if (win.Reveal && typeof win.Reveal.getIndices === 'function') {
-              const idx = win.Reveal.getIndices();
-              if (idx && typeof idx.h === 'number') return idx.h + 1;
-            }
+            try {
+              if (typeof win.currentSlide === 'number' && win.currentSlide >= 1) return win.currentSlide;
+              if (typeof win.currentSlideIndex === 'number' && win.currentSlideIndex >= 0) return win.currentSlideIndex + 1;
+              if (typeof win.activeSlideIndex === 'number' && win.activeSlideIndex >= 0) return win.activeSlideIndex + 1;
+              if (win.Reveal && typeof win.Reveal.getIndices === 'function') {
+                const idx = win.Reveal.getIndices();
+                if (idx && typeof idx.h === 'number') return idx.h + 1;
+              }
+            } catch (e) {}
           }
 
-          // 2. Detección en elementos de texto con numeración de diapositivas
-          const elements = doc.querySelectorAll('span, div, p, b, strong, [class*="slide-num"], [class*="page"]');
-          for (let i = 0; i < elements.length; i++) {
-            const el = elements[i];
-            if (el.children.length <= 2) {
-              const txt = (el.textContent || '').trim();
-              if (txt.length <= 15) {
-                const match = txt.match(/^(\d+)\s*\/\s*(\d+)$/);
-                if (match) return parseInt(match[1], 10);
-                const match2 = txt.match(/^(?:slide|diapositiva|página|pag|pág\.?)\s*(\d+)(?:\s*(?:\/|de|of)\s*(\d+))?$/i);
-                if (match2) return parseInt(match2[1], 10);
+          try {
+            const elements = doc.querySelectorAll('span, div, p, b, strong, [class*="slide-num"], [class*="page"]');
+            for (let i = 0; i < elements.length; i++) {
+              const el = elements[i];
+              if (el.children.length <= 2) {
+                const txt = (el.textContent || '').trim();
+                if (txt.length <= 15) {
+                  const match = txt.match(/^(\d+)\s*\/\s*(\d+)$/);
+                  if (match) return parseInt(match[1], 10);
+                  const match2 = txt.match(/^(?:slide|diapositiva|página|pag|pág\.?)\s*(\d+)(?:\s*(?:\/|de|of)\s*(\d+))?$/i);
+                  if (match2) return parseInt(match2[1], 10);
+                }
               }
             }
-          }
+          } catch (e) {}
         }
       } catch (err) {}
       return null;
@@ -1796,65 +1837,125 @@
       const targetSlide = isNext ? (currentSlide + 1) : Math.max(1, currentSlide - 1);
       if (!isNext && currentSlide <= 1) return;
 
-      const docs = getAccessibleHostLessonDocs();
-      if (!docs.length && hostFrame) {
-        const rootDoc = hostFrame.contentDocument || (hostFrame.contentWindow && hostFrame.contentWindow.document);
-        if (rootDoc) docs.push(rootDoc);
+      let executed = false;
+      let rootWin = null;
+      let rootDoc = null;
+
+      try { rootWin = hostFrame.contentWindow; } catch (e) {}
+      try { rootDoc = hostFrame.contentDocument || (rootWin && rootWin.document); } catch (e) {}
+
+      // 1. Prioridad Máxima: Invocación directa en el window del deck (ej. 1a.html -> next() / prev())
+      if (rootWin) {
+        try {
+          if (isNext) {
+            if (typeof rootWin.next === 'function') {
+              rootWin.next();
+              executed = true;
+            } else if (typeof rootWin.nextSlide === 'function') {
+              rootWin.nextSlide();
+              executed = true;
+            } else if (typeof rootWin.show === 'function' && typeof rootWin.current === 'number') {
+              rootWin.show(rootWin.current + 1);
+              executed = true;
+            }
+          } else {
+            if (typeof rootWin.prev === 'function') {
+              rootWin.prev();
+              executed = true;
+            } else if (typeof rootWin.prevSlide === 'function') {
+              rootWin.prevSlide();
+              executed = true;
+            } else if (typeof rootWin.show === 'function' && typeof rootWin.current === 'number' && rootWin.current > 0) {
+              rootWin.show(rootWin.current - 1);
+              executed = true;
+            }
+          }
+        } catch (e) {}
       }
 
+      // 2. Si no se ejecutó, clic programático en los botones nativos del deck (footer button[onclick*="next"] / prev)
+      if (!executed && rootDoc) {
+        try {
+          const nativeSel = isNext
+            ? 'footer button[onclick*="next"], button[onclick*="next()"], button[onclick*="next"], [data-action="next"], #nextBtn, .next-btn'
+            : 'footer button[onclick*="prev"], button[onclick*="prev()"], button[onclick*="prev"], [data-action="prev"], #prevBtn, .prev-btn';
+          const nativeBtn = rootDoc.querySelector(nativeSel);
+          if (nativeBtn) {
+            nativeBtn.click();
+            executed = true;
+          }
+        } catch (e) {}
+      }
+
+      // 3. Fallback amplio en todos los documentos accesibles (para Reveal.js, Swiper, etc.)
+      const docs = getAccessibleHostLessonDocs();
       for (let d = 0; d < docs.length; d++) {
         const doc = docs[d];
         if (!doc) continue;
-        const win = doc.defaultView;
+        let win = null;
+        try { win = doc.defaultView; } catch (e) {}
 
-        // 1. Invocar métodos JS nativos de la lección
-        if (win) {
-          if (isNext) {
-            if (typeof win.nextSlide === 'function') { try { win.nextSlide(); } catch (e) {} }
-            else if (typeof win.next === 'function') { try { win.next(); } catch (e) {} }
-            else if (typeof win.goToSlide === 'function') { try { win.goToSlide(targetSlide); } catch (e) {} }
-            else if (typeof win.gotoSlide === 'function') { try { win.gotoSlide(targetSlide); } catch (e) {} }
-            else if (typeof win.setSlide === 'function') { try { win.setSlide(targetSlide); } catch (e) {} }
-            else if (typeof win.show === 'function') { try { win.show(targetSlide - 1); } catch (e) {} }
-            else if (win.Reveal && typeof win.Reveal.next === 'function') { try { win.Reveal.next(); } catch (e) {} }
-          } else {
-            if (typeof win.prevSlide === 'function') { try { win.prevSlide(); } catch (e) {} }
-            else if (typeof win.prev === 'function') { try { win.prev(); } catch (e) {} }
-            else if (typeof win.goToSlide === 'function') { try { win.goToSlide(targetSlide); } catch (e) {} }
-            else if (typeof win.gotoSlide === 'function') { try { win.gotoSlide(targetSlide); } catch (e) {} }
-            else if (typeof win.setSlide === 'function') { try { win.setSlide(targetSlide); } catch (e) {} }
-            else if (typeof win.show === 'function') { try { win.show(targetSlide - 1); } catch (e) {} }
-            else if (win.Reveal && typeof win.Reveal.prev === 'function') { try { win.Reveal.prev(); } catch (e) {} }
-          }
-        }
-
-        // 2. Selectores directos de avance/retroceso
-        const sel = isNext
-          ? '#nextBtn, #btnNext, .next-btn, #next-btn, [data-action="next"], .swiper-button-next, .carousel-control-next'
-          : '#prevBtn, #btnPrev, .prev-btn, #prev-btn, [data-action="prev"], .swiper-button-prev, .carousel-control-prev';
-        const directBtn = doc.querySelector(sel);
-        if (directBtn) {
-          try { directBtn.click(); } catch (e) {}
-        }
-
-        // 3. Botones por texto o aria-label
-        const buttons = doc.querySelectorAll('button, a, [role="button"]');
-        for (let i = 0; i < buttons.length; i++) {
-          const btn = buttons[i];
-          const txt = (btn.textContent || '').trim().toLowerCase();
-          const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
-          if (isNext) {
-            if (txt.includes('next') || txt === '>' || txt === '»' || txt === '→' || aria.includes('next') || aria.includes('siguiente')) {
-              try { btn.click(); break; } catch (e) {}
+        if (!executed && win) {
+          try {
+            if (isNext) {
+              if (typeof win.nextSlide === 'function') { win.nextSlide(); executed = true; }
+              else if (typeof win.next === 'function') { win.next(); executed = true; }
+              else if (typeof win.goToSlide === 'function') { win.goToSlide(targetSlide); executed = true; }
+              else if (typeof win.gotoSlide === 'function') { win.gotoSlide(targetSlide); executed = true; }
+              else if (typeof win.setSlide === 'function') { win.setSlide(targetSlide); executed = true; }
+              else if (typeof win.show === 'function') { win.show(targetSlide - 1); executed = true; }
+              else if (win.Reveal && typeof win.Reveal.next === 'function') { win.Reveal.next(); executed = true; }
+            } else {
+              if (typeof win.prevSlide === 'function') { win.prevSlide(); executed = true; }
+              else if (typeof win.prev === 'function') { win.prev(); executed = true; }
+              else if (typeof win.goToSlide === 'function') { win.goToSlide(targetSlide); executed = true; }
+              else if (typeof win.gotoSlide === 'function') { win.gotoSlide(targetSlide); executed = true; }
+              else if (typeof win.setSlide === 'function') { win.setSlide(targetSlide); executed = true; }
+              else if (typeof win.show === 'function') { win.show(targetSlide - 1); executed = true; }
+              else if (win.Reveal && typeof win.Reveal.prev === 'function') { win.Reveal.prev(); executed = true; }
             }
-          } else {
-            if ((txt.includes('prev') && !txt.includes('menú') && !txt.includes('menu')) || txt === '<' || txt === '«' || txt === '←' || aria.includes('prev') || aria.includes('anterior')) {
-              try { btn.click(); break; } catch (e) {}
-            }
-          }
+          } catch (e) {}
         }
 
-        // 4. Enviar synthetic keyboard event a la ventana/documento del deck
+        if (!executed) {
+          try {
+            const sel = isNext
+              ? '#nextBtn, #btnNext, .next-btn, #next-btn, [data-action="next"], .swiper-button-next, .carousel-control-next'
+              : '#prevBtn, #btnPrev, .prev-btn, #prev-btn, [data-action="prev"], .swiper-button-prev, .carousel-control-prev';
+            const directBtn = doc.querySelector(sel);
+            if (directBtn) {
+              directBtn.click();
+              executed = true;
+            }
+          } catch (e) {}
+        }
+
+        // 4. Botones por texto o aria-label
+        if (!executed) {
+          try {
+            const buttons = doc.querySelectorAll('button, a, [role="button"]');
+            for (let i = 0; i < buttons.length; i++) {
+              const btn = buttons[i];
+              const txt = (btn.textContent || '').trim().toLowerCase();
+              const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
+              if (isNext) {
+                if (txt.includes('next') || txt === '>' || txt === '»' || txt === '→' || aria.includes('next') || aria.includes('siguiente')) {
+                  btn.click();
+                  executed = true;
+                  break;
+                }
+              } else {
+                if ((txt.includes('prev') && !txt.includes('menú') && !txt.includes('menu')) || txt === '<' || txt === '«' || txt === '←' || aria.includes('prev') || aria.includes('anterior')) {
+                  btn.click();
+                  executed = true;
+                  break;
+                }
+              }
+            }
+          } catch (e) {}
+        }
+
+        // 5. Enviar synthetic keyboard event a la ventana/documento del deck
         try {
           const keyName = isNext ? 'ArrowRight' : 'ArrowLeft';
           const keyCode = isNext ? 39 : 37;
@@ -1879,14 +1980,21 @@
         if (detected && detected !== currentSlide) {
           applySlideUpdate(detected);
         }
-      }, 90);
+      }, 50);
 
       setTimeout(() => {
         const detected = readHostSlideNumber();
         if (detected && detected !== currentSlide) {
           applySlideUpdate(detected);
         }
-      }, 250);
+      }, 150);
+
+      setTimeout(() => {
+        const detected = readHostSlideNumber();
+        if (detected && detected !== currentSlide) {
+          applySlideUpdate(detected);
+        }
+      }, 300);
     }
 
     // Comprueba si el foco está en un campo de texto, chat o modal para no interceptar flechas
@@ -8202,13 +8310,29 @@ btnMinimizeVideoStrip?.addEventListener('click', (e) => {
     window.addEventListener('resize', clampVideoStripIntoBounds);
 
     // Controles de la Barra Inferior de Reunión y Navegación (#zmBottomMeetingBar)
-    document.getElementById('bottomPrevSlideBtn').addEventListener('click', () => {
-      clickButtonInHost('PREV');
-    });
+    const prevSlideBtn = document.getElementById('bottomPrevSlideBtn');
+    if (prevSlideBtn) {
+      prevSlideBtn.onclick = (e) => {
+        if (e) { e.preventDefault(); e.stopPropagation(); }
+        clickButtonInHost('PREV');
+      };
+      prevSlideBtn.addEventListener('click', (e) => {
+        if (e) { e.preventDefault(); e.stopPropagation(); }
+        clickButtonInHost('PREV');
+      });
+    }
 
-    document.getElementById('bottomNextSlideBtn').addEventListener('click', () => {
-      clickButtonInHost('NEXT');
-    });
+    const nextSlideBtn = document.getElementById('bottomNextSlideBtn');
+    if (nextSlideBtn) {
+      nextSlideBtn.onclick = (e) => {
+        if (e) { e.preventDefault(); e.stopPropagation(); }
+        clickButtonInHost('NEXT');
+      };
+      nextSlideBtn.addEventListener('click', (e) => {
+        if (e) { e.preventDefault(); e.stopPropagation(); }
+        clickButtonInHost('NEXT');
+      });
+    }
 
     document.getElementById('bottomAudioBtn').addEventListener('click', () => {
       toggleLocalAudio();

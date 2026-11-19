@@ -628,6 +628,9 @@
 
         <!-- Área Didáctica Unificada (Lección Interactiva + Lienzo de Pizarra Colaborativa) -->
         <main id="studentFrameContainer" class="flex-1 min-h-0 w-full relative overflow-hidden bg-[#0a0c10]">
+          <!-- Escudo visual y bloqueo de interacción para Modo Guiar Clase -->
+          <div id="studentTeacherGuidedShield" class="hidden absolute inset-0 z-30 bg-transparent cursor-not-allowed"></div>
+          <div id="studentTeacherGuidedPill" class="hidden absolute top-2.5 left-1/2 -translate-x-1/2 z-30 bg-indigo-950/90 border border-indigo-400/60 text-indigo-100 text-[11px] font-semibold px-3 py-1 rounded-full shadow-lg pointer-events-none">👁️ El profesor está guiando la pantalla</div>
           <iframe id="studentFrame" class="w-full h-full border-0 bg-white"></iframe>
           
           <div id="waitingCover" class="absolute inset-0 bg-white flex flex-col items-center justify-center p-6 text-center text-slate-700 z-10">
@@ -1917,6 +1920,7 @@
 
     function saveStudentAnswersForSlide(slideNum) {
       try {
+        if (window.isSyntheticTeacherAction) return;
         const key = getStudentSessionStorageKey();
         if (!key) return;
         const curSlide = slideNum || assignedSlide || getStudentSlideNumber() || 1;
@@ -2944,14 +2948,89 @@
         }
       });
 
+      // ==================== RECEPTOR MODO "GUIAR CLASE" / "PRÁCTICA LIBRE" ====================
+      window.isSyntheticTeacherAction = false;
+
+      function applyTeacherGuidedModeUI(active) {
+        const shield = document.getElementById('studentTeacherGuidedShield');
+        const pill = document.getElementById('studentTeacherGuidedPill');
+        const isGuided = Boolean(active);
+        if (shield) shield.classList.toggle('hidden', !isGuided);
+        if (pill) pill.classList.toggle('hidden', !isGuided);
+      }
+
+      function executeTeacherGuidedAction(payload) {
+        if (!studentFrame) return;
+        const rootDoc = studentFrame.contentDocument || (studentFrame.contentWindow && studentFrame.contentWindow.document);
+        if (!rootDoc) return;
+
+        let targetDoc = rootDoc;
+        if (payload.isInnerViewer) {
+          const viewerFrame = rootDoc.querySelector('iframe#viewer, iframe');
+          if (viewerFrame) {
+            try {
+              targetDoc = viewerFrame.contentDocument || (viewerFrame.contentWindow && viewerFrame.contentWindow.document) || rootDoc;
+            } catch (e) {}
+          }
+        }
+
+        window.isSyntheticTeacherAction = true;
+        try {
+          const action = payload.action;
+          if (action === 'scroll') {
+            const scrollEl = targetDoc.scrollingElement || targetDoc.documentElement || targetDoc.body;
+            if (scrollEl) {
+              const maxScroll = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight);
+              const targetWin = targetDoc.defaultView || window;
+              targetWin.scrollTo({ top: (payload.ratioY || 0) * maxScroll, behavior: 'smooth' });
+            }
+          } else if (action === 'click' && payload.selector) {
+            const el = targetDoc.querySelector(payload.selector);
+            if (el && typeof el.click === 'function') {
+              el.click();
+            }
+          } else if (action === 'input' && payload.selector) {
+            const el = targetDoc.querySelector(payload.selector);
+            if (el) {
+              if (typeof payload.value !== 'undefined') el.value = payload.value;
+              if (typeof payload.checked !== 'undefined') el.checked = payload.checked;
+              el.dispatchEvent(new Event('input', { bubbles: true }));
+              el.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+          }
+        } catch (err) {
+          console.warn('[ELT Live] Error ejecutando acción guiada del profesor:', err);
+        } finally {
+          setTimeout(() => {
+            window.isSyntheticTeacherAction = false;
+          }, 80);
+        }
+      }
+
       myChannel.on('broadcast', { event: 'LOAD_LESSON' }, ({ payload }) => {
         if (!isAdmittedToClass) return;
         loadLessonIntoStudent(payload.lessonId, payload.html, payload.targetSlide);
+        if (typeof payload?.teacherGuidedMode === 'boolean') {
+          applyTeacherGuidedModeUI(payload.teacherGuidedMode);
+        }
       });
 
       myChannel.on('broadcast', { event: 'SYNC_SLIDE_NUMBER' }, ({ payload }) => {
         if (!isAdmittedToClass) return;
         syncStudentToSlide(payload.targetSlide);
+        if (typeof payload?.teacherGuidedMode === 'boolean') {
+          applyTeacherGuidedModeUI(payload.teacherGuidedMode);
+        }
+      });
+
+      myChannel.on('broadcast', { event: 'TEACHER_MODE_STATE' }, ({ payload }) => {
+        if (!isAdmittedToClass) return;
+        applyTeacherGuidedModeUI(Boolean(payload?.active));
+      });
+
+      myChannel.on('broadcast', { event: 'TEACHER_ACTION' }, ({ payload }) => {
+        if (!isAdmittedToClass || !payload) return;
+        executeTeacherGuidedAction(payload);
       });
 
       setupWhiteboardChannelListeners(myChannel);

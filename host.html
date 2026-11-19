@@ -803,6 +803,7 @@
           <span id="slideStatusBadge" class="text-[10px] font-semibold px-2 py-0.2 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 hidden">
             ● Diapositiva <span id="currentSlideLabel" class="font-bold">1</span>
           </span>
+          <button id="btnToggleTeacherGuided" type="button" onclick="window.toggleTeacherGuidedMode()" class="hidden text-[11px] font-bold px-2.5 py-1 rounded-lg border transition flex items-center gap-1.5 cursor-pointer bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border-emerald-700/70" title="Alternar entre Guiar Clase (alumnos siguen tus clics y scroll) y Práctica Libre"><span id="teacherGuidedBtnIcon">🔓</span><span id="teacherGuidedBtnLabel">Práctica Libre</span></button>
         </div>
         <div class="flex items-center gap-1.5 text-[11px] text-slate-400">
           <span>Session Title with PIN:</span>
@@ -920,6 +921,7 @@
 
       <!-- Área Didáctica Unificada (Lecciones Interactivas + Lienzo de Pizarra Colaborativa) -->
       <div id="hostFrameContainer" class="flex-1 min-h-0 w-full bg-white flex flex-col relative overflow-hidden">
+        <div id="teacherGuidedBanner" class="hidden absolute top-2.5 left-1/2 -translate-x-1/2 z-40 bg-amber-950/95 border border-amber-500/80 text-amber-100 text-xs font-semibold px-3.5 py-1.5 rounded-full shadow-xl flex items-center gap-2.5 backdrop-blur-xs transition-all"><span id="teacherGuidedBannerText">🔒 Guiando pantalla de alumnos</span><button type="button" onclick="window.toggleTeacherGuidedMode(false)" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[11px] px-2.5 py-0.5 rounded-full transition cursor-pointer">Pasar a Práctica Libre</button></div>
         <iframe id="hostFrame" class="w-full h-full border-0 bg-white"></iframe>
         
         <div id="emptyNotice" class="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-white z-10 text-slate-700">
@@ -2182,6 +2184,206 @@
       }
     });
 
+    // ==================== MODO "GUIAR CLASE" (TEACHER-LED) VS "PRÁCTICA LIBRE" ====================
+    let isTeacherGuidedMode = false;
+    let teacherInactivityTimer = null;
+    let teacherInactivityAlertActive = false;
+
+    function playTeacherInactivityAlertSound() {
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(440, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.18);
+        gain.gain.setValueAtTime(0.08, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.36);
+      } catch (e) {}
+    }
+
+    function resetTeacherInactivityTimer() {
+      if (teacherInactivityTimer) {
+        clearTimeout(teacherInactivityTimer);
+        teacherInactivityTimer = null;
+      }
+      if (teacherInactivityAlertActive) {
+        teacherInactivityAlertActive = false;
+        const banner = document.getElementById('teacherGuidedBanner');
+        const bannerText = document.getElementById('teacherGuidedBannerText');
+        if (banner) {
+          banner.className = 'absolute top-2.5 left-1/2 -translate-x-1/2 z-40 bg-amber-950/95 border border-amber-500/80 text-amber-100 text-xs font-semibold px-3.5 py-1.5 rounded-full shadow-xl flex items-center gap-2.5 backdrop-blur-xs transition-all';
+        }
+        if (bannerText) {
+          bannerText.textContent = '🔒 Guiando pantalla de alumnos';
+        }
+      }
+      if (!isTeacherGuidedMode) return;
+
+      teacherInactivityTimer = setTimeout(() => {
+        if (!isTeacherGuidedMode) return;
+        teacherInactivityAlertActive = true;
+        const banner = document.getElementById('teacherGuidedBanner');
+        const bannerText = document.getElementById('teacherGuidedBannerText');
+        if (banner) {
+          banner.className = 'absolute top-2.5 left-1/2 -translate-x-1/2 z-40 bg-rose-950/95 border border-rose-400 text-rose-100 text-xs font-semibold px-3.5 py-1.5 rounded-full shadow-xl flex items-center gap-2.5 backdrop-blur-xs animate-pulse transition-all';
+        }
+        if (bannerText) {
+          bannerText.textContent = '⏰ ¿Terminaste de explicar? Los alumnos siguen bloqueados';
+        }
+        playTeacherInactivityAlertSound();
+      }, 45000);
+    }
+
+    window.toggleTeacherGuidedMode = function(forceState) {
+      isTeacherGuidedMode = (typeof forceState === 'boolean') ? forceState : !isTeacherGuidedMode;
+
+      const btn = document.getElementById('btnToggleTeacherGuided');
+      const icon = document.getElementById('teacherGuidedBtnIcon');
+      const label = document.getElementById('teacherGuidedBtnLabel');
+      const banner = document.getElementById('teacherGuidedBanner');
+      const bannerText = document.getElementById('teacherGuidedBannerText');
+
+      if (btn && icon && label) {
+        if (isTeacherGuidedMode) {
+          icon.textContent = '🔒';
+          label.textContent = 'Guiando Clase';
+          btn.className = 'text-[11px] font-bold px-2.5 py-1 rounded-lg border transition flex items-center gap-1.5 cursor-pointer bg-amber-950/90 hover:bg-amber-900 text-amber-300 border-amber-600/80 shadow-sm';
+        } else {
+          icon.textContent = '🔓';
+          label.textContent = 'Práctica Libre';
+          btn.className = 'text-[11px] font-bold px-2.5 py-1 rounded-lg border transition flex items-center gap-1.5 cursor-pointer bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border-emerald-700/70';
+        }
+      }
+
+      if (banner && bannerText) {
+        if (isTeacherGuidedMode && rawLessonHTML) {
+          banner.classList.remove('hidden');
+          banner.className = 'absolute top-2.5 left-1/2 -translate-x-1/2 z-40 bg-amber-950/95 border border-amber-500/80 text-amber-100 text-xs font-semibold px-3.5 py-1.5 rounded-full shadow-xl flex items-center gap-2.5 backdrop-blur-xs transition-all';
+          bannerText.textContent = '🔒 Guiando pantalla de alumnos';
+        } else {
+          banner.classList.add('hidden');
+        }
+      }
+
+      resetTeacherInactivityTimer();
+
+      if (roomChannel) {
+        roomChannel.send({
+          type: 'broadcast',
+          event: 'TEACHER_MODE_STATE',
+          payload: { active: isTeacherGuidedMode, slide: currentSlide }
+        });
+      }
+    };
+
+    function buildUniqueDomSelector(el, doc) {
+      if (!el || el.nodeType !== Node.ELEMENT_NODE) return '';
+      try {
+        if (el.id && doc.querySelectorAll('#' + CSS.escape(el.id)).length === 1) {
+          return '#' + CSS.escape(el.id);
+        }
+      } catch (e) {}
+      const path = [];
+      let curr = el;
+      while (curr && curr.nodeType === Node.ELEMENT_NODE && curr !== doc.body && curr !== doc.documentElement) {
+        let selector = curr.tagName.toLowerCase();
+        try {
+          if (curr.id && doc.querySelectorAll('#' + CSS.escape(curr.id)).length === 1) {
+            path.unshift('#' + CSS.escape(curr.id));
+            break;
+          }
+        } catch (e) {}
+        let sib = curr;
+        let nth = 1;
+        while ((sib = sib.previousElementSibling)) {
+          if (sib.tagName.toLowerCase() === selector) nth++;
+        }
+        selector += `:nth-of-type(${nth})`;
+        path.unshift(selector);
+        curr = curr.parentElement;
+      }
+      return path.join(' > ');
+    }
+
+    function bindTeacherActionCapture(innerDoc) {
+      if (!innerDoc || innerDoc.__teacherActionBound) return;
+      innerDoc.__teacherActionBound = true;
+
+      const rootDoc = hostFrame?.contentDocument;
+      const isInnerViewer = Boolean(innerDoc !== rootDoc);
+
+      // 1. Clics
+      innerDoc.addEventListener('click', (e) => {
+        if (!isTeacherGuidedMode || !e.isTrusted) return;
+        resetTeacherInactivityTimer();
+        const selector = buildUniqueDomSelector(e.target, innerDoc);
+        if (!selector || !roomChannel) return;
+        roomChannel.send({
+          type: 'broadcast',
+          event: 'TEACHER_ACTION',
+          payload: { action: 'click', selector, isInnerViewer, slide: currentSlide }
+        });
+      }, true);
+
+      // 2. Scroll con throttle
+      let lastScrollTime = 0;
+      const onScrollHandler = () => {
+        if (!isTeacherGuidedMode) return;
+        const now = Date.now();
+        if (now - lastScrollTime < 120) return;
+        lastScrollTime = now;
+        resetTeacherInactivityTimer();
+
+        const scrollEl = innerDoc.scrollingElement || innerDoc.documentElement || innerDoc.body;
+        if (!scrollEl || !roomChannel) return;
+        const maxScroll = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight);
+        const ratioY = maxScroll > 0 ? (scrollEl.scrollTop / maxScroll) : 0;
+        roomChannel.send({
+          type: 'broadcast',
+          event: 'TEACHER_ACTION',
+          payload: { action: 'scroll', ratioY, isInnerViewer, slide: currentSlide }
+        });
+      };
+      innerDoc.addEventListener('scroll', onScrollHandler, { passive: true, capture: true });
+      if (innerDoc.defaultView) {
+        innerDoc.defaultView.addEventListener('scroll', onScrollHandler, { passive: true });
+      }
+
+      // 3. Inputs / Selects con debounce
+      let inputTimer = null;
+      const onInputHandler = (e) => {
+        if (!isTeacherGuidedMode || !e.isTrusted) return;
+        resetTeacherInactivityTimer();
+        const target = e.target;
+        if (!target) return;
+        const tag = (target.tagName || '').toUpperCase();
+        if (tag !== 'INPUT' && tag !== 'SELECT' && tag !== 'TEXTAREA') return;
+
+        if (inputTimer) clearTimeout(inputTimer);
+        inputTimer = setTimeout(() => {
+          if (!isTeacherGuidedMode || !roomChannel) return;
+          const selector = buildUniqueDomSelector(target, innerDoc);
+          if (!selector) return;
+          const value = target.value;
+          const checked = target.type === 'checkbox' || target.type === 'radio' ? target.checked : undefined;
+          roomChannel.send({
+            type: 'broadcast',
+            event: 'TEACHER_ACTION',
+            payload: { action: 'input', selector, value, checked, isInnerViewer, slide: currentSlide }
+          });
+        }, 150);
+      };
+      innerDoc.addEventListener('input', onInputHandler, true);
+      innerDoc.addEventListener('change', onInputHandler, true);
+    }
+
     function injectIntoHost(html) {
       if (hostFrame) hostFrame.remove();
       hostFrame = document.createElement('iframe');
@@ -2197,6 +2399,10 @@
       doc.close();
 
       statusBadge.classList.remove('hidden');
+      const btnGuided = document.getElementById('btnToggleTeacherGuided');
+      if (btnGuided) btnGuided.classList.remove('hidden');
+      const bannerGuided = document.getElementById('teacherGuidedBanner');
+      if (bannerGuided && isTeacherGuidedMode) bannerGuided.classList.remove('hidden');
       if (typeof syncHostVideoGalleryMode === 'function') {
         syncHostVideoGalleryMode();
       }
@@ -2206,6 +2412,7 @@
           const docs = getAccessibleHostLessonDocs();
           docs.forEach(innerDoc => {
             optimizeLessonLayout(innerDoc);
+            bindTeacherActionCapture(innerDoc);
             innerDoc.addEventListener('click', () => {
               setTimeout(checkHostSlideChange, 40);
               setTimeout(checkHostSlideChange, 150);
@@ -2228,6 +2435,22 @@
               setTimeout(checkHostSlideChange, 150);
             });
           });
+
+          // Enganchar además cualquier sub-iframe (#viewer) cuando termine de cargar
+          const rootDoc = hostFrame?.contentDocument;
+          if (rootDoc) {
+            rootDoc.querySelectorAll('iframe').forEach(frame => {
+              if (!frame.__guidedLoadBound) {
+                frame.__guidedLoadBound = true;
+                frame.addEventListener('load', () => {
+                  try {
+                    const subDoc = frame.contentDocument || (frame.contentWindow && frame.contentWindow.document);
+                    if (subDoc) bindTeacherActionCapture(subDoc);
+                  } catch (e) {}
+                });
+              }
+            });
+          }
         } catch (e) {}
       }, 300);
 
@@ -2263,7 +2486,7 @@
       roomChannel.send({
         type: 'broadcast',
         event: 'SYNC_SLIDE_NUMBER',
-        payload: { targetSlide: num }
+        payload: { targetSlide: num, teacherGuidedMode: isTeacherGuidedMode }
       });
       renderStudentsDashboard();
     }
@@ -2273,7 +2496,7 @@
       roomChannel.send({
         type: 'broadcast',
         event: 'LOAD_LESSON',
-        payload: { lessonId: lessonId, html: rawLessonHTML, targetSlide: currentSlide }
+        payload: { lessonId: lessonId, html: rawLessonHTML, targetSlide: currentSlide, teacherGuidedMode: isTeacherGuidedMode }
       });
     }
 
@@ -2285,7 +2508,7 @@
           roomChannel.send({
             type: 'broadcast',
             event: 'SYNC_SLIDE_NUMBER',
-            payload: { targetSlide: currentSlide, isHeartbeat: true }
+            payload: { targetSlide: currentSlide, isHeartbeat: true, teacherGuidedMode: isTeacherGuidedMode }
           });
         }
       }, 5000);

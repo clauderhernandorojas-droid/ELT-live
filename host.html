@@ -1101,11 +1101,11 @@
       </div>
 
       <!-- Zona Sensible Inferior + Barra Inferior de Controles de Reunión y Navegación (Acotada al Área de Trabajo) -->
-      <div id="zmBottomBarHoverZone" class="w-full bg-[#090d16] border-t border-slate-800/90 flex-shrink-0 z-40 transition-all duration-300">
+      <div id="zmBottomBarHoverZone" class="w-full bg-[#090d16] border-t border-slate-800/90 flex-shrink-0 z-50 relative select-none">
         <div id="zmBottomMeetingBar" class="w-full h-[54px] px-3 flex items-center justify-between bg-[#090d16] text-slate-200 select-none">
           <!-- Extremo Izquierdo: Botón Azul Redondeado "← Prev" -->
           <div class="flex items-center">
-            <button id="bottomPrevSlideBtn" type="button" class="bg-[#0e72ed] hover:bg-[#0b5ed7] active:scale-95 text-white text-xs font-bold px-4 py-2 rounded-xl shadow-md flex items-center gap-1.5 transition">
+            <button id="bottomPrevSlideBtn" type="button" class="bg-[#0e72ed] hover:bg-[#0b5ed7] active:scale-95 text-white text-xs font-bold px-4 py-2 rounded-xl shadow-md flex items-center gap-1.5 transition cursor-pointer relative z-50 pointer-events-auto">
               <span>← Prev</span>
             </button>
           </div>
@@ -1170,7 +1170,7 @@
             </button>
 
             <!-- Extremo Derecho (pegado al borde del chat): Botón Azul Redondeado "Next →" -->
-            <button id="bottomNextSlideBtn" type="button" class="bg-[#0e72ed] hover:bg-[#0b5ed7] active:scale-95 text-white text-xs font-bold px-4 py-2 rounded-xl shadow-md flex items-center gap-1.5 transition ml-1">
+            <button id="bottomNextSlideBtn" type="button" class="bg-[#0e72ed] hover:bg-[#0b5ed7] active:scale-95 text-white text-xs font-bold px-4 py-2 rounded-xl shadow-md flex items-center gap-1.5 transition ml-1 cursor-pointer relative z-50 pointer-events-auto">
               <span>Next →</span>
             </button>
           </div>
@@ -1716,54 +1716,63 @@
       }
     }
 
-    function clickButtonInHost(type) {
+    // Obtiene el documento raíz del iframe del profesor y cualquier sub-iframe accesible
+    function getAccessibleHostLessonDocs() {
+      const docs = [];
       try {
-        const doc = hostFrame.contentDocument || hostFrame.contentWindow.document;
-        const win = hostFrame.contentWindow;
-        if (!doc) return;
+        if (!hostFrame) return docs;
+        const rootDoc = hostFrame.contentDocument || (hostFrame.contentWindow && hostFrame.contentWindow.document);
+        if (!rootDoc) return docs;
+        docs.push(rootDoc);
 
-        if (type === 'NEXT') {
-          if (typeof win.nextSlide === 'function') { win.nextSlide(); setTimeout(checkHostSlideChange, 60); return; }
-          const direct = doc.querySelector('#nextBtn, #btnNext, .next-btn, [data-action="next"]');
-          if (direct) { direct.click(); setTimeout(checkHostSlideChange, 60); return; }
-
-          const buttons = doc.querySelectorAll('button');
-          for (let i = 0; i < buttons.length; i++) {
-            const txt = (buttons[i].textContent || '').trim();
-            if (txt.includes('Next')) { buttons[i].click(); setTimeout(checkHostSlideChange, 60); return; }
-          }
-        } else if (type === 'PREV') {
-          if (typeof win.prevSlide === 'function') { win.prevSlide(); setTimeout(checkHostSlideChange, 60); return; }
-          const direct = doc.querySelector('#prevBtn, #btnPrev, .prev-btn, [data-action="prev"]');
-          if (direct) { direct.click(); setTimeout(checkHostSlideChange, 60); return; }
-
-          const buttons = doc.querySelectorAll('button');
-          for (let i = 0; i < buttons.length; i++) {
-            const txt = (buttons[i].textContent || '').trim();
-            if (txt.includes('Prev') && !txt.includes('Menú') && !txt.includes('Menu')) {
-              buttons[i].click();
-              setTimeout(checkHostSlideChange, 60);
-              return;
-            }
-          }
+        const nestedFrames = rootDoc.querySelectorAll('iframe');
+        for (let i = 0; i < nestedFrames.length; i++) {
+          try {
+            const subDoc = nestedFrames[i].contentDocument || (nestedFrames[i].contentWindow && nestedFrames[i].contentWindow.document);
+            if (subDoc && subDoc.body && !docs.includes(subDoc)) docs.push(subDoc);
+          } catch (err) {}
         }
       } catch (e) {}
+      return docs;
     }
 
+    // Lectura robusta y profunda del número de diapositiva en el deck del Host
     function readHostSlideNumber() {
       try {
-        const doc = hostFrame.contentDocument || hostFrame.contentWindow.document;
-        if (!doc || !doc.body) return null;
+        const docs = getAccessibleHostLessonDocs();
+        if (!docs.length && hostFrame) {
+          const rootDoc = hostFrame.contentDocument || (hostFrame.contentWindow && hostFrame.contentWindow.document);
+          if (rootDoc) docs.push(rootDoc);
+        }
 
-        optimizeLessonLayout(doc);
-        const elements = doc.querySelectorAll('span, div, p, b, strong');
-        for (let i = 0; i < elements.length; i++) {
-          const el = elements[i];
-          if (el.children.length <= 2) {
-            const txt = (el.textContent || '').trim();
-            if (txt.length <= 12) {
-              const match = txt.match(/^(\d+)\s*\/\s*(\d+)$/);
-              if (match) return parseInt(match[1], 10);
+        for (let d = 0; d < docs.length; d++) {
+          const doc = docs[d];
+          if (!doc || !doc.body) continue;
+
+          // 1. Detección por propiedades globales en el window del deck (Reveal, bespoke, slideIndex)
+          const win = doc.defaultView;
+          if (win) {
+            if (typeof win.currentSlide === 'number' && win.currentSlide >= 1) return win.currentSlide;
+            if (typeof win.currentSlideIndex === 'number' && win.currentSlideIndex >= 0) return win.currentSlideIndex + 1;
+            if (typeof win.activeSlideIndex === 'number' && win.activeSlideIndex >= 0) return win.activeSlideIndex + 1;
+            if (win.Reveal && typeof win.Reveal.getIndices === 'function') {
+              const idx = win.Reveal.getIndices();
+              if (idx && typeof idx.h === 'number') return idx.h + 1;
+            }
+          }
+
+          // 2. Detección en elementos de texto con numeración de diapositivas
+          const elements = doc.querySelectorAll('span, div, p, b, strong, [class*="slide-num"], [class*="page"]');
+          for (let i = 0; i < elements.length; i++) {
+            const el = elements[i];
+            if (el.children.length <= 2) {
+              const txt = (el.textContent || '').trim();
+              if (txt.length <= 15) {
+                const match = txt.match(/^(\d+)\s*\/\s*(\d+)$/);
+                if (match) return parseInt(match[1], 10);
+                const match2 = txt.match(/^(?:slide|diapositiva|página|pag|pág\.?)\s*(\d+)(?:\s*(?:\/|de|of)\s*(\d+))?$/i);
+                if (match2) return parseInt(match2[1], 10);
+              }
             }
           }
         }
@@ -1775,10 +1784,135 @@
       const detected = readHostSlideNumber();
       if (detected && detected !== currentSlide) {
         currentSlide = detected;
-        currentSlideLabel.textContent = currentSlide;
+        if (currentSlideLabel) currentSlideLabel.textContent = currentSlide;
         broadcastTargetSlide(currentSlide);
       }
     }
+
+    // Navegación infalible en el deck del Host (soporte a botones internos, métodos JS, synthetic events y actualización inmediata)
+    function clickButtonInHost(type) {
+      if (!hostFrame) return;
+      const isNext = (type === 'NEXT');
+      const targetSlide = isNext ? (currentSlide + 1) : Math.max(1, currentSlide - 1);
+      if (!isNext && currentSlide <= 1) return;
+
+      const docs = getAccessibleHostLessonDocs();
+      if (!docs.length && hostFrame) {
+        const rootDoc = hostFrame.contentDocument || (hostFrame.contentWindow && hostFrame.contentWindow.document);
+        if (rootDoc) docs.push(rootDoc);
+      }
+
+      for (let d = 0; d < docs.length; d++) {
+        const doc = docs[d];
+        if (!doc) continue;
+        const win = doc.defaultView;
+
+        // 1. Invocar métodos JS nativos de la lección
+        if (win) {
+          if (isNext) {
+            if (typeof win.nextSlide === 'function') { try { win.nextSlide(); } catch (e) {} }
+            else if (typeof win.next === 'function') { try { win.next(); } catch (e) {} }
+            else if (typeof win.goToSlide === 'function') { try { win.goToSlide(targetSlide); } catch (e) {} }
+            else if (typeof win.gotoSlide === 'function') { try { win.gotoSlide(targetSlide); } catch (e) {} }
+            else if (typeof win.setSlide === 'function') { try { win.setSlide(targetSlide); } catch (e) {} }
+            else if (typeof win.show === 'function') { try { win.show(targetSlide - 1); } catch (e) {} }
+            else if (win.Reveal && typeof win.Reveal.next === 'function') { try { win.Reveal.next(); } catch (e) {} }
+          } else {
+            if (typeof win.prevSlide === 'function') { try { win.prevSlide(); } catch (e) {} }
+            else if (typeof win.prev === 'function') { try { win.prev(); } catch (e) {} }
+            else if (typeof win.goToSlide === 'function') { try { win.goToSlide(targetSlide); } catch (e) {} }
+            else if (typeof win.gotoSlide === 'function') { try { win.gotoSlide(targetSlide); } catch (e) {} }
+            else if (typeof win.setSlide === 'function') { try { win.setSlide(targetSlide); } catch (e) {} }
+            else if (typeof win.show === 'function') { try { win.show(targetSlide - 1); } catch (e) {} }
+            else if (win.Reveal && typeof win.Reveal.prev === 'function') { try { win.Reveal.prev(); } catch (e) {} }
+          }
+        }
+
+        // 2. Selectores directos de avance/retroceso
+        const sel = isNext
+          ? '#nextBtn, #btnNext, .next-btn, #next-btn, [data-action="next"], .swiper-button-next, .carousel-control-next'
+          : '#prevBtn, #btnPrev, .prev-btn, #prev-btn, [data-action="prev"], .swiper-button-prev, .carousel-control-prev';
+        const directBtn = doc.querySelector(sel);
+        if (directBtn) {
+          try { directBtn.click(); } catch (e) {}
+        }
+
+        // 3. Botones por texto o aria-label
+        const buttons = doc.querySelectorAll('button, a, [role="button"]');
+        for (let i = 0; i < buttons.length; i++) {
+          const btn = buttons[i];
+          const txt = (btn.textContent || '').trim().toLowerCase();
+          const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
+          if (isNext) {
+            if (txt.includes('next') || txt === '>' || txt === '»' || txt === '→' || aria.includes('next') || aria.includes('siguiente')) {
+              try { btn.click(); break; } catch (e) {}
+            }
+          } else {
+            if ((txt.includes('prev') && !txt.includes('menú') && !txt.includes('menu')) || txt === '<' || txt === '«' || txt === '←' || aria.includes('prev') || aria.includes('anterior')) {
+              try { btn.click(); break; } catch (e) {}
+            }
+          }
+        }
+
+        // 4. Enviar synthetic keyboard event a la ventana/documento del deck
+        try {
+          const keyName = isNext ? 'ArrowRight' : 'ArrowLeft';
+          const keyCode = isNext ? 39 : 37;
+          const kEvt = new KeyboardEvent('keydown', { key: keyName, code: keyName, keyCode, which: keyCode, bubbles: true });
+          doc.dispatchEvent(kEvt);
+          if (win) win.dispatchEvent(kEvt);
+        } catch (e) {}
+      }
+
+      // Actualizar inmediatamente currentSlide al target esperado y sincronizar
+      const applySlideUpdate = (newSlideNum) => {
+        if (!newSlideNum || newSlideNum < 1) return;
+        currentSlide = newSlideNum;
+        if (currentSlideLabel) currentSlideLabel.textContent = currentSlide;
+        broadcastTargetSlide(currentSlide);
+      };
+
+      applySlideUpdate(targetSlide);
+
+      setTimeout(() => {
+        const detected = readHostSlideNumber();
+        if (detected && detected !== currentSlide) {
+          applySlideUpdate(detected);
+        }
+      }, 90);
+
+      setTimeout(() => {
+        const detected = readHostSlideNumber();
+        if (detected && detected !== currentSlide) {
+          applySlideUpdate(detected);
+        }
+      }, 250);
+    }
+
+    // Comprueba si el foco está en un campo de texto, chat o modal para no interceptar flechas
+    function isHostTypingFocused() {
+      const el = document.activeElement;
+      if (!el) return false;
+      const tag = (el.tagName || '').toUpperCase();
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+      if (el.isContentEditable || (el.closest && el.closest('[contenteditable="true"]'))) return true;
+      if (el.closest && (el.closest('#zmChatWindow') || el.closest('#scheduleModal') || el.closest('#breakoutBroadcastModal'))) return true;
+      return false;
+    }
+
+    // Atajos de teclado en el Host: Flechas Izquierda/Derecha y RePág/AvPág para navegar diapositivas
+    window.addEventListener('keydown', (e) => {
+      if (isHostTypingFocused()) return;
+      if (wbIsOpen) return;
+
+      if (e.key === 'ArrowRight' || e.key === 'PageDown') {
+        e.preventDefault();
+        clickButtonInHost('NEXT');
+      } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+        e.preventDefault();
+        clickButtonInHost('PREV');
+      }
+    });
 
     function injectIntoHost(html) {
       if (hostFrame) hostFrame.remove();
@@ -1798,15 +1932,29 @@
 
       setTimeout(() => {
         try {
-          const innerDoc = hostFrame.contentDocument || hostFrame.contentWindow.document;
-          optimizeLessonLayout(innerDoc);
-          innerDoc.addEventListener('click', () => {
-            setTimeout(checkHostSlideChange, 40);
-            setTimeout(checkHostSlideChange, 150);
-          });
-          innerDoc.addEventListener('keydown', () => {
-            setTimeout(checkHostSlideChange, 40);
-            setTimeout(checkHostSlideChange, 150);
+          const docs = getAccessibleHostLessonDocs();
+          docs.forEach(innerDoc => {
+            optimizeLessonLayout(innerDoc);
+            innerDoc.addEventListener('click', () => {
+              setTimeout(checkHostSlideChange, 40);
+              setTimeout(checkHostSlideChange, 150);
+            });
+            innerDoc.addEventListener('keydown', (e) => {
+              const el = innerDoc.activeElement;
+              const tag = (el && el.tagName || '').toUpperCase();
+              const isTyping = (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el?.isContentEditable);
+              if (!isTyping) {
+                if (e.key === 'ArrowRight' || e.key === 'PageDown') {
+                  e.preventDefault();
+                  clickButtonInHost('NEXT');
+                } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+                  e.preventDefault();
+                  clickButtonInHost('PREV');
+                }
+              }
+              setTimeout(checkHostSlideChange, 40);
+              setTimeout(checkHostSlideChange, 150);
+            });
           });
         } catch (e) {}
       }, 300);
@@ -4333,7 +4481,7 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
           curTop = Math.max(12, window.innerHeight - targetHeight - 70);
         } else {
           curLeft = Math.max(8, Math.min(window.innerWidth - zmFloatingWidth - 8, curLeft));
-          curTop = Math.max(8, Math.min(window.innerHeight - targetHeight - 8, curTop));
+          curTop = Math.max(8, Math.min(window.innerHeight - targetHeight - 70, curTop));
         }
         zmChatWindow.style.right = 'auto';
         zmChatWindow.style.bottom = 'auto';
@@ -4585,8 +4733,9 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
     });
     window.addEventListener('mousemove', (e) => {
       if (!zmDragWinActive || !zmIsFloating) return;
+      const curH = zmChatWindow.offsetHeight || (zmIsMinimized ? 38 : zmFloatingHeight);
       const nx = Math.max(8, Math.min(window.innerWidth - 365, e.clientX - zmDragOffsetX));
-      const ny = Math.max(8, Math.min(window.innerHeight - 60, e.clientY - zmDragOffsetY));
+      const ny = Math.max(8, Math.min(window.innerHeight - curH - 70, e.clientY - zmDragOffsetY));
       zmChatWindow.style.left = `${nx}px`;
       zmChatWindow.style.top = `${ny}px`;
     });
@@ -8091,41 +8240,11 @@ btnMinimizeVideoStrip?.addEventListener('click', (e) => {
       }
     });
 
-    // Auto-ocultamiento de la barra inferior tras inactividad del cursor y reaparición al mover el mouse
-    const leftWorkspaceColumn = document.getElementById('leftWorkspaceColumn');
+    // La barra inferior de reunión y navegación permanece fija y permanentemente visible en el Centro de Mando
     const zmBottomBarHoverZone = document.getElementById('zmBottomBarHoverZone');
-    let bottomBarIdleTimer = null;
-    let isHoveringBottomBar = false;
-
-    function showBottomMeetingBar() {
-      if (!zmBottomBarHoverZone) return;
-      zmBottomBarHoverZone.style.maxHeight = '56px';
-      zmBottomBarHoverZone.style.opacity = '1';
-      if (bottomBarIdleTimer) clearTimeout(bottomBarIdleTimer);
-      bottomBarIdleTimer = setTimeout(() => {
-        if (!isHoveringBottomBar) {
-          zmBottomBarHoverZone.style.maxHeight = '6px';
-          zmBottomBarHoverZone.style.opacity = '0.25';
-        }
-      }, 6500);
-    }
-
     if (zmBottomBarHoverZone) {
       zmBottomBarHoverZone.style.maxHeight = '56px';
-      zmBottomBarHoverZone.addEventListener('mouseenter', () => {
-        isHoveringBottomBar = true;
-        showBottomMeetingBar();
-      });
-      zmBottomBarHoverZone.addEventListener('mouseleave', () => {
-        isHoveringBottomBar = false;
-        showBottomMeetingBar();
-      });
-    }
-
-    if (leftWorkspaceColumn) {
-      leftWorkspaceColumn.addEventListener('mousemove', () => {
-        showBottomMeetingBar();
-      });
+      zmBottomBarHoverZone.style.opacity = '1';
     }
 
     // ==================== SISTEMA DE AGENDAMIENTO SINCRONIZADO (FASE 1 + FASE 2: RECURRENCIAS, BIMESTRE VERTICAL Y EXCEPCIONES) ====================

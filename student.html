@@ -1313,37 +1313,64 @@
     const studentSlideBadge = document.getElementById('studentSlideBadge');
 
     function optimizeStudentLayout(doc) {
+      const docsToOptimize = [];
+      if (doc && doc.body) docsToOptimize.push(doc);
+      if (typeof getAccessibleLessonDocs === 'function') {
+        const allDocs = getAccessibleLessonDocs();
+        allDocs.forEach(d => {
+          if (d && d.body && !docsToOptimize.includes(d)) docsToOptimize.push(d);
+        });
+      }
+      docsToOptimize.forEach(targetDoc => {
+        applyStudentCleanStyleToDoc(targetDoc);
+      });
+    }
+
+    function applyStudentCleanStyleToDoc(doc) {
       if (!doc || !doc.body) return;
-
-      const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, null, false);
-      const toClean = [];
-      let node;
-      while ((node = walker.nextNode())) {
-        if (node.nodeValue && node.nodeValue.trim() === '\\n') {
-          toClean.push(node);
-        } else if (node.nodeValue && node.nodeValue.includes('\\n')) {
-          node.nodeValue = node.nodeValue.replace(/\\n/g, '');
+      try {
+        const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, null, false);
+        const toClean = [];
+        let node;
+        while ((node = walker.nextNode())) {
+          if (node.nodeValue && node.nodeValue.trim() === '\\n') {
+            toClean.push(node);
+          } else if (node.nodeValue && node.nodeValue.includes('\\n')) {
+            node.nodeValue = node.nodeValue.replace(/\\n/g, '');
+          }
         }
-      }
-      toClean.forEach(n => n.parentNode && n.parentNode.removeChild(n));
+        toClean.forEach(n => n.parentNode && n.parentNode.removeChild(n));
 
-      const linksAndBtns = doc.querySelectorAll('a, button');
-      for (let i = 0; i < linksAndBtns.length; i++) {
-        const t = (linksAndBtns[i].textContent || '').trim();
-        if (t.includes('Menú') || t.includes('Menu')) {
-          linksAndBtns[i].removeAttribute('href');
-          linksAndBtns[i].onclick = (e) => { e.preventDefault(); return false; };
-          linksAndBtns[i].style.display = 'none';
+        const linksAndBtns = doc.querySelectorAll('a, button');
+        for (let i = 0; i < linksAndBtns.length; i++) {
+          const t = (linksAndBtns[i].textContent || '').trim();
+          if (t.includes('Menú') || t.includes('Menu')) {
+            linksAndBtns[i].removeAttribute('href');
+            linksAndBtns[i].onclick = (e) => { e.preventDefault(); return false; };
+            linksAndBtns[i].style.display = 'none';
+          }
         }
-      }
 
-      if (!doc.getElementById('elt-student-clean-style')) {
-        const style = doc.createElement('style');
-        style.id = 'elt-student-clean-style';
+        let style = doc.getElementById('elt-student-clean-style');
+        if (!style) {
+          style = doc.createElement('style');
+          style.id = 'elt-student-clean-style';
+          (doc.head || doc.body).appendChild(style);
+        }
         style.textContent = `
-          header, footer, nav {
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            height: 100% !important;
+            min-height: 100% !important;
+            overflow-x: hidden !important;
+          }
+          header, footer, nav, [role="navigation"], .deck-footer, .lesson-footer {
+            display: none !important;
             height: 0px !important;
             min-height: 0px !important;
+            max-height: 0px !important;
+            line-height: 0 !important;
             overflow: hidden !important;
             opacity: 0 !important;
             padding: 0 !important;
@@ -1351,16 +1378,31 @@
             border: none !important;
             pointer-events: none !important;
           }
-          main, .main-container, #slide-container {
+          main, .main-container, #slide-container, #app, #app > div, .slide, .slide-content, .swiper-slide {
             padding: 0 !important;
+            padding-bottom: 0 !important;
             margin: 0 !important;
-            height: 100vh !important;
+            margin-bottom: 0 !important;
+            height: 100% !important;
+            min-height: 100% !important;
+            max-height: 100vh !important;
             max-width: 100vw !important;
+            box-sizing: border-box !important;
           }
-          iframe {
-            height: 100vh !important;
+          /* Quitar padding-bottom residual reservado para el footer oculto en Tailwind u otros */
+          .pb-12, .pb-14, .pb-16, .pb-20, .pb-24, .pb-28, .pb-32, [class*="pb-"] {
+            padding-bottom: 0 !important;
+          }
+          iframe, iframe#viewer {
+            height: 100% !important;
+            min-height: 100% !important;
+            max-height: 100vh !important;
             width: 100% !important;
             border-radius: 0 !important;
+            border: none !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            box-sizing: border-box !important;
           }
           /* Bloqueo total de controles de navegación de diapositivas del deck para alumnos */
           #nextBtn, #prevBtn, #btnNext, #btnPrev, .next-btn, .prev-btn,
@@ -1377,8 +1419,7 @@
             opacity: 0 !important;
           }
         `;
-        doc.head.appendChild(style);
-      }
+      } catch (e) {}
     }
 
     function isEditableElement(el) {
@@ -2365,7 +2406,10 @@
       const docs = getAccessibleLessonDocs();
       if (doc && !docs.includes(doc)) docs.unshift(doc);
 
-      docs.forEach(d => bindAnalyticsToSingleDoc(d));
+      docs.forEach(d => {
+        if (typeof optimizeStudentLayout === 'function') optimizeStudentLayout(d);
+        bindAnalyticsToSingleDoc(d);
+      });
 
       try {
         const rootDoc = doc || (studentFrame.contentDocument || studentFrame.contentWindow.document);
@@ -2379,6 +2423,7 @@
               frameEl.addEventListener('load', () => {
                 try {
                   const subDoc = frameEl.contentDocument || (frameEl.contentWindow && frameEl.contentWindow.document);
+                  if (typeof optimizeStudentLayout === 'function') optimizeStudentLayout(subDoc);
                   bindAnalyticsToSingleDoc(subDoc);
                   restoreStudentAnswersForSlide(assignedSlide || getStudentSlideNumber());
                   setTimeout(() => scrapeStudentAnswersAndReport(false), 150);
@@ -6350,6 +6395,87 @@
       }
     }
 
+    // ==================== FILTRO DSP DE VOZ Y SUPRESIÓN DE RUIDO PROFESIONAL ====================
+    function applyVoiceNoiseReduction(rawStream) {
+      if (!rawStream) return rawStream;
+      try {
+        const audioTracks = typeof rawStream.getAudioTracks === 'function' ? rawStream.getAudioTracks() : [];
+        if (!audioTracks || audioTracks.length === 0) return rawStream;
+
+        const rawTrack = audioTracks[0];
+        if (rawTrack._eltNoiseProcessed) return rawStream;
+
+        const AudioContextClass = typeof window !== 'undefined' ? (window.AudioContext || window.webkitAudioContext) : null;
+        if (!AudioContextClass) return rawStream;
+
+        if (!window._eltNoiseCtx || window._eltNoiseCtx.state === 'closed') {
+          window._eltNoiseCtx = new AudioContextClass();
+        }
+        const ctx = window._eltNoiseCtx;
+        if (ctx && ctx.state === 'suspended' && typeof ctx.resume === 'function') {
+          ctx.resume().catch(() => {});
+        }
+
+        // 1. Highpass Filter: elimina ruidos graves de ventilador, tráfico vehicular y golpes de mesa (< 85 Hz)
+        const highpass = ctx.createBiquadFilter();
+        highpass.type = 'highpass';
+        highpass.frequency.value = 85;
+        highpass.Q.value = 0.7;
+
+        // 2. Lowpass Filter: elimina estática electromagnética y siseo agudo (> 7500 Hz)
+        const lowpass = ctx.createBiquadFilter();
+        lowpass.type = 'lowpass';
+        lowpass.frequency.value = 7500;
+        lowpass.Q.value = 0.7;
+
+        // 3. Compresor de dinámica: nivela volumen de voz y atenúa piso de ruido ambiental
+        const compressor = ctx.createDynamicsCompressor();
+        compressor.threshold.value = -28;
+        compressor.knee.value = 12;
+        compressor.ratio.value = 4;
+        compressor.attack.value = 0.005;
+        compressor.release.value = 0.15;
+
+        const audioOnlyStream = new MediaStream([rawTrack]);
+        const sourceNode = ctx.createMediaStreamSource(audioOnlyStream);
+        const destinationNode = ctx.createMediaStreamDestination();
+
+        sourceNode.connect(highpass);
+        highpass.connect(lowpass);
+        lowpass.connect(compressor);
+        compressor.connect(destinationNode);
+
+        const processedTrack = destinationNode.stream.getAudioTracks()[0];
+        if (!processedTrack) return rawStream;
+
+        processedTrack._eltNoiseProcessed = true;
+        processedTrack._rawTrack = rawTrack;
+        processedTrack.enabled = rawTrack.enabled;
+
+        rawTrack.addEventListener('mute', () => { processedTrack.enabled = false; });
+        rawTrack.addEventListener('unmute', () => { processedTrack.enabled = rawTrack.enabled; });
+        rawTrack.addEventListener('ended', () => {
+          try { processedTrack.stop(); } catch (e) {}
+        });
+
+        const origStop = processedTrack.stop.bind(processedTrack);
+        processedTrack.stop = function() {
+          try { rawTrack.stop(); } catch (e) {}
+          origStop();
+        };
+
+        rawStream.removeTrack(rawTrack);
+        rawStream.addTrack(processedTrack);
+
+        return rawStream;
+      } catch (err) {
+        if (typeof console !== 'undefined' && console.warn) {
+          console.warn('[DSP Noise Reduction] Fallback a stream original:', err);
+        }
+        return rawStream;
+      }
+    }
+
     // ==================== FUNCIONES WEBRTC P2P DIRECTO (GRATIS ILIMITADO) ====================
     async function ensureP2PLocalStream(wantAudio, wantVideo) {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -6363,13 +6489,20 @@
         const idealHeight = isMobileScreen ? 240 : (participantCount >= 4 ? 240 : (participantCount === 3 ? 360 : 480));
         const idealFps = isMobileScreen ? 15 : (participantCount >= 4 ? 15 : (participantCount === 3 ? 20 : 24));
 
+        const audioConstraints = {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: 1
+        };
+
         if (!p2pLocalStream) {
           let stream = null;
           if (wantVideo) {
             // Nivel 1: Constraints adaptadas a móvil (vertical / bajo consumo) vs desktop (apaisado)
             try {
               stream = await navigator.mediaDevices.getUserMedia({
-                audio: Boolean(wantAudio) ? { echoCancellation: true, noiseSuppression: true, autoGainControl: true } : false,
+                audio: Boolean(wantAudio) ? audioConstraints : false,
                 video: isMobileScreen
                   ? {
                       facingMode: 'user',
@@ -6389,7 +6522,7 @@
               // Nivel 2: Solo facingMode user básico sin restricciones estrictas
               try {
                 stream = await navigator.mediaDevices.getUserMedia({
-                  audio: Boolean(wantAudio),
+                  audio: Boolean(wantAudio) ? audioConstraints : false,
                   video: isMobileScreen ? { facingMode: 'user', frameRate: { max: 15 } } : { facingMode: 'user' }
                 });
               } catch (err2) {
@@ -6405,8 +6538,10 @@
                   // Si el video falla pero se solicitaba audio, rescatar al menos el micrófono
                   if (wantAudio) {
                     try {
-                      stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-                    } catch (errA) {}
+                      stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: false });
+                    } catch (errA) {
+                      try { stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false }); } catch (errA0) {}
+                    }
                   }
                 }
               }
@@ -6414,7 +6549,7 @@
           } else if (wantAudio) {
             try {
               stream = await navigator.mediaDevices.getUserMedia({
-                audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+                audio: audioConstraints,
                 video: false
               });
             } catch (errA) {
@@ -6423,8 +6558,12 @@
           }
 
           if (stream) {
+            stream = applyVoiceNoiseReduction(stream);
             p2pLocalStream = stream;
-            p2pLocalStream.getAudioTracks().forEach(t => { t.enabled = Boolean(wantAudio); });
+            p2pLocalStream.getAudioTracks().forEach(t => {
+              t.enabled = Boolean(wantAudio);
+              if (t._rawTrack) t._rawTrack.enabled = Boolean(wantAudio);
+            });
             p2pLocalStream.getVideoTracks().forEach(t => { t.enabled = Boolean(wantVideo); });
             originalCamTrack = p2pLocalStream.getVideoTracks()[0] || null;
             originalMicTrack = p2pLocalStream.getAudioTracks()[0] || null;
@@ -6438,14 +6577,16 @@
               let aStream = null;
               try {
                 aStream = await navigator.mediaDevices.getUserMedia({
-                  audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+                  audio: audioConstraints
                 });
               } catch (ae1) {
                 aStream = await navigator.mediaDevices.getUserMedia({ audio: true });
               }
               if (aStream) {
+                aStream = applyVoiceNoiseReduction(aStream);
                 aStream.getAudioTracks().forEach(t => {
                   t.enabled = true;
+                  if (t._rawTrack) t._rawTrack.enabled = true;
                   p2pLocalStream.addTrack(t);
                 });
                 originalMicTrack = p2pLocalStream.getAudioTracks()[0] || null;
@@ -7208,12 +7349,13 @@
                 let micStream = null;
                 try {
                   micStream = await navigator.mediaDevices.getUserMedia({
-                    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+                    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 }
                   });
                 } catch (mErr1) {
                   micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 }
                 if (micStream) {
+                  micStream = applyVoiceNoiseReduction(micStream);
                   if (!p2pLocalStream) {
                     p2pLocalStream = micStream;
                   } else {
@@ -7229,7 +7371,10 @@
             }
           }
           if (p2pLocalStream) {
-            p2pLocalStream.getAudioTracks().forEach(t => { t.enabled = webrtcAudioEnabled; });
+            p2pLocalStream.getAudioTracks().forEach(t => {
+              t.enabled = webrtcAudioEnabled;
+              if (t._rawTrack) t._rawTrack.enabled = webrtcAudioEnabled;
+            });
           }
           await syncP2PTracksToAllPeers();
         } catch (errAudio) {
@@ -9137,7 +9282,10 @@ window.setVideoStripMinimized = function(minimized) {
           await ensureP2PLocalStream(true, webrtcVideoEnabled);
         }
         if (p2pLocalStream) {
-          p2pLocalStream.getAudioTracks().forEach(t => { t.enabled = true; });
+          p2pLocalStream.getAudioTracks().forEach(t => {
+            t.enabled = true;
+            if (t._rawTrack) t._rawTrack.enabled = true;
+          });
         }
         await syncP2PTracksToAllPeers();
       }
@@ -9156,7 +9304,10 @@ window.setVideoStripMinimized = function(minimized) {
         } catch (e) {}
       } else if (currentVideoMode === 'p2p') {
         if (p2pLocalStream) {
-          p2pLocalStream.getAudioTracks().forEach(t => { t.enabled = false; });
+          p2pLocalStream.getAudioTracks().forEach(t => {
+            t.enabled = false;
+            if (t._rawTrack) t._rawTrack.enabled = false;
+          });
         }
         syncP2PTracksToAllPeers();
       }

@@ -1420,9 +1420,44 @@
             }
           }
 
+          // 1. Prioridad: Buscar PRIMERO el contador nativo del deck de ELT Interactive (#counter) o contenedor de diapositivas
+          const counterEl = doc.getElementById('counter') || doc.querySelector('[id="counter"], [id*="slide-counter"], [class*="slide-counter"]');
+          if (counterEl) {
+            const txt = (counterEl.textContent || '').trim();
+            const match = txt.match(/^(\d+)\s*\/\s*(\d+)$/);
+            if (match) return parseInt(match[1], 10);
+            const match2 = txt.match(/^(?:slide|diapositiva|página|pag|pág\.?)\s*(\d+)/i);
+            if (match2) return parseInt(match2[1], 10);
+          }
+
+          // 2. Buscar en contenedores de navegación principales (footer, nav)
+          const navContainers = doc.querySelectorAll('footer, nav, [role="navigation"]');
+          for (let n = 0; n < navContainers.length; n++) {
+            const navEl = navContainers[n];
+            if (navEl.closest('.card, [class*="card"], [id*="score"], [id*="selected"], [class*="exercise"]')) continue;
+            const elements = navEl.querySelectorAll('span, div, p, b, strong');
+            for (let i = 0; i < elements.length; i++) {
+              const el = elements[i];
+              if (el.children.length <= 2) {
+                const txt = (el.textContent || '').trim();
+                if (txt.length <= 15) {
+                  const match = txt.match(/^(\d+)\s*\/\s*(\d+)$/);
+                  if (match) return parseInt(match[1], 10);
+                  const match2 = txt.match(/^(?:slide|diapositiva|página|pag|pág\.?)\s*(\d+)(?:\s*(?:\/|de|of)\s*(\d+))?$/i);
+                  if (match2) return parseInt(match2[1], 10);
+                }
+              }
+            }
+          }
+
+          // 3. Búsqueda genérica en el documento excluyendo iframes hijos, tarjetas y ejercicios internos
           const elements = doc.querySelectorAll('span, div, p, b, strong');
           for (let i = 0; i < elements.length; i++) {
             const el = elements[i];
+            // Excluir si está dentro del viewer hijo o dentro de contenedores de tarjetas/ejercicios
+            if (el.closest('iframe#viewer, iframe[id*="viewer"], .card, [class*="card"], [id*="score"], [id*="selected"], [class*="exercise"], [class*="activity"]')) {
+              continue;
+            }
             if (el.children.length <= 2) {
               const txt = (el.textContent || '').trim();
               if (txt.length <= 15) {
@@ -1771,6 +1806,11 @@
 
     function syncStudentToSlide(target) {
       if (!target) return;
+      const currentDetected = getStudentSlideNumber();
+      if (assignedSlide === target && currentDetected === target && !activeSyncTimer) {
+        // Ya estamos en la diapositiva asignada: no re-invocar win.show() para no resetear srcdoc, scroll ni tarjetas giradas
+        return;
+      }
       if (assignedSlide !== target) {
         latestPostMessageAnswers = [];
       }
@@ -1794,6 +1834,16 @@
         const doc = studentFrame.contentDocument || studentFrame.contentWindow.document;
         const win = studentFrame.contentWindow;
         optimizeStudentLayout(doc);
+
+        const preCheck = getStudentSlideNumber();
+        if (preCheck === target) {
+          studentSlideBadge.textContent = `● Diapositiva ${preCheck}`;
+          injectLiveAnalytics(doc);
+          activeSyncTimer = null;
+          restoreStudentAnswersForSlide(preCheck);
+          setTimeout(() => scrapeStudentAnswersAndReport(false), 120);
+          return;
+        }
 
         // Priorizar métodos directos de salto de diapositiva expuestos por el deck
         if (win) {
@@ -1913,9 +1963,14 @@
             slideState.inputs.push(item);
           });
 
-          // 2. Botones de opción múltiple / selección interactiva
-          const optEls = doc.querySelectorAll('.option-btn, [role="button"], button.choice, button[class*="option"], .question-card button, [aria-pressed]');
+          // 2. Botones de opción múltiple / selección interactiva (excluyendo tarjetas giratorias)
+          const optEls = doc.querySelectorAll('.option-btn:not(.flip-card):not([data-flip]):not([onclick*="flip"]), [role="button"]:not(.flip-card):not([data-flip]):not([onclick*="flip"]), button.choice:not(.flip-card):not([data-flip]):not([onclick*="flip"]), button[class*="option"]:not(.flip-card):not([data-flip]):not([onclick*="flip"]), .question-card button:not(.flip-card):not([data-flip]):not([onclick*="flip"]), [aria-pressed]:not(.flip-card):not([data-flip]):not([onclick*="flip"])');
           optEls.forEach((btn) => {
+            const isFlip = (btn.className || '').toString().toLowerCase().includes('flip') ||
+                           btn.hasAttribute('data-flip') ||
+                           (btn.getAttribute('onclick') || '').toLowerCase().includes('flip') ||
+                           Boolean(btn.closest('.flip-card, [data-flip], [onclick*="flip"]'));
+            if (isFlip) return;
             const txt = (btn.textContent || '').trim().toLowerCase();
             const id = (btn.id || '').toLowerCase();
             const cls = (btn.className || '').toString().toLowerCase();
@@ -2032,11 +2087,16 @@
             });
           }
 
-          // 2. Restaurar selección de botones de opción
+          // 2. Restaurar selección de botones de opción (excluyendo tarjetas giratorias)
           if (Array.isArray(slideState.buttons) && slideState.buttons.length > 0) {
-            const optEls = doc.querySelectorAll('.option-btn, [role="button"], button.choice, button[class*="option"], .question-card button, [aria-pressed]');
+            const optEls = doc.querySelectorAll('.option-btn:not(.flip-card):not([data-flip]):not([onclick*="flip"]), [role="button"]:not(.flip-card):not([data-flip]):not([onclick*="flip"]), button.choice:not(.flip-card):not([data-flip]):not([onclick*="flip"]), button[class*="option"]:not(.flip-card):not([data-flip]):not([onclick*="flip"]), .question-card button:not(.flip-card):not([data-flip]):not([onclick*="flip"]), [aria-pressed]:not(.flip-card):not([data-flip]):not([onclick*="flip"])');
             let btnIdx = 0;
             optEls.forEach((btn) => {
+              const isFlip = (btn.className || '').toString().toLowerCase().includes('flip') ||
+                             btn.hasAttribute('data-flip') ||
+                             (btn.getAttribute('onclick') || '').toLowerCase().includes('flip') ||
+                             Boolean(btn.closest('.flip-card, [data-flip], [onclick*="flip"]'));
+              if (isFlip) return;
               const txt = (btn.textContent || '').trim().toLowerCase();
               const id = (btn.id || '').toLowerCase();
               const cls = (btn.className || '').toString().toLowerCase();

@@ -1107,16 +1107,17 @@
               <span id="zmWhoCanSeeText">Who can see your messages? Everyone</span>
             </div>
 
-            <!-- Vista Previa de Imagen Pegada (Ctrl+V) o Adjunta -->
+            <!-- Vista Previa de Imagen o Archivo Adjunto (Ctrl+V, Drag & Drop o Selector) -->
             <div id="zmImageAttachmentPreview" class="hidden px-3 py-2 bg-[#23262b] border-t border-[#32353b] flex items-center justify-between gap-2 flex-shrink-0">
               <div class="flex items-center gap-2 min-w-0">
-                <img id="zmAttachmentThumb" src="" alt="Preview" class="w-11 h-11 rounded-lg object-cover border border-white/15 bg-black">
+                <img id="zmAttachmentThumb" src="" alt="Preview" class="w-11 h-11 rounded-lg object-cover border border-white/15 bg-black hidden">
+                <div id="zmFileAttachmentIcon" class="w-11 h-11 rounded-lg bg-indigo-950/80 border border-indigo-500/40 flex items-center justify-center text-xl shrink-0 hidden">📄</div>
                 <div class="min-w-0">
-                  <p class="text-[11px] font-semibold text-emerald-400 truncate">Imagen lista para enviar</p>
-                  <p class="text-[9px] text-slate-400">Presiona Enter o Enviar</p>
+                  <p id="zmAttachmentTitle" class="text-[11px] font-semibold text-emerald-400 truncate">Archivo listo para enviar</p>
+                  <p id="zmAttachmentSub" class="text-[9px] text-slate-400">Presiona Enter o Enviar</p>
                 </div>
               </div>
-              <button id="zmRemoveAttachmentBtn" type="button" class="w-6 h-6 rounded-full bg-rose-500/20 hover:bg-rose-500 text-rose-300 hover:text-white text-xs flex items-center justify-center transition" title="Quitar imagen">✕</button>
+              <button id="zmRemoveAttachmentBtn" type="button" class="w-6 h-6 rounded-full bg-rose-500/20 hover:bg-rose-500 text-rose-300 hover:text-white text-xs flex items-center justify-center transition cursor-pointer" title="Quitar adjunto">✕</button>
             </div>
 
             <!-- Cuadro de Escritura (Soporta Ctrl+V y Clic Derecho) -->
@@ -1194,7 +1195,7 @@
                 <button type="button" class="zm-chat-emoji p-1 hover:bg-white/10 rounded">👀</button>
               </div>
 
-              <textarea id="zmChatInput" rows="2" placeholder="Message everyone (Ctrl+V para pegar imagen)" class="w-full bg-transparent text-xs text-slate-100 placeholder-slate-500 resize-none focus:outline-none select-text"></textarea>
+              <textarea id="zmChatInput" rows="3" placeholder="Message everyone (Ctrl+V para pegar imagen o arrastra archivos)" class="w-full bg-transparent text-xs text-slate-100 placeholder-slate-500 resize-none focus:outline-none select-text min-h-[62px] max-h-[140px] leading-snug transition-all"></textarea>
               
               <div class="flex items-center justify-between mt-1.5 pt-1 border-t border-[#26282c]">
                 <div class="flex items-center gap-2 text-slate-400">
@@ -1202,10 +1203,10 @@
                   <button id="zmChatEmojiBtn" type="button" class="hover:text-white p-1 rounded hover:bg-white/10" title="Insertar emoji">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" d="M8 14s1.5 2 4 2 4-2 4-2"/><circle cx="9" cy="9.5" r="1" fill="currentColor"/><circle cx="15" cy="9.5" r="1" fill="currentColor"/></svg>
                   </button>
-                  <button id="zmChatImageBtn" type="button" class="hover:text-white p-1 rounded hover:bg-white/10" title="Adjuntar imagen (o usa Ctrl+V)">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+                  <button id="zmChatImageBtn" type="button" class="hover:text-white p-1 rounded hover:bg-white/10 cursor-pointer" title="Adjuntar archivo (.html, audio, imagen, documento)">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/></svg>
                   </button>
-                  <input type="file" id="zmChatFileInput" accept="image/*" class="hidden">
+                  <input type="file" id="zmChatFileInput" accept="*/*" class="hidden">
                 </div>
 
                 <button id="zmChatSendBtn" type="button" class="bg-[#0e72ed] hover:bg-[#0b5ed7] text-white text-xs font-bold px-3 py-1 rounded-lg flex items-center gap-1 transition shadow-sm" title="Enviar mensaje (Enter)">
@@ -4864,16 +4865,134 @@
       });
     }
 
-    function setChatAttachment(dataUrl) {
-      zmPendingAttachment = dataUrl;
-      if (dataUrl) {
-        zmAttachmentThumb.src = dataUrl;
-        zmImageAttachmentPreview.classList.remove('hidden');
+    let zmPendingFileAttachment = null;
+
+    function formatFileSize(bytes) {
+      if (!bytes || bytes <= 0) return '0 B';
+      const k = 1024;
+      const sizes = ['B', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    }
+
+    function setChatAttachment(dataUrl, fileMeta = null) {
+      const thumb = document.getElementById('zmAttachmentThumb');
+      const icon = document.getElementById('zmFileAttachmentIcon');
+      const title = document.getElementById('zmAttachmentTitle');
+      const sub = document.getElementById('zmAttachmentSub');
+      const preview = document.getElementById('zmImageAttachmentPreview');
+
+      if (!dataUrl && !fileMeta) {
+        zmPendingAttachment = null;
+        zmPendingFileAttachment = null;
+        if (thumb) { thumb.src = ''; thumb.classList.add('hidden'); }
+        if (icon) icon.classList.add('hidden');
+        if (preview) preview.classList.add('hidden');
+        return;
+      }
+
+      if (fileMeta) {
+        zmPendingAttachment = null;
+        zmPendingFileAttachment = {
+          name: fileMeta.name,
+          mime: fileMeta.mime || 'application/octet-stream',
+          size: fileMeta.size || 0,
+          dataUrl: dataUrl
+        };
+        const isAudio = (fileMeta.mime && fileMeta.mime.startsWith('audio/')) || /\.(mp3|wav|ogg|m4a|aac)$/i.test(fileMeta.name);
+        const isHtml = /\.html?$/i.test(fileMeta.name);
+        if (thumb) thumb.classList.add('hidden');
+        if (icon) {
+          icon.textContent = isAudio ? '🎵' : (isHtml ? '🌐' : '📄');
+          icon.classList.remove('hidden');
+        }
+        if (title) title.textContent = fileMeta.name;
+        if (sub) sub.textContent = formatFileSize(fileMeta.size) + ' • Presiona Enviar';
+        if (preview) preview.classList.remove('hidden');
       } else {
-        zmAttachmentThumb.src = '';
-        zmImageAttachmentPreview.classList.add('hidden');
+        zmPendingAttachment = dataUrl;
+        zmPendingFileAttachment = null;
+        if (icon) icon.classList.add('hidden');
+        if (thumb) {
+          thumb.src = dataUrl;
+          thumb.classList.remove('hidden');
+        }
+        if (title) title.textContent = 'Imagen lista para enviar';
+        if (sub) sub.textContent = 'Presiona Enter o Enviar';
+        if (preview) preview.classList.remove('hidden');
       }
     }
+
+    async function processChatSelectedFile(file) {
+      if (!file) return;
+      if (file.size > 3 * 1024 * 1024) {
+        if (typeof showMediaAlert === 'function') {
+          showMediaAlert('El archivo es demasiado grande (máximo 3 MB).');
+        } else {
+          alert('El archivo es demasiado grande (máximo 3 MB).');
+        }
+        return;
+      }
+
+      if (file.type && file.type.startsWith('image/')) {
+        const res = await compressImageBlobToDataUrl(file);
+        if (res && res.dataUrl) {
+          setChatAttachment(res.dataUrl);
+        }
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        const dataUrl = evt.target.result;
+        setChatAttachment(dataUrl, {
+          name: file.name,
+          mime: file.type || 'application/octet-stream',
+          size: file.size
+        });
+      };
+      reader.onerror = () => {
+        console.warn('[Chat] Error leyendo archivo seleccionado');
+      };
+      reader.readAsDataURL(file);
+    }
+
+    window.downloadChatAttachmentFile = function(msgId) {
+      const msg = zmMessages.find(m => m.id === msgId);
+      if (!msg) return;
+      const file = msg.file;
+      const dataUrl = (file && file.dataUrl) || msg.image;
+      if (!dataUrl) return;
+
+      const fileName = (file && file.name) || `chat_file_${msgId}.${dataUrl.includes('image/png') ? 'png' : 'jpg'}`;
+
+      try {
+        const arr = dataUrl.split(',');
+        const mime = (arr[0].match(/:(.*?);/) || [])[1] || 'application/octet-stream';
+        const bstr = atob(arr[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) {
+          u8arr[n] = bstr.charCodeAt(n);
+        }
+        const blob = new Blob([u8arr], { type: mime });
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
+      } catch (e) {
+        const a = document.createElement('a');
+        a.href = dataUrl;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
+    };
 
     document.getElementById('zmRemoveAttachmentBtn').addEventListener('click', () => setChatAttachment(null));
 
@@ -5337,6 +5456,41 @@
           ? `<p class="text-xs text-slate-100 whitespace-pre-wrap break-words leading-relaxed">${escapeHtmlChat(msg.text)}</p>`
           : '';
 
+        let fileHtml = '';
+        if (msg.file && msg.file.dataUrl) {
+          const isAudio = (msg.file.mime && msg.file.mime.startsWith('audio/')) || /\.(mp3|wav|ogg|m4a|aac)$/i.test(msg.file.name);
+          const isHtml = /\.html?$/i.test(msg.file.name);
+          const icon = isAudio ? '🎵' : (isHtml ? '🌐' : '📄');
+
+          if (isAudio) {
+            fileHtml = `
+              <div class="mt-2 p-2 rounded-xl bg-[#181a1f] border border-[#2e323b] flex flex-col gap-1.5">
+                <div class="flex items-center justify-between text-xs text-slate-300 font-semibold gap-2">
+                  <span class="truncate flex items-center gap-1.5"><span>🎵</span><span class="truncate">${escapeHtmlChat(msg.file.name)}</span></span>
+                  <button type="button" onclick="window.downloadChatAttachmentFile('${msg.id}')" class="text-[11px] text-[#3b82f6] hover:text-white shrink-0 font-bold px-1.5 py-0.5 rounded hover:bg-white/10" title="Descargar audio">⬇️ Descargar</button>
+                </div>
+                <audio controls preload="metadata" src="${msg.file.dataUrl}" class="w-full h-8 rounded-lg outline-none"></audio>
+              </div>
+            `;
+          } else {
+            fileHtml = `
+              <div class="mt-2 p-2.5 rounded-xl bg-[#181a1f] border border-[#2e323b] flex items-center justify-between gap-2.5">
+                <div class="flex items-center gap-2 min-w-0">
+                  <div class="w-8 h-8 rounded-lg bg-indigo-950/80 border border-indigo-500/40 flex items-center justify-center text-base shrink-0">${icon}</div>
+                  <div class="min-w-0">
+                    <p class="text-xs font-semibold text-slate-200 truncate">${escapeHtmlChat(msg.file.name)}</p>
+                    <p class="text-[10px] text-slate-400">${formatFileSize(msg.file.size)}</p>
+                  </div>
+                </div>
+                <button type="button" onclick="window.downloadChatAttachmentFile('${msg.id}')" class="bg-[#0e72ed] hover:bg-[#0b5ed7] text-white text-[11px] font-bold px-2.5 py-1 rounded-lg shrink-0 transition shadow-sm flex items-center gap-1" title="Descargar archivo">
+                  <span>⬇️</span>
+                  <span>Descargar</span>
+                </button>
+              </div>
+            `;
+          }
+        }
+
         return `
           <div class="zm-msg-item group relative" data-msg-id="${msg.id}">
             <div class="flex items-center gap-2 mb-1 pl-9">
@@ -5352,6 +5506,7 @@
                 <div class="inline-block max-w-full rounded-2xl px-3 py-2 ${isMine ? 'bg-[#1f293a] border border-[#2d3c56]' : 'bg-[#24262b] border border-[#32353b]'} shadow-sm">
                   ${textHtml}
                   ${imgHtml}
+                  ${fileHtml}
                 </div>
 
                 ${reactionPills ? `<div class="flex flex-wrap gap-1 mt-1.5">${reactionPills}</div>` : ''}
@@ -5444,9 +5599,91 @@
       if (e.target === zmLightboxModal) zmLightboxModal.classList.add('hidden');
     });
 
+    function broadcastChatMessageWithChunking(channel, msg) {
+      if (!channel) return;
+      const serialized = JSON.stringify({ message: msg, senderId: wbClientId });
+      if (serialized.length <= 90000) {
+        channel.send({
+          type: 'broadcast',
+          event: 'CHAT_MESSAGE',
+          payload: { message: msg, senderId: wbClientId }
+        });
+        return;
+      }
+
+      // Fragmentación para archivos o audios grandes (hasta 3 MB)
+      const CHUNK_SIZE = 75000;
+      const totalChunks = Math.ceil(serialized.length / CHUNK_SIZE);
+      const msgId = msg.id;
+
+      for (let i = 0; i < totalChunks; i++) {
+        const slice = serialized.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+        channel.send({
+          type: 'broadcast',
+          event: 'CHAT_FILE_CHUNK',
+          payload: {
+            msgId: msgId,
+            chunkIndex: i,
+            totalChunks: totalChunks,
+            chunkData: slice,
+            senderId: wbClientId
+          }
+        });
+      }
+    }
+
+    window._incomingChatFileChunks = window._incomingChatFileChunks || {};
+
+    function handleIncomingChatChunk(payload) {
+      if (!payload || payload.senderId === wbClientId || !payload.msgId) return;
+      const { msgId, chunkIndex, totalChunks, chunkData } = payload;
+      if (!window._incomingChatFileChunks[msgId]) {
+        window._incomingChatFileChunks[msgId] = new Array(totalChunks);
+      }
+      window._incomingChatFileChunks[msgId][chunkIndex] = chunkData;
+
+      const chunks = window._incomingChatFileChunks[msgId];
+      let complete = true;
+      for (let i = 0; i < totalChunks; i++) {
+        if (typeof chunks[i] !== 'string') {
+          complete = false;
+          break;
+        }
+      }
+      if (complete) {
+        try {
+          const fullJson = chunks.join('');
+          delete window._incomingChatFileChunks[msgId];
+          const parsed = JSON.parse(fullJson);
+          if (parsed && parsed.message) {
+            receiveIncomingChatMessage(parsed.message);
+          }
+        } catch (err) {
+          console.warn('[Chat Chunking] Error reconstruyendo mensaje:', err);
+          delete window._incomingChatFileChunks[msgId];
+        }
+      }
+    }
+
+    function receiveIncomingChatMessage(m) {
+      const me = getMySenderName();
+      if (!zmMessages.some(x => x.id === m.id)) {
+        zmMessages.push(m);
+        if (m.target === me && !zmPrivateTabs.includes(m.sender)) {
+          zmPrivateTabs.push(m.sender);
+          renderPrivateChatTabs();
+        }
+        if (zmIsMinimized || zmIsHidden) {
+          zmUnreadCount++;
+          updateChatLayoutMode();
+        }
+        renderChatMessages();
+      }
+    }
+
     function sendChatMessage() {
       const txt = zmChatInput.value.trim();
-      if (!txt && !zmPendingAttachment) return;
+      if (!txt && !zmPendingAttachment && !zmPendingFileAttachment) return;
 
       const now = new Date();
       const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -5456,21 +5693,19 @@
         target: zmActiveTarget,
         text: txt,
         image: zmPendingAttachment,
+        file: zmPendingFileAttachment,
         time: timeStr,
         reactions: {}
       };
 
       zmMessages.push(newMsg);
       zmChatInput.value = '';
+      zmChatInput.style.height = '';
       setChatAttachment(null);
       renderChatMessages();
 
       if (myChannel) {
-        myChannel.send({
-          type: 'broadcast',
-          event: 'CHAT_MESSAGE',
-          payload: { message: newMsg, senderId: wbClientId }
-        });
+        broadcastChatMessageWithChunking(myChannel, newMsg);
       }
     }
 
@@ -5511,20 +5746,11 @@
     function setupChatChannelListeners(channel) {
       channel.on('broadcast', { event: 'CHAT_MESSAGE' }, ({ payload }) => {
         if (!payload || payload.senderId === wbClientId || !payload.message) return;
-        const m = payload.message;
-        const me = getMySenderName();
-        if (!zmMessages.some(x => x.id === m.id)) {
-          zmMessages.push(m);
-          if (m.target === me && !zmPrivateTabs.includes(m.sender)) {
-            zmPrivateTabs.push(m.sender);
-            renderPrivateChatTabs();
-          }
-          if (zmIsMinimized || zmIsHidden) {
-            zmUnreadCount++;
-            updateChatLayoutMode();
-          }
-          renderChatMessages();
-        }
+        receiveIncomingChatMessage(payload.message);
+      });
+
+      channel.on('broadcast', { event: 'CHAT_FILE_CHUNK' }, ({ payload }) => {
+        handleIncomingChatChunk(payload);
       });
 
       channel.on('broadcast', { event: 'CHAT_REACTION' }, ({ payload }) => {
@@ -5576,10 +5802,41 @@
     document.getElementById('zmChatFileInput').addEventListener('change', async (e) => {
       const f = e.target.files && e.target.files[0];
       if (!f) return;
-      const res = await compressImageBlobToDataUrl(f);
-      if (res && res.dataUrl) setChatAttachment(res.dataUrl);
+      await processChatSelectedFile(f);
       e.target.value = '';
     });
+
+    // Auto-expansión dinámica del textarea del chat
+    zmChatInput.addEventListener('input', function() {
+      this.style.height = 'auto';
+      this.style.height = Math.min(140, Math.max(62, this.scrollHeight)) + 'px';
+    });
+
+    // Soporte Drag & Drop universal de archivos sobre el chat
+    (function setupChatDragDrop() {
+      const zone = document.getElementById('zmChatWindow') || zmChatInput;
+      if (!zone) return;
+      ['dragenter', 'dragover'].forEach(ev => {
+        zone.addEventListener(ev, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          zone.classList.add('ring-2', 'ring-[#0e72ed]');
+        });
+      });
+      ['dragleave', 'drop'].forEach(ev => {
+        zone.addEventListener(ev, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          zone.classList.remove('ring-2', 'ring-[#0e72ed]');
+        });
+      });
+      zone.addEventListener('drop', (e) => {
+        const files = e.dataTransfer && e.dataTransfer.files;
+        if (files && files.length > 0) {
+          processChatSelectedFile(files[0]);
+        }
+      });
+    })();
 
     document.getElementById('zmChatFormatBtn').addEventListener('click', () => {
       const start = zmChatInput.selectionStart;

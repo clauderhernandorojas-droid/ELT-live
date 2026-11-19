@@ -171,6 +171,7 @@
     #webrtcVideoStrip.gallery-mode [data-role="placeholder"]:not(.hidden) {
       display: flex !important;
     }
+    #webrtcLocalPlaceholder.hidden,
     #webrtcVideoStrip.gallery-mode #webrtcLocalPlaceholder.hidden,
     #webrtcVideoStrip.gallery-mode [data-role="placeholder"].hidden {
       display: none !important;
@@ -5907,7 +5908,10 @@
       if (!livekitRoom) {
         if (!webrtcVideoEnabled) {
           localVideo.classList.add('hidden');
-          if (localPlaceholder) localPlaceholder.classList.remove('hidden');
+          if (localPlaceholder) {
+            localPlaceholder.classList.remove('hidden');
+            localPlaceholder.style.display = '';
+          }
         }
         return;
       }
@@ -5916,14 +5920,23 @@
       const track = camPub?.track;
 
       if (webrtcVideoEnabled && track) {
-        track.attach(localVideo);
-        localVideo.play().catch(() => {});
+        const currentTracks = localVideo.srcObject instanceof MediaStream ? localVideo.srcObject.getVideoTracks() : [];
+        if (!track.mediaStreamTrack || !currentTracks.includes(track.mediaStreamTrack)) {
+          track.attach(localVideo);
+        }
         localVideo.classList.remove('hidden');
-        if (localPlaceholder) localPlaceholder.classList.add('hidden');
+        if (localPlaceholder) {
+          localPlaceholder.classList.add('hidden');
+          localPlaceholder.style.display = 'none';
+        }
+        localVideo.play().catch(() => {});
       } else {
         if (track) track.detach(localVideo);
         localVideo.classList.add('hidden');
-        if (localPlaceholder) localPlaceholder.classList.remove('hidden');
+        if (localPlaceholder) {
+          localPlaceholder.classList.remove('hidden');
+          localPlaceholder.style.display = '';
+        }
       }
     }
 
@@ -6385,16 +6398,31 @@
       localVideo.setAttribute('webkit-playsinline', '');
       localVideo.setAttribute('autoplay', '');
 
-      if (p2pLocalStream && localVideo.srcObject !== p2pLocalStream) {
-        localVideo.srcObject = p2pLocalStream;
-      }
-      if (webrtcVideoEnabled && p2pLocalStream && p2pLocalStream.getVideoTracks().some(t => t.enabled && t.readyState === 'live')) {
+      const videoTrack = p2pLocalStream?.getVideoTracks().find(t => t.enabled && t.readyState !== 'ended');
+
+      if (webrtcVideoEnabled && videoTrack) {
+        if (localVideo.srcObject !== p2pLocalStream) {
+          localVideo.srcObject = p2pLocalStream;
+        }
         localVideo.classList.remove('hidden');
-        localPlaceholder?.classList.add('hidden');
+        if (localPlaceholder) {
+          localPlaceholder.classList.add('hidden');
+          localPlaceholder.style.display = 'none';
+        }
         localVideo.play().catch(() => {});
+
+        if (!videoTrack._eltUnmuteBound) {
+          videoTrack._eltUnmuteBound = true;
+          videoTrack.addEventListener('unmute', () => {
+            if (typeof handleP2PLocalVideoUI === 'function') handleP2PLocalVideoUI();
+          });
+        }
       } else {
         localVideo.classList.add('hidden');
-        localPlaceholder?.classList.remove('hidden');
+        if (localPlaceholder) {
+          localPlaceholder.classList.remove('hidden');
+          localPlaceholder.style.display = '';
+        }
       }
     }
 
@@ -8515,6 +8543,10 @@
           strip.style.bottom = '3.5rem';
           strip.style.right = '0.75rem';
         }
+      }
+
+      if (typeof updateLocalMediaUI === 'function') {
+        updateLocalMediaUI();
       }
     }
 

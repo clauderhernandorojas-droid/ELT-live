@@ -144,6 +144,156 @@
         color: #000000 !important;
       }
     }
+
+    /* ==================== MODO GALERÍA TIPO ZOOM EN HOST ==================== */
+    #webrtcVideoStrip.gallery-mode {
+      position: absolute !important;
+      inset: 0 !important;
+      top: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      bottom: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      max-width: 100% !important;
+      max-height: 100% !important;
+      border-radius: 0 !important;
+      border: none !important;
+      background-color: #0a0c10 !important;
+      padding: 1rem !important;
+      cursor: default !important;
+      z-index: 20 !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      box-sizing: border-box !important;
+      transform: none !important;
+      box-shadow: none !important;
+    }
+    #webrtcVideoStrip.gallery-mode #webrtcDragHandle,
+    #webrtcVideoStrip.gallery-mode #btnMinimizeVideoStrip {
+      display: none !important;
+    }
+    #webrtcVideoStrip.gallery-mode #webrtcStripExpandedBody {
+      display: grid !important;
+      width: 100% !important;
+      height: 100% !important;
+      max-width: 1280px !important;
+      gap: 1rem !important;
+      padding-right: 0 !important;
+      overflow: hidden !important;
+      align-items: stretch !important;
+      justify-items: stretch !important;
+    }
+    #webrtcVideoStrip.gallery-mode #webrtcRemoteCards {
+      display: contents !important;
+    }
+    #webrtcVideoStrip.gallery-mode #webrtcRemoteCards:empty {
+      display: none !important;
+    }
+    #webrtcVideoStrip.gallery-mode #webrtcLocalCard,
+    #webrtcVideoStrip.gallery-mode [id^="webrtc_card_"],
+    #webrtcVideoStrip.gallery-mode [id^="webrtcCard_"] {
+      width: 100% !important;
+      height: 100% !important;
+      min-width: 0 !important;
+      min-height: 0 !important;
+      max-width: none !important;
+      max-height: none !important;
+      border-radius: 1rem !important;
+      border: 1.5px solid rgba(255, 255, 255, 0.12) !important;
+      background-color: #13161c !important;
+      display: flex !important;
+      flex-direction: column !important;
+      overflow: hidden !important;
+      position: relative !important;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4) !important;
+    }
+    #webrtcVideoStrip.gallery-mode video {
+      position: absolute !important;
+      inset: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      object-fit: cover !important;
+    }
+    #webrtcVideoStrip.gallery-mode #webrtcLocalVideo {
+      transform: scaleX(-1) !important;
+      transform-origin: center center !important;
+    }
+    #webrtcVideoStrip.gallery-mode video:not(.hidden) {
+      display: block !important;
+    }
+    #webrtcVideoStrip.gallery-mode video.hidden {
+      display: none !important;
+    }
+    #webrtcVideoStrip.gallery-mode #webrtcLocalPlaceholder,
+    #webrtcVideoStrip.gallery-mode [data-role="placeholder"] {
+      position: absolute !important;
+      inset: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      display: flex !important;
+      flex-direction: column !important;
+      align-items: center !important;
+      justify-content: center !important;
+      background-color: #111317 !important;
+    }
+    #webrtcVideoStrip.gallery-mode #webrtcLocalPlaceholder.hidden,
+    #webrtcVideoStrip.gallery-mode [data-role="placeholder"].hidden {
+      display: none !important;
+    }
+    #webrtcVideoStrip.gallery-mode #webrtcLocalPlaceholder .rounded-full,
+    #webrtcVideoStrip.gallery-mode [data-role="placeholder"] .rounded-full {
+      width: 76px !important;
+      height: 76px !important;
+      font-size: 28px !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+    }
+    #webrtcVideoStrip.gallery-mode #webrtcLocalNameTag,
+    #webrtcVideoStrip.gallery-mode [data-role="name"] {
+      position: absolute !important;
+      bottom: 10px !important;
+      left: 10px !important;
+      font-size: 13px !important;
+      padding: 4px 10px !important;
+      background-color: rgba(0, 0, 0, 0.75) !important;
+      border-radius: 6px !important;
+      z-index: 10 !important;
+    }
+    #webrtcVideoStrip.gallery-mode #webrtcLocalMuteIcon,
+    #webrtcVideoStrip.gallery-mode [data-role="mute"] {
+      position: absolute !important;
+      top: 10px !important;
+      right: 10px !important;
+      width: 24px !important;
+      height: 24px !important;
+      font-size: 12px !important;
+      z-index: 10 !important;
+    }
+    #webrtcVideoStrip.gallery-mode.gallery-count-1 #webrtcStripExpandedBody,
+    .gallery-count-1 #webrtcStripExpandedBody {
+      grid-template-columns: 1fr !important;
+      grid-template-rows: 1fr !important;
+    }
+    #webrtcVideoStrip.gallery-mode.gallery-count-2 #webrtcStripExpandedBody,
+    .gallery-count-2 #webrtcStripExpandedBody {
+      grid-template-columns: repeat(2, 1fr) !important;
+      grid-template-rows: 1fr !important;
+    }
+    #webrtcVideoStrip.gallery-mode.gallery-count-3 #webrtcStripExpandedBody,
+    .gallery-count-3 #webrtcStripExpandedBody,
+    #webrtcVideoStrip.gallery-mode.gallery-count-4 #webrtcStripExpandedBody,
+    .gallery-count-4 #webrtcStripExpandedBody {
+      grid-template-columns: repeat(2, 1fr) !important;
+      grid-template-rows: repeat(2, 1fr) !important;
+    }
+    #webrtcVideoStrip.gallery-mode.gallery-count-many #webrtcStripExpandedBody,
+    .gallery-count-many #webrtcStripExpandedBody {
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)) !important;
+      grid-auto-rows: 1fr !important;
+    }
   
     </style>
 </head>
@@ -2047,6 +2197,9 @@
       doc.close();
 
       statusBadge.classList.remove('hidden');
+      if (typeof syncHostVideoGalleryMode === 'function') {
+        syncHostVideoGalleryMode();
+      }
 
       setTimeout(() => {
         try {
@@ -2567,6 +2720,9 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
       // Conectar automáticamente al motor de video seleccionado (P2P o LiveKit)
       if (typeof startHostVideoEngine === 'function') {
         startHostVideoEngine(currentVideoMode);
+      }
+      if (typeof syncHostVideoGalleryMode === 'function') {
+        syncHostVideoGalleryMode();
       }
 
       if (roomChannel) roomChannel.unsubscribe();
@@ -3699,13 +3855,15 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
           renderWhiteboardAll();
         }, 30);
       } else {
-        if (!rawLessonHTML) emptyNotice.classList.remove('hidden');
         if (toggleBtn) {
           toggleBtn.innerHTML = '<span>🎨 Pizarra Blanca</span>';
           toggleBtn.classList.remove('bg-[#0e72ed]', 'text-white');
         }
         if (syncBanner) syncBanner.textContent = 'Waiting for followers...';
         updateWbOverlayInteractivity();
+      }
+      if (typeof syncHostVideoGalleryMode === 'function') {
+        syncHostVideoGalleryMode();
       }
       if (roomChannel) {
         roomChannel.send({
@@ -5911,6 +6069,9 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
       if (typeof updateMinimizedVideoStripSummary === 'function') {
         updateMinimizedVideoStripSummary();
       }
+      if (typeof syncHostVideoGalleryMode === 'function') {
+        syncHostVideoGalleryMode();
+      }
       try { refreshAllP2PBitrateProfiles(); } catch (e) {}
     }
 
@@ -5938,6 +6099,9 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
       }
       if (typeof updateMinimizedVideoStripSummary === 'function') {
         updateMinimizedVideoStripSummary();
+      }
+      if (typeof syncHostVideoGalleryMode === 'function') {
+        syncHostVideoGalleryMode();
       }
       try { refreshAllP2PBitrateProfiles(); } catch (e) {}
     }
@@ -6964,6 +7128,9 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
       if (typeof updateMinimizedVideoStripSummary === 'function') {
         updateMinimizedVideoStripSummary();
       }
+      if (typeof syncHostVideoGalleryMode === 'function') {
+        syncHostVideoGalleryMode();
+      }
       try { refreshAllP2PBitrateProfiles(); } catch (e) {}
     }
 
@@ -7016,6 +7183,9 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
 
       if (typeof updateMinimizedVideoStripSummary === 'function') {
         updateMinimizedVideoStripSummary();
+      }
+      if (typeof syncHostVideoGalleryMode === 'function') {
+        syncHostVideoGalleryMode();
       }
       try { refreshAllP2PBitrateProfiles(); } catch (e) {}
     }
@@ -7114,6 +7284,9 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
 
       if (typeof updateMinimizedVideoStripSummary === 'function') {
         updateMinimizedVideoStripSummary();
+      }
+      if (typeof syncHostVideoGalleryMode === 'function') {
+        syncHostVideoGalleryMode();
       }
       return card;
     }
@@ -8206,6 +8379,89 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
       }, 2000);
     };
 
+    // ==================== SINCRONIZACIÓN DE MODO GALERÍA TIPO ZOOM EN HOST ====================
+    function syncHostVideoGalleryMode() {
+      const strip = document.getElementById('webrtcVideoStrip');
+      const expandedBody = document.getElementById('webrtcStripExpandedBody');
+      const emptyNotice = document.getElementById('emptyNotice');
+      const hostFrameContainer = document.getElementById('hostFrameContainer');
+      const leftWorkspaceColumn = document.getElementById('leftWorkspaceColumn');
+      const remoteCardsContainer = document.getElementById('webrtcRemoteCards');
+      if (!strip) return;
+
+      const hasDidacticContent = Boolean(
+        (typeof rawLessonHTML !== 'undefined' && rawLessonHTML) ||
+        (typeof wbIsOpen !== 'undefined' && wbIsOpen)
+      );
+
+      if (!hasDidacticContent) {
+        // MODO GALERÍA: Ocupa toda el área didáctica central sobre fondo oscuro
+        strip.classList.add('gallery-mode');
+        if (emptyNotice) emptyNotice.classList.add('hidden');
+        if (hostFrameContainer) hostFrameContainer.style.display = 'none';
+        if (leftWorkspaceColumn) {
+          leftWorkspaceColumn.classList.remove('bg-white');
+          leftWorkspaceColumn.classList.add('bg-[#0a0c10]');
+          leftWorkspaceColumn.style.backgroundColor = '#0a0c10';
+        }
+
+        // Limpiar estilos inline de arrastre para que las reglas CSS del modo galería manden
+        ['top', 'left', 'right', 'bottom', 'width', 'height', 'transform', 'max-width', 'max-height'].forEach(prop => {
+          strip.style.removeProperty(prop);
+        });
+        strip.style.top = '';
+        strip.style.left = '';
+        strip.style.right = '';
+        strip.style.bottom = '';
+        strip.style.width = '';
+        strip.style.height = '';
+        strip.style.transform = '';
+
+        // Si estaba minimizado en píldora, restaurarlo en modo galería
+        const minPill = document.getElementById('webrtcStripMinimizedPill');
+        if (minPill && !minPill.classList.contains('hidden')) {
+          minPill.classList.add('hidden');
+          minPill.classList.remove('flex');
+          if (expandedBody) expandedBody.classList.remove('hidden');
+        }
+
+        // Contar participantes (1 host + N remotos)
+        const totalParticipants = 1 + (remoteCardsContainer ? remoteCardsContainer.children.length : 0);
+        const countClasses = ['gallery-count-1', 'gallery-count-2', 'gallery-count-3', 'gallery-count-4', 'gallery-count-many'];
+        strip.classList.remove(...countClasses);
+        if (expandedBody) expandedBody.classList.remove(...countClasses);
+
+        let targetClass = 'gallery-count-1';
+        if (totalParticipants === 2) {
+          targetClass = 'gallery-count-2';
+        } else if (totalParticipants === 3 || totalParticipants === 4) {
+          targetClass = (totalParticipants === 3 ? 'gallery-count-3' : 'gallery-count-4');
+        } else if (totalParticipants > 4) {
+          targetClass = 'gallery-count-many';
+        }
+
+        strip.classList.add(targetClass);
+        if (expandedBody) expandedBody.classList.add(targetClass);
+
+        if (typeof handleP2PLocalVideoUI === 'function') {
+          handleP2PLocalVideoUI();
+        }
+      } else {
+        // MODO CONTENIDO DIDÁCTICO (Lección o Pizarra activa)
+        strip.classList.remove('gallery-mode', 'gallery-count-1', 'gallery-count-2', 'gallery-count-3', 'gallery-count-4', 'gallery-count-many');
+        if (expandedBody) expandedBody.classList.remove('gallery-count-1', 'gallery-count-2', 'gallery-count-3', 'gallery-count-4', 'gallery-count-many');
+        if (hostFrameContainer) hostFrameContainer.style.display = '';
+        if (leftWorkspaceColumn) {
+          leftWorkspaceColumn.classList.remove('bg-[#0a0c10]');
+          leftWorkspaceColumn.classList.add('bg-white');
+          leftWorkspaceColumn.style.backgroundColor = '';
+        }
+        if (typeof handleP2PLocalVideoUI === 'function') {
+          handleP2PLocalVideoUI();
+        }
+      }
+    }
+
     // ==================== MINIATURA DE VIDEO FLOTANTE ARRASTRABLE Y MINIMIZABLE (#webrtcVideoStrip) ====================
     const webrtcVideoStripEl = document.getElementById('webrtcVideoStrip');
     const webrtcStripExpandedBody = document.getElementById('webrtcStripExpandedBody');
@@ -8239,6 +8495,7 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
     }
 
     function clampVideoStripIntoBounds() {
+      if (webrtcVideoStripEl?.classList.contains('gallery-mode')) return;
       const parentEl = document.getElementById('leftWorkspaceColumn');
       if (!webrtcVideoStripEl || !parentEl) return;
       if (!webrtcVideoStripEl.style.left && !webrtcVideoStripEl.style.top) return;
@@ -8266,6 +8523,7 @@ btnMinimizeVideoStrip?.addEventListener('click', (e) => {
     });
 
     webrtcVideoStripEl?.addEventListener('mousedown', (e) => {
+      if (webrtcVideoStripEl?.classList.contains('gallery-mode')) return;
       if (e.button !== 0) return;
       if (e.target.closest('button')) return;
 
@@ -8865,6 +9123,9 @@ btnMinimizeVideoStrip?.addEventListener('click', (e) => {
       if (hostLobbyScreen) hostLobbyScreen.classList.add('hidden');
       if (liveClassHeader) liveClassHeader.classList.remove('hidden');
       if (liveClassMain) liveClassMain.classList.remove('hidden');
+      if (typeof syncHostVideoGalleryMode === 'function') {
+        syncHostVideoGalleryMode();
+      }
 
       startHostSessionWithPin(pin, studentName);
 
@@ -10547,6 +10808,9 @@ btnMinimizeVideoStrip?.addEventListener('click', (e) => {
     renderScheduleLobby();
     fetchScheduleFromSupabase();
     setupScheduleRealtimeSubscription();
+    if (typeof syncHostVideoGalleryMode === 'function') {
+      syncHostVideoGalleryMode();
+    }
   </script>
 </body>
 </html>

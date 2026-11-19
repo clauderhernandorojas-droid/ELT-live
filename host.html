@@ -1830,171 +1830,180 @@
       }
     }
 
+    let isClickingHostSlide = false;
     // Navegación infalible en el deck del Host (soporte a botones internos, métodos JS, synthetic events y actualización inmediata)
     function clickButtonInHost(type) {
+      if (isClickingHostSlide) return;
       if (!hostFrame) return;
-      const isNext = (type === 'NEXT');
-      const targetSlide = isNext ? (currentSlide + 1) : Math.max(1, currentSlide - 1);
-      if (!isNext && currentSlide <= 1) return;
+      isClickingHostSlide = true;
+      try {
+        const isNext = (type === 'NEXT');
+        const targetSlide = isNext ? (currentSlide + 1) : Math.max(1, currentSlide - 1);
+        if (!isNext && currentSlide <= 1) return;
 
-      let executed = false;
-      let rootWin = null;
-      let rootDoc = null;
+        let executed = false;
+        let rootWin = null;
+        let rootDoc = null;
 
-      try { rootWin = hostFrame.contentWindow; } catch (e) {}
-      try { rootDoc = hostFrame.contentDocument || (rootWin && rootWin.document); } catch (e) {}
+        try { rootWin = hostFrame.contentWindow; } catch (e) {}
+        try { rootDoc = hostFrame.contentDocument || (rootWin && rootWin.document); } catch (e) {}
 
-      // 1. Prioridad Máxima: Invocación directa en el window del deck (ej. 1a.html -> next() / prev())
-      if (rootWin) {
-        try {
-          if (isNext) {
-            if (typeof rootWin.next === 'function') {
-              rootWin.next();
-              executed = true;
-            } else if (typeof rootWin.nextSlide === 'function') {
-              rootWin.nextSlide();
-              executed = true;
-            } else if (typeof rootWin.show === 'function' && typeof rootWin.current === 'number') {
-              rootWin.show(rootWin.current + 1);
-              executed = true;
-            }
-          } else {
-            if (typeof rootWin.prev === 'function') {
-              rootWin.prev();
-              executed = true;
-            } else if (typeof rootWin.prevSlide === 'function') {
-              rootWin.prevSlide();
-              executed = true;
-            } else if (typeof rootWin.show === 'function' && typeof rootWin.current === 'number' && rootWin.current > 0) {
-              rootWin.show(rootWin.current - 1);
-              executed = true;
-            }
-          }
-        } catch (e) {}
-      }
-
-      // 2. Si no se ejecutó, clic programático en los botones nativos del deck (footer button[onclick*="next"] / prev)
-      if (!executed && rootDoc) {
-        try {
-          const nativeSel = isNext
-            ? 'footer button[onclick*="next"], button[onclick*="next()"], button[onclick*="next"], [data-action="next"], #nextBtn, .next-btn'
-            : 'footer button[onclick*="prev"], button[onclick*="prev()"], button[onclick*="prev"], [data-action="prev"], #prevBtn, .prev-btn';
-          const nativeBtn = rootDoc.querySelector(nativeSel);
-          if (nativeBtn) {
-            nativeBtn.click();
-            executed = true;
-          }
-        } catch (e) {}
-      }
-
-      // 3. Fallback amplio en todos los documentos accesibles (para Reveal.js, Swiper, etc.)
-      const docs = getAccessibleHostLessonDocs();
-      for (let d = 0; d < docs.length; d++) {
-        const doc = docs[d];
-        if (!doc) continue;
-        let win = null;
-        try { win = doc.defaultView; } catch (e) {}
-
-        if (!executed && win) {
+        // 1. Prioridad Máxima: Invocación directa en el window del deck (ej. 1a.html -> next() / prev())
+        if (rootWin) {
           try {
             if (isNext) {
-              if (typeof win.nextSlide === 'function') { win.nextSlide(); executed = true; }
-              else if (typeof win.next === 'function') { win.next(); executed = true; }
-              else if (typeof win.goToSlide === 'function') { win.goToSlide(targetSlide); executed = true; }
-              else if (typeof win.gotoSlide === 'function') { win.gotoSlide(targetSlide); executed = true; }
-              else if (typeof win.setSlide === 'function') { win.setSlide(targetSlide); executed = true; }
-              else if (typeof win.show === 'function') { win.show(targetSlide - 1); executed = true; }
-              else if (win.Reveal && typeof win.Reveal.next === 'function') { win.Reveal.next(); executed = true; }
+              if (typeof rootWin.next === 'function') {
+                rootWin.next();
+                executed = true;
+              } else if (typeof rootWin.nextSlide === 'function') {
+                rootWin.nextSlide();
+                executed = true;
+              } else if (typeof rootWin.show === 'function' && typeof rootWin.current === 'number') {
+                rootWin.show(rootWin.current + 1);
+                executed = true;
+              }
             } else {
-              if (typeof win.prevSlide === 'function') { win.prevSlide(); executed = true; }
-              else if (typeof win.prev === 'function') { win.prev(); executed = true; }
-              else if (typeof win.goToSlide === 'function') { win.goToSlide(targetSlide); executed = true; }
-              else if (typeof win.gotoSlide === 'function') { win.gotoSlide(targetSlide); executed = true; }
-              else if (typeof win.setSlide === 'function') { win.setSlide(targetSlide); executed = true; }
-              else if (typeof win.show === 'function') { win.show(targetSlide - 1); executed = true; }
-              else if (win.Reveal && typeof win.Reveal.prev === 'function') { win.Reveal.prev(); executed = true; }
-            }
-          } catch (e) {}
-        }
-
-        if (!executed) {
-          try {
-            const sel = isNext
-              ? '#nextBtn, #btnNext, .next-btn, #next-btn, [data-action="next"], .swiper-button-next, .carousel-control-next'
-              : '#prevBtn, #btnPrev, .prev-btn, #prev-btn, [data-action="prev"], .swiper-button-prev, .carousel-control-prev';
-            const directBtn = doc.querySelector(sel);
-            if (directBtn) {
-              directBtn.click();
-              executed = true;
-            }
-          } catch (e) {}
-        }
-
-        // 4. Botones por texto o aria-label
-        if (!executed) {
-          try {
-            const buttons = doc.querySelectorAll('button, a, [role="button"]');
-            for (let i = 0; i < buttons.length; i++) {
-              const btn = buttons[i];
-              const txt = (btn.textContent || '').trim().toLowerCase();
-              const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
-              if (isNext) {
-                if (txt.includes('next') || txt === '>' || txt === '»' || txt === '→' || aria.includes('next') || aria.includes('siguiente')) {
-                  btn.click();
-                  executed = true;
-                  break;
-                }
-              } else {
-                if ((txt.includes('prev') && !txt.includes('menú') && !txt.includes('menu')) || txt === '<' || txt === '«' || txt === '←' || aria.includes('prev') || aria.includes('anterior')) {
-                  btn.click();
-                  executed = true;
-                  break;
-                }
+              if (typeof rootWin.prev === 'function') {
+                rootWin.prev();
+                executed = true;
+              } else if (typeof rootWin.prevSlide === 'function') {
+                rootWin.prevSlide();
+                executed = true;
+              } else if (typeof rootWin.show === 'function' && typeof rootWin.current === 'number' && rootWin.current > 0) {
+                rootWin.show(rootWin.current - 1);
+                executed = true;
               }
             }
           } catch (e) {}
         }
 
-        // 5. Enviar synthetic keyboard event a la ventana/documento del deck
-        try {
-          const keyName = isNext ? 'ArrowRight' : 'ArrowLeft';
-          const keyCode = isNext ? 39 : 37;
-          const kEvt = new KeyboardEvent('keydown', { key: keyName, code: keyName, keyCode, which: keyCode, bubbles: true });
-          doc.dispatchEvent(kEvt);
-          if (win) win.dispatchEvent(kEvt);
-        } catch (e) {}
+        // 2. Si no se ejecutó, clic programático en los botones nativos del deck (footer button[onclick*="next"] / prev)
+        if (!executed && rootDoc) {
+          try {
+            const nativeSel = isNext
+              ? 'footer button[onclick*="next"], button[onclick*="next()"], button[onclick*="next"], [data-action="next"], #nextBtn, .next-btn'
+              : 'footer button[onclick*="prev"], button[onclick*="prev()"], button[onclick*="prev"], [data-action="prev"], #prevBtn, .prev-btn';
+            const nativeBtn = rootDoc.querySelector(nativeSel);
+            if (nativeBtn) {
+              nativeBtn.click();
+              executed = true;
+            }
+          } catch (e) {}
+        }
+
+        // 3. Fallback amplio en todos los documentos accesibles (para Reveal.js, Swiper, etc.)
+        const docs = getAccessibleHostLessonDocs();
+        for (let d = 0; d < docs.length; d++) {
+          const doc = docs[d];
+          if (!doc) continue;
+          let win = null;
+          try { win = doc.defaultView; } catch (e) {}
+
+          if (!executed && win) {
+            try {
+              if (isNext) {
+                if (typeof win.nextSlide === 'function') { win.nextSlide(); executed = true; }
+                else if (typeof win.next === 'function') { win.next(); executed = true; }
+                else if (typeof win.goToSlide === 'function') { win.goToSlide(targetSlide); executed = true; }
+                else if (typeof win.gotoSlide === 'function') { win.gotoSlide(targetSlide); executed = true; }
+                else if (typeof win.setSlide === 'function') { win.setSlide(targetSlide); executed = true; }
+                else if (typeof win.show === 'function') { win.show(targetSlide - 1); executed = true; }
+                else if (win.Reveal && typeof win.Reveal.next === 'function') { win.Reveal.next(); executed = true; }
+              } else {
+                if (typeof win.prevSlide === 'function') { win.prevSlide(); executed = true; }
+                else if (typeof win.prev === 'function') { win.prev(); executed = true; }
+                else if (typeof win.goToSlide === 'function') { win.goToSlide(targetSlide); executed = true; }
+                else if (typeof win.gotoSlide === 'function') { win.gotoSlide(targetSlide); executed = true; }
+                else if (typeof win.setSlide === 'function') { win.setSlide(targetSlide); executed = true; }
+                else if (typeof win.show === 'function') { win.show(targetSlide - 1); executed = true; }
+                else if (win.Reveal && typeof win.Reveal.prev === 'function') { win.Reveal.prev(); executed = true; }
+              }
+            } catch (e) {}
+          }
+
+          if (!executed) {
+            try {
+              const sel = isNext
+                ? '#nextBtn, #btnNext, .next-btn, #next-btn, [data-action="next"], .swiper-button-next, .carousel-control-next'
+                : '#prevBtn, #btnPrev, .prev-btn, #prev-btn, [data-action="prev"], .swiper-button-prev, .carousel-control-prev';
+              const directBtn = doc.querySelector(sel);
+              if (directBtn) {
+                directBtn.click();
+                executed = true;
+              }
+            } catch (e) {}
+          }
+
+          // 4. Botones por texto o aria-label
+          if (!executed) {
+            try {
+              const buttons = doc.querySelectorAll('button, a, [role="button"]');
+              for (let i = 0; i < buttons.length; i++) {
+                const btn = buttons[i];
+                const txt = (btn.textContent || '').trim().toLowerCase();
+                const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
+                if (isNext) {
+                  if (txt.includes('next') || txt === '>' || txt === '»' || txt === '→' || aria.includes('next') || aria.includes('siguiente')) {
+                    btn.click();
+                    executed = true;
+                    break;
+                  }
+                } else {
+                  if ((txt.includes('prev') && !txt.includes('menú') && !txt.includes('menu')) || txt === '<' || txt === '«' || txt === '←' || aria.includes('prev') || aria.includes('anterior')) {
+                    btn.click();
+                    executed = true;
+                    break;
+                  }
+                }
+              }
+            } catch (e) {}
+          }
+
+          // 5. Enviar synthetic keyboard event a la ventana/documento del deck solo si no se ejecutó
+          if (!executed) {
+            try {
+              const keyName = isNext ? 'ArrowRight' : 'ArrowLeft';
+              const keyCode = isNext ? 39 : 37;
+              const kEvt = new KeyboardEvent('keydown', { key: keyName, code: keyName, keyCode, which: keyCode, bubbles: true });
+              doc.dispatchEvent(kEvt);
+              if (win) win.dispatchEvent(kEvt);
+            } catch (e) {}
+          }
+        }
+
+        // Actualizar inmediatamente currentSlide al target esperado y sincronizar
+        const applySlideUpdate = (newSlideNum) => {
+          if (!newSlideNum || newSlideNum < 1) return;
+          currentSlide = newSlideNum;
+          if (currentSlideLabel) currentSlideLabel.textContent = currentSlide;
+          broadcastTargetSlide(currentSlide);
+        };
+
+        applySlideUpdate(targetSlide);
+
+        setTimeout(() => {
+          const detected = readHostSlideNumber();
+          if (detected && detected !== currentSlide) {
+            applySlideUpdate(detected);
+          }
+        }, 50);
+
+        setTimeout(() => {
+          const detected = readHostSlideNumber();
+          if (detected && detected !== currentSlide) {
+            applySlideUpdate(detected);
+          }
+        }, 150);
+
+        setTimeout(() => {
+          const detected = readHostSlideNumber();
+          if (detected && detected !== currentSlide) {
+            applySlideUpdate(detected);
+          }
+        }, 300);
+      } finally {
+        isClickingHostSlide = false;
       }
-
-      // Actualizar inmediatamente currentSlide al target esperado y sincronizar
-      const applySlideUpdate = (newSlideNum) => {
-        if (!newSlideNum || newSlideNum < 1) return;
-        currentSlide = newSlideNum;
-        if (currentSlideLabel) currentSlideLabel.textContent = currentSlide;
-        broadcastTargetSlide(currentSlide);
-      };
-
-      applySlideUpdate(targetSlide);
-
-      setTimeout(() => {
-        const detected = readHostSlideNumber();
-        if (detected && detected !== currentSlide) {
-          applySlideUpdate(detected);
-        }
-      }, 50);
-
-      setTimeout(() => {
-        const detected = readHostSlideNumber();
-        if (detected && detected !== currentSlide) {
-          applySlideUpdate(detected);
-        }
-      }, 150);
-
-      setTimeout(() => {
-        const detected = readHostSlideNumber();
-        if (detected && detected !== currentSlide) {
-          applySlideUpdate(detected);
-        }
-      }, 300);
     }
 
     // Comprueba si el foco está en un campo de texto, chat o modal para no interceptar flechas
@@ -2010,6 +2019,7 @@
 
     // Atajos de teclado en el Host: Flechas Izquierda/Derecha y RePág/AvPág para navegar diapositivas
     window.addEventListener('keydown', (e) => {
+      if (!e.isTrusted) return;
       if (isHostTypingFocused()) return;
       if (wbIsOpen) return;
 
@@ -2048,6 +2058,7 @@
               setTimeout(checkHostSlideChange, 150);
             });
             innerDoc.addEventListener('keydown', (e) => {
+              if (!e.isTrusted) return;
               const el = innerDoc.activeElement;
               const tag = (el && el.tagName || '').toUpperCase();
               const isTyping = (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el?.isContentEditable);

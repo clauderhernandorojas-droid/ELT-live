@@ -3025,6 +3025,36 @@
       // ==================== RECEPTOR MODO "GUIAR CLASE" / "PRÁCTICA LIBRE" ====================
       window.isSyntheticTeacherAction = false;
 
+      function getOrderedScrollableContainers(doc) {
+        if (!doc) return [];
+        const list = [];
+        const rootEl = doc.scrollingElement || doc.documentElement || doc.body;
+
+        try {
+          const win = doc.defaultView || window;
+          const allElements = doc.querySelectorAll('*');
+          for (let i = 0; i < allElements.length; i++) {
+            const el = allElements[i];
+            if (!el || el.nodeType !== 1 || el.offsetParent === null) continue;
+            if ((el.scrollHeight - el.clientHeight) <= 4) continue;
+            try {
+              const oy = win.getComputedStyle(el).overflowY;
+              if (oy === 'auto' || oy === 'scroll' || oy === 'overlay') {
+                list.push(el);
+              }
+            } catch (e) {}
+          }
+        } catch (err) {}
+
+        if (rootEl && (rootEl.scrollHeight - rootEl.clientHeight) > 4) {
+          if (!list.includes(rootEl)) {
+            list.push(rootEl);
+          }
+        }
+
+        return list;
+      }
+
       function applyTeacherGuidedModeUI(active) {
         const shield = document.getElementById('studentTeacherGuidedShield');
         const pill = document.getElementById('studentTeacherGuidedPill');
@@ -3052,40 +3082,27 @@
         try {
           const action = payload.action;
           if (action === 'scroll') {
+            const containers = getOrderedScrollableContainers(targetDoc);
             let targetScrollEl = null;
-            if (payload.selector && payload.selector !== '__ROOT__') {
-              try {
-                targetScrollEl = targetDoc.querySelector(payload.selector);
-              } catch (e) {}
+
+            // 1. Prioridad: Índice ordenado de contenedores scrollables (soporte para 2+ columnas)
+            if (typeof payload.scrollableIndex === 'number' && payload.scrollableIndex >= 0 && containers[payload.scrollableIndex]) {
+              targetScrollEl = containers[payload.scrollableIndex];
             }
 
-            if (!targetScrollEl || (targetScrollEl.scrollHeight - targetScrollEl.clientHeight) <= 4) {
+            // 2. Prioridad: Selector CSS enviado por el profesor
+            if (!targetScrollEl && payload.selector && payload.selector !== '__ROOT__') {
               try {
-                const activeSlide = targetDoc.querySelector('.slide.active, .slide-page.active, [data-slide].active, .swiper-slide-active');
-                if (activeSlide && (activeSlide.scrollHeight - activeSlide.clientHeight) > 4) {
-                  targetScrollEl = activeSlide;
-                } else {
-                  const candidates = [...targetDoc.querySelectorAll('*')].filter(el => {
-                    if (!el || el.nodeType !== 1 || el.offsetParent === null) return false;
-                    const diff = el.scrollHeight - el.clientHeight;
-                    if (diff <= 4) return false;
-                    try {
-                      const oy = targetDoc.defaultView ? targetDoc.defaultView.getComputedStyle(el).overflowY : '';
-                      return oy === 'auto' || oy === 'scroll' || oy === 'overlay';
-                    } catch (e) {
-                      return false;
-                    }
-                  });
-                  if (candidates.length > 0) {
-                    candidates.sort((a, b) => (b.clientWidth * b.clientHeight) - (a.clientWidth * a.clientHeight));
-                    targetScrollEl = candidates[0];
-                  }
+                const el = targetDoc.querySelector(payload.selector);
+                if (el && (el.scrollHeight - el.clientHeight) > 4) {
+                  targetScrollEl = el;
                 }
               } catch (e) {}
             }
 
+            // 3. Prioridad: Primer contenedor scrollable detectado o documento raíz
             if (!targetScrollEl) {
-              targetScrollEl = targetDoc.scrollingElement || targetDoc.documentElement || targetDoc.body;
+              targetScrollEl = containers[0] || targetDoc.scrollingElement || targetDoc.documentElement || targetDoc.body;
             }
 
             if (targetScrollEl) {

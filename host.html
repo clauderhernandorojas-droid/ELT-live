@@ -2304,45 +2304,63 @@
       }
     };
 
-    function findLessonActiveScrollTarget(doc, eventTarget) {
-      if (!doc) return null;
-      if (eventTarget && eventTarget.nodeType === 1 && eventTarget !== doc.documentElement && eventTarget !== doc.body) {
-        if ((eventTarget.scrollHeight - eventTarget.clientHeight) > 4) {
-          return eventTarget;
-        }
-      }
-
+    function getOrderedScrollableContainers(doc) {
+      if (!doc) return [];
+      const list = [];
       const rootEl = doc.scrollingElement || doc.documentElement || doc.body;
-      if (rootEl && (rootEl.scrollHeight - rootEl.clientHeight) > 4) {
-        return rootEl;
-      }
 
-      // Fallback para contenedores internos scrollables en la diapositiva activa
       try {
-        const activeSlide = doc.querySelector('.slide.active, .slide-page.active, [data-slide].active, .swiper-slide-active');
-        if (activeSlide && (activeSlide.scrollHeight - activeSlide.clientHeight) > 4) {
-          return activeSlide;
-        }
-
-        const candidates = [...doc.querySelectorAll('*')].filter(el => {
-          if (!el || el.nodeType !== 1 || el.offsetParent === null) return false;
-          const diff = el.scrollHeight - el.clientHeight;
-          if (diff <= 4) return false;
+        const win = doc.defaultView || window;
+        const allElements = doc.querySelectorAll('*');
+        for (let i = 0; i < allElements.length; i++) {
+          const el = allElements[i];
+          if (!el || el.nodeType !== 1 || el.offsetParent === null) continue;
+          if ((el.scrollHeight - el.clientHeight) <= 4) continue;
           try {
-            const oy = doc.defaultView ? doc.defaultView.getComputedStyle(el).overflowY : '';
-            return oy === 'auto' || oy === 'scroll' || oy === 'overlay';
-          } catch (e) {
-            return false;
-          }
-        });
-
-        if (candidates.length > 0) {
-          candidates.sort((a, b) => (b.clientWidth * b.clientHeight) - (a.clientWidth * a.clientHeight));
-          return candidates[0];
+            const oy = win.getComputedStyle(el).overflowY;
+            if (oy === 'auto' || oy === 'scroll' || oy === 'overlay') {
+              list.push(el);
+            }
+          } catch (e) {}
         }
       } catch (err) {}
 
-      return rootEl;
+      if (rootEl && (rootEl.scrollHeight - rootEl.clientHeight) > 4) {
+        if (!list.includes(rootEl)) {
+          list.push(rootEl);
+        }
+      }
+
+      return list;
+    }
+
+    function findLessonActiveScrollTarget(doc, eventTarget) {
+      if (!doc) return null;
+      const containers = getOrderedScrollableContainers(doc);
+      if (containers.length === 0) {
+        return doc.scrollingElement || doc.documentElement || doc.body;
+      }
+
+      if (eventTarget) {
+        if (containers.includes(eventTarget)) return eventTarget;
+        for (let c of containers) {
+          if (c !== doc.documentElement && c !== doc.body && c.contains && c.contains(eventTarget)) {
+            return c;
+          }
+        }
+        for (let c of containers) {
+          if (eventTarget.contains && eventTarget.contains(c)) {
+            return c;
+          }
+        }
+      }
+
+      const activeSlide = doc.querySelector('.slide.active, .slide-page.active, [data-slide].active, .swiper-slide-active');
+      if (activeSlide && containers.includes(activeSlide)) {
+        return activeSlide;
+      }
+
+      return containers[0];
     }
 
     function buildSimpleScrollTargetSelector(el, doc) {
@@ -2393,8 +2411,10 @@
           } catch (e) {}
         }
 
+        const containers = getOrderedScrollableContainers(targetDoc);
         const scrollEl = findLessonActiveScrollTarget(targetDoc, null);
         if (!scrollEl) return;
+        const scrollableIndex = containers.indexOf(scrollEl);
         const maxScrollY = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight);
         const ratioY = maxScrollY > 0 ? (scrollEl.scrollTop / maxScrollY) : 0;
         const selector = buildSimpleScrollTargetSelector(scrollEl, targetDoc);
@@ -2402,7 +2422,7 @@
         roomChannel.send({
           type: 'broadcast',
           event: 'TEACHER_ACTION',
-          payload: { action: 'scroll', ratioY, selector, isInnerViewer, slide: currentSlide }
+          payload: { action: 'scroll', ratioY, selector, scrollableIndex, isInnerViewer, slide: currentSlide }
         });
       } catch (err) {
         console.warn('[ELT Live] Error emitiendo estado de scroll guiado:', err);
@@ -2458,7 +2478,7 @@
         });
       }, true);
 
-      // 2. Scroll con throttle (detecta contenedores internos de diapositivas)
+      // 2. Scroll con throttle (detecta columnas independientes y contenedores de diapositivas)
       let lastScrollTime = 0;
       const onScrollHandler = (e) => {
         if (!isTeacherGuidedMode) return;
@@ -2467,8 +2487,10 @@
         lastScrollTime = now;
         resetTeacherInactivityTimer();
 
+        const containers = getOrderedScrollableContainers(innerDoc);
         const scrollEl = findLessonActiveScrollTarget(innerDoc, e && e.target);
         if (!scrollEl || !roomChannel) return;
+        const scrollableIndex = containers.indexOf(scrollEl);
         const maxScroll = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight);
         const ratioY = maxScroll > 0 ? (scrollEl.scrollTop / maxScroll) : 0;
         const selector = buildSimpleScrollTargetSelector(scrollEl, innerDoc);
@@ -2476,7 +2498,7 @@
         roomChannel.send({
           type: 'broadcast',
           event: 'TEACHER_ACTION',
-          payload: { action: 'scroll', ratioY, selector, isInnerViewer, slide: currentSlide }
+          payload: { action: 'scroll', ratioY, selector, scrollableIndex, isInnerViewer, slide: currentSlide }
         });
       };
       innerDoc.addEventListener('scroll', onScrollHandler, { passive: true, capture: true });

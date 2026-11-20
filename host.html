@@ -805,7 +805,7 @@
           </span>
           <button id="btnToggleTeacherGuided" type="button" onclick="window.toggleTeacherGuidedMode()" class="hidden text-[11px] font-bold px-2.5 py-1 rounded-lg border transition flex items-center gap-1.5 cursor-pointer bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border-emerald-700/70" title="Alternar entre Guiar Clase (alumnos siguen tus clics y scroll) y Práctica Libre"><span id="teacherGuidedBtnIcon">🔓</span><span id="teacherGuidedBtnLabel">Práctica Libre</span></button>
         </div>
-        <div class="flex items-center gap-1.5 text-[11px] text-slate-400">
+        <div class="flex items-center gap-1.5 text-[11px] text-slate-400 whitespace-nowrap">
           <span>Session Title with PIN:</span>
           <span id="roomPinDisplay" onclick="window.copyRoomPinToClipboard()" class="font-mono font-bold text-slate-200 hover:text-indigo-300 cursor-pointer transition" title="Clic para copiar el PIN de 4 dígitos">#----</span>
           <button id="btnCopyRoomPin" type="button" onclick="window.copyRoomPinToClipboard()" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-800/90 hover:bg-indigo-600 border border-slate-700 hover:border-indigo-400 text-slate-200 hover:text-white text-[10px] font-bold transition cursor-pointer" title="Copiar PIN al portapapeles">
@@ -9326,21 +9326,34 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
 
     // ==================== COPIAR PIN DE LA SESIÓN AL PORTAPAPELES ====================
     let copyPinFeedbackTimer = null;
-    window.copyRoomPinToClipboard = async function() {
+    window.copyRoomPinToClipboard = function() {
       const rawPin = String(roomPin || document.getElementById('roomPinDisplay')?.textContent || '').replace(/\D/g, '');
       if (!rawPin || rawPin.length < 4) return;
 
+      // 1. Copiado síncrono instantáneo con fallback robusto
       try {
-        await navigator.clipboard.writeText(rawPin);
-      } catch (err) {
         const tmp = document.createElement('textarea');
         tmp.value = rawPin;
+        tmp.style.position = 'fixed';
+        tmp.style.opacity = '0';
+        tmp.style.left = '-9999px';
         document.body.appendChild(tmp);
         tmp.select();
-        try { document.execCommand('copy'); } catch (e) {}
+        document.execCommand('copy');
         document.body.removeChild(tmp);
+      } catch (e) {}
+
+      // Soporte para Electron / Sidecar si está disponible
+      if (typeof window.electronAPI?.copyText === 'function') {
+        try { window.electronAPI.copyText(rawPin); } catch (e) {}
       }
 
+      // 2. Copiado asíncrono en segundo plano (sin await bloqueante)
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        navigator.clipboard.writeText(rawPin).catch(() => {});
+      }
+
+      // 3. Feedback visual instantáneo
       const btn = document.getElementById('btnCopyRoomPin');
       const label = document.getElementById('copyRoomPinBtnLabel');
       if (label) label.textContent = '✓ ¡Copiado!';

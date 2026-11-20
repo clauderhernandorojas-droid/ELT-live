@@ -984,6 +984,14 @@
                 <span id="bottomVideoLabel" class="text-[10px] text-slate-300 font-medium mt-0.5">Video</span>
               </button>
 
+              <!-- Fondo Desenfocado (Blur) -->
+              <button id="bottomVideoBlurBtn" type="button" class="group flex flex-col items-center justify-center px-2 py-1 rounded-lg hover:bg-white/10 transition relative text-slate-300 hover:text-white" title="Activar / Desactivar fondo desenfocado (Blur)">
+                <div class="flex items-center gap-1">
+                  <span id="bottomVideoBlurIcon" class="text-xs">🪄</span>
+                </div>
+                <span id="bottomVideoBlurLabel" class="text-[9px] text-slate-300 font-medium mt-0.5">Fondo</span>
+              </button>
+
               <button id="bottomChatToggleBtn" type="button" class="group flex flex-col items-center justify-center px-2.5 py-1 rounded-lg hover:bg-white/10 transition relative" title="Mostrar / Ocultar el panel de chat">
                 <div class="flex items-center gap-1 relative">
                   <i class="fa-regular fa-comment-dots text-sm text-slate-100"></i>
@@ -5952,6 +5960,304 @@
       );
     }
 
+
+    // ==================== VIRTUAL BACKGROUND BLUR (MEDIAPIPE SELFIE SEGMENTATION) ====================
+    let isVideoBgBlurEnabled = false;
+    let blurSegmenterInstance = null;
+    let blurSourceVideoEl = null;
+    let blurCanvas = null;
+    let blurCtx = null;
+    let blurMaskCanvas = null;
+    let blurMaskCtx = null;
+    let blurLoopAnimId = null;
+    let blurredVideoStream = null;
+
+    function linkifyChatText(rawText) {
+      if (!rawText) return '';
+      const escaped = String(rawText)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+      const urlRegex = /(https?:\/\/[^\s<]+|www\.[^\s<]+)/gi;
+      return escaped.replace(urlRegex, (url) => {
+        let trailing = '';
+        const m = url.match(/[.,;!?]+$/);
+        if (m) {
+          trailing = m[0];
+          url = url.slice(0, -trailing.length);
+        }
+        const href = url.startsWith('www.') ? `https://${url}` : url;
+        return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="underline text-sky-300 hover:text-sky-200 break-all font-medium">${url}</a>${trailing}`;
+      });
+    }
+
+    function loadMediaPipeSelfieSegmentation() {
+      if (typeof window !== 'undefined' && window.SelfieSegmentation) {
+        return Promise.resolve(window.SelfieSegmentation);
+      }
+      return new Promise((resolve, reject) => {
+        const existing = document.getElementById('mediapipe-selfie-segmentation-script');
+        if (existing) {
+          if (window.SelfieSegmentation) return resolve(window.SelfieSegmentation);
+          existing.addEventListener('load', () => resolve(window.SelfieSegmentation));
+          existing.addEventListener('error', (err) => reject(err));
+          return;
+        }
+        const script = document.createElement('script');
+        script.id = 'mediapipe-selfie-segmentation-script';
+        script.src = 'https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js';
+        script.crossOrigin = 'anonymous';
+        script.onload = () => {
+          if (window.SelfieSegmentation) resolve(window.SelfieSegmentation);
+          else reject(new Error('SelfieSegmentation no disponible tras cargar script'));
+        };
+        script.onerror = () => reject(new Error('No se pudo descargar selfie_segmentation.js desde CDN'));
+        document.head.appendChild(script);
+      });
+    }
+
+    function getActiveLocalVideoTrack() {
+      if (isVideoBgBlurEnabled && blurredVideoStream) {
+        const bTrack = blurredVideoStream.getVideoTracks()[0];
+        if (bTrack && bTrack.readyState === 'live') {
+          return bTrack;
+        }
+      }
+      if (typeof p2pLocalStream !== 'undefined' && p2pLocalStream) {
+        const rawTrack = p2pLocalStream.getVideoTracks().find(t => t.readyState === 'live');
+        if (rawTrack) return rawTrack;
+      }
+      return null;
+    }
+
+    function updateVideoBlurBtnUI(active, loading) {
+      const btn = document.getElementById('bottomVideoBlurBtn');
+      const label = document.getElementById('bottomVideoBlurLabel');
+      const icon = document.getElementById('bottomVideoBlurIcon');
+      if (!btn) return;
+      if (loading) {
+        btn.className = 'group flex flex-col items-center justify-center px-2 py-1 rounded-lg bg-sky-500/20 text-sky-300 border border-sky-500/40 transition relative animate-pulse';
+        if (label) label.textContent = 'Cargando...';
+        if (icon) icon.textContent = '⏳';
+        return;
+      }
+      if (active) {
+        btn.className = 'group flex flex-col items-center justify-center px-2 py-1 rounded-lg bg-purple-600/30 text-purple-300 border border-purple-400/50 transition relative shadow-[0_0_10px_rgba(168,85,247,0.35)]';
+        if (label) {
+          label.textContent = 'Fondo Blur';
+          label.className = 'text-[9px] text-purple-300 font-semibold mt-0.5';
+        }
+        if (icon) icon.textContent = '🪄';
+      } else {
+        btn.className = 'group flex flex-col items-center justify-center px-2 py-1 rounded-lg hover:bg-white/10 transition relative text-slate-300 hover:text-white';
+        if (label) {
+          label.textContent = 'Fondo';
+          label.className = 'text-[9px] text-slate-300 font-medium mt-0.5';
+        }
+        if (icon) icon.textContent = '🪄';
+      }
+    }
+
+    async function startBlurredVideoStream(rawStream) {
+      if (!rawStream) return null;
+      const SelfieSegmentationClass = await loadMediaPipeSelfieSegmentation();
+
+      if (!blurCanvas) {
+        blurCanvas = document.createElement('canvas');
+        blurCanvas.width = 640;
+        blurCanvas.height = 360;
+        blurCtx = blurCanvas.getContext('2d', { alpha: false });
+      }
+
+      if (!blurMaskCanvas) {
+        blurMaskCanvas = document.createElement('canvas');
+        blurMaskCanvas.width = 640;
+        blurMaskCanvas.height = 360;
+        blurMaskCtx = blurMaskCanvas.getContext('2d');
+      }
+
+      if (!blurSourceVideoEl) {
+        blurSourceVideoEl = document.createElement('video');
+        blurSourceVideoEl.muted = true;
+        blurSourceVideoEl.setAttribute('muted', '');
+        blurSourceVideoEl.setAttribute('playsinline', '');
+        blurSourceVideoEl.setAttribute('webkit-playsinline', '');
+        blurSourceVideoEl.playsInline = true;
+        blurSourceVideoEl.autoplay = true;
+      }
+      blurSourceVideoEl.srcObject = rawStream;
+      try {
+        await blurSourceVideoEl.play();
+      } catch (e) {}
+
+      if (!blurSegmenterInstance) {
+        blurSegmenterInstance = new SelfieSegmentationClass({
+          locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
+        });
+        blurSegmenterInstance.setOptions({
+          modelSelection: 1,
+          selfieMode: false
+        });
+        blurSegmenterInstance.onResults((results) => {
+          if (!blurCanvas || !blurCtx || !blurMaskCanvas || !blurMaskCtx) return;
+          const w = blurCanvas.width;
+          const h = blurCanvas.height;
+
+          // 1. Silueta nítida del usuario en máscara temporal
+          blurMaskCtx.save();
+          blurMaskCtx.clearRect(0, 0, w, h);
+          blurMaskCtx.drawImage(results.segmentationMask, 0, 0, w, h);
+          blurMaskCtx.globalCompositeOperation = 'source-in';
+          blurMaskCtx.drawImage(results.image, 0, 0, w, h);
+          blurMaskCtx.restore();
+
+          // 2. Fondo desenfocado con filtro blur
+          blurCtx.save();
+          blurCtx.clearRect(0, 0, w, h);
+          blurCtx.filter = 'blur(14px) brightness(0.75)';
+          blurCtx.drawImage(results.image, 0, 0, w, h);
+          blurCtx.filter = 'none';
+
+          // 3. Superponer silueta nítida sobre el fondo
+          blurCtx.drawImage(blurMaskCanvas, 0, 0, w, h);
+          blurCtx.restore();
+        });
+      }
+
+      // Dibujar frame inicial si ya está listo
+      if (blurSourceVideoEl && blurSourceVideoEl.readyState >= 2 && blurCtx) {
+        try { blurCtx.drawImage(blurSourceVideoEl, 0, 0, blurCanvas.width, blurCanvas.height); } catch (e) {}
+      }
+
+      if (blurLoopAnimId) {
+        cancelAnimationFrame(blurLoopAnimId);
+        blurLoopAnimId = null;
+      }
+
+      let isProcessingFrame = false;
+      function processBlurFrame() {
+        if (!isVideoBgBlurEnabled || !blurSegmenterInstance) return;
+        if (!isProcessingFrame && blurSourceVideoEl && blurSourceVideoEl.readyState >= 2 && !blurSourceVideoEl.paused) {
+          isProcessingFrame = true;
+          blurSegmenterInstance.send({ image: blurSourceVideoEl })
+            .catch(() => {})
+            .finally(() => {
+              isProcessingFrame = false;
+            });
+        }
+        blurLoopAnimId = requestAnimationFrame(processBlurFrame);
+      }
+      processBlurFrame();
+
+      if (!blurredVideoStream || !blurredVideoStream.getVideoTracks().length || blurredVideoStream.getVideoTracks()[0].readyState === 'ended') {
+        blurredVideoStream = (blurCanvas.captureStream && blurCanvas.captureStream(24)) ||
+                             (blurCanvas.mozCaptureStream && blurCanvas.mozCaptureStream(24)) ||
+                             null;
+      }
+      return blurredVideoStream;
+    }
+
+    async function stopBlurredVideoStream() {
+      if (blurLoopAnimId) {
+        cancelAnimationFrame(blurLoopAnimId);
+        blurLoopAnimId = null;
+      }
+      if (blurredVideoStream) {
+        try {
+          blurredVideoStream.getVideoTracks().forEach(t => t.stop());
+        } catch (e) {}
+        blurredVideoStream = null;
+      }
+      if (blurSourceVideoEl) {
+        try { blurSourceVideoEl.pause(); } catch (e) {}
+        blurSourceVideoEl.srcObject = null;
+      }
+    }
+
+    async function applyActiveVideoTrackToPeersAndUI() {
+      const activeTrack = getActiveLocalVideoTrack();
+
+      // P2P: replaceTrack en todos los videoSenders sin cortar la llamada
+      if (typeof currentVideoMode !== 'undefined' && currentVideoMode === 'p2p' && typeof webrtcPeers !== 'undefined') {
+        for (const remotePeerId of Object.keys(webrtcPeers)) {
+          const peerObj = webrtcPeers[remotePeerId];
+          if (!peerObj || !peerObj.pc) continue;
+          if (peerObj.videoSender && activeTrack) {
+            try {
+              await peerObj.videoSender.replaceTrack(activeTrack);
+            } catch (e) {
+              console.warn('[VideoBlur] Error en peer replaceTrack:', e);
+            }
+          }
+        }
+      }
+
+      // LiveKit: si está activo
+      if (typeof currentVideoMode !== 'undefined' && currentVideoMode === 'livekit' && typeof livekitRoom !== 'undefined' && livekitRoom?.localParticipant) {
+        try {
+          const pubs = livekitRoom.localParticipant.videoTrackPublications;
+          if (pubs) {
+            for (const pub of pubs.values()) {
+              if (pub.track && typeof pub.track.replaceTrack === 'function' && activeTrack) {
+                await pub.track.replaceTrack(activeTrack);
+              }
+            }
+          }
+        } catch (lkErr) {
+          console.warn('[VideoBlur] LiveKit replaceTrack error:', lkErr);
+        }
+      }
+
+      // Actualizar vista local propia
+      if (typeof handleP2PLocalVideoUI === 'function') {
+        handleP2PLocalVideoUI();
+      }
+    }
+
+    async function enableVideoBackgroundBlur() {
+      try {
+        updateVideoBlurBtnUI(true, true);
+        if (!p2pLocalStream || !p2pLocalStream.getVideoTracks().length || !p2pLocalStream.getVideoTracks().some(t => t.readyState === 'live')) {
+          if (typeof ensureP2PLocalStream === 'function') {
+            await ensureP2PLocalStream(webrtcAudioEnabled, true);
+            webrtcVideoEnabled = true;
+            if (typeof updateLocalMediaButtonsUI === 'function') updateLocalMediaButtonsUI();
+          }
+        }
+        if (!p2pLocalStream || !p2pLocalStream.getVideoTracks().some(t => t.readyState === 'live')) {
+          throw new Error('No se detectó cámara disponible para aplicar fondo desenfocado.');
+        }
+
+        await startBlurredVideoStream(p2pLocalStream);
+        isVideoBgBlurEnabled = true;
+        updateVideoBlurBtnUI(true, false);
+        await applyActiveVideoTrackToPeersAndUI();
+      } catch (err) {
+        console.warn('[VideoBlur] Fallo al activar blur:', err);
+        isVideoBgBlurEnabled = false;
+        updateVideoBlurBtnUI(false, false);
+        await stopBlurredVideoStream();
+        await applyActiveVideoTrackToPeersAndUI();
+      }
+    }
+
+    async function disableVideoBackgroundBlur() {
+      isVideoBgBlurEnabled = false;
+      updateVideoBlurBtnUI(false, false);
+      await stopBlurredVideoStream();
+      await applyActiveVideoTrackToPeersAndUI();
+    }
+
+    async function toggleVideoBackgroundBlur() {
+      if (isVideoBgBlurEnabled) {
+        await disableVideoBackgroundBlur();
+      } else {
+        await enableVideoBackgroundBlur();
+      }
+    }
+
     function escapeHtmlChat(str) {
       return (str || '')
         .replace(/&/g, '&amp;')
@@ -5997,7 +6303,7 @@
           : '';
 
         const textHtml = msg.text
-          ? `<p class="text-xs text-slate-100 whitespace-pre-wrap break-words leading-relaxed">${escapeHtmlChat(msg.text)}</p>`
+          ? `<p class="text-xs text-slate-100 whitespace-pre-wrap break-words leading-relaxed">${linkifyChatText(msg.text)}</p>`
           : '';
 
         let fileHtml = '';
@@ -7590,11 +7896,11 @@
       localVideo.setAttribute('webkit-playsinline', '');
       localVideo.setAttribute('autoplay', '');
 
-      const videoTrack = p2pLocalStream?.getVideoTracks().find(t => t.enabled && t.readyState !== 'ended');
+      const activeVideoTrack = typeof getActiveLocalVideoTrack === 'function' ? getActiveLocalVideoTrack() : (p2pLocalStream?.getVideoTracks().find(t => t.enabled && t.readyState !== 'ended') || null);
 
-      if (webrtcVideoEnabled && videoTrack) {
-        if (localVideo.srcObject !== p2pLocalStream) {
-          localVideo.srcObject = p2pLocalStream;
+      if (webrtcVideoEnabled && activeVideoTrack) {
+        if (!localVideo.srcObject || localVideo.srcObject.getVideoTracks()[0] !== activeVideoTrack) {
+          localVideo.srcObject = new MediaStream([activeVideoTrack]);
         }
         localVideo.classList.remove('hidden');
         if (localPlaceholder) {
@@ -7702,7 +8008,7 @@
 
         const currentTrack = isSharingScreen && screenStream
           ? screenStream.getVideoTracks()[0]
-          : (webrtcVideoEnabled && p2pLocalStream ? p2pLocalStream.getVideoTracks().find(t => t.readyState === 'live') || null : null);
+          : (webrtcVideoEnabled ? (typeof getActiveLocalVideoTrack === 'function' ? getActiveLocalVideoTrack() : (p2pLocalStream ? p2pLocalStream.getVideoTracks().find(t => t.readyState === 'live') || null : null)) : null);
 
         if (peerObj.videoSender) {
           try { await peerObj.videoSender.replaceTrack(currentTrack || null); } catch (e) {}
@@ -10011,6 +10317,10 @@ window.setVideoStripMinimized = function(minimized) {
 
     document.getElementById('bottomVideoBtn')?.addEventListener('click', () => {
       toggleLocalVideo();
+    });
+
+    document.getElementById('bottomVideoBlurBtn')?.addEventListener('click', () => {
+      toggleVideoBackgroundBlur();
     });
 
     document.getElementById('bottomChatToggleBtn')?.addEventListener('click', () => {

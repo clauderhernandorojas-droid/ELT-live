@@ -1,4 +1,4 @@
-const { app, BrowserWindow, session, ipcMain, desktopCapturer } = require('electron');
+const { app, BrowserWindow, session, ipcMain, desktopCapturer, shell } = require('electron');
 const path = require('path');
 
 let mainWindow = null;
@@ -202,9 +202,10 @@ app.on('web-contents-created', (event, contents) => {
     }
   });
   contents.setWindowOpenHandler(({ url }) => {
-    if (typeof url === 'string' && url.startsWith('jitsi-meet://')) {
+    if (typeof url === 'string' && (url.startsWith('http://') || url.startsWith('https://'))) {
+      shell.openExternal(url);
       return { action: 'deny' };
     }
-    return { action: 'allow' };
+    return { action: 'deny' };
   });
 });

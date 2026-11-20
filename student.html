@@ -3155,6 +3155,98 @@
         }
       }
 
+    function getLessonContentBounds(doc, frameEl) {
+      if (!frameEl) return { left: 0, top: 0, width: 1, height: 1 };
+      const frameRect = frameEl.getBoundingClientRect();
+      const fallback = { left: 0, top: 0, width: Math.max(1, frameRect.width), height: Math.max(1, frameRect.height) };
+
+      const topDoc = frameEl.contentDocument || (frameEl.contentWindow && frameEl.contentWindow.document);
+      let targetDoc = doc || topDoc;
+      if (!targetDoc) return fallback;
+
+      let subFrameOffsetLeft = 0;
+      let subFrameOffsetTop = 0;
+
+      // Detectar sub-iframe (#viewer) si existe en el documento raíz
+      if (topDoc) {
+        const viewerFrame = topDoc.querySelector ? topDoc.querySelector('iframe#viewer, iframe') : null;
+        if (viewerFrame) {
+          try {
+            const vDoc = viewerFrame.contentDocument || (viewerFrame.contentWindow && viewerFrame.contentWindow.document);
+            if (vDoc && (targetDoc === vDoc || targetDoc === topDoc)) {
+              if (vDoc.body) {
+                targetDoc = vDoc;
+                const vRect = viewerFrame.getBoundingClientRect();
+                subFrameOffsetLeft = vRect.left;
+                subFrameOffsetTop = vRect.top;
+              }
+            }
+          } catch (e) {}
+        }
+      }
+
+      function isElementVisible(el, d) {
+        if (!el || el.nodeType !== 1) return false;
+        try {
+          const win = d?.defaultView || window;
+          const st = win.getComputedStyle(el);
+          if (st.display === 'none' || st.visibility === 'hidden' || parseFloat(st.opacity) === 0) return false;
+          const r = el.getBoundingClientRect();
+          return r.width > 0 && r.height > 0;
+        } catch (e) {
+          return false;
+        }
+      }
+
+      let targetEl = null;
+
+      // 1. Contenedor de diapositiva activa específico
+      const activeSlide = targetDoc.querySelector ? targetDoc.querySelector('.slide.active, .slide-page.active, [data-slide].active, .swiper-slide-active, section.present') : null;
+      if (activeSlide && isElementVisible(activeSlide, targetDoc)) {
+        targetEl = activeSlide;
+      }
+
+      // 2. Etiqueta semántica principal
+      if (!targetEl && targetDoc.querySelector) {
+        const mainEl = targetDoc.querySelector('main, [role="main"]');
+        if (mainEl && isElementVisible(mainEl, targetDoc)) {
+          targetEl = mainEl;
+        }
+      }
+
+      // 3. Bloque contenedor centrado cuyo ancho sea menor al 96% pero mayor a 320px
+      if (!targetEl && targetDoc.querySelectorAll) {
+        const vpWidth = (targetDoc.defaultView ? targetDoc.defaultView.innerWidth : targetDoc.documentElement?.clientWidth) || frameRect.width;
+        const candidates = targetDoc.querySelectorAll('.slide, .slide-container, #slide-container, .lesson-container, .content-container, .container, [class*="slide"], [class*="lesson"]');
+        for (const c of candidates) {
+          if (isElementVisible(c, targetDoc)) {
+            const cr = c.getBoundingClientRect();
+            if (cr.width >= 320 && cr.width < vpWidth * 0.96 && cr.height >= 180) {
+              targetEl = c;
+              break;
+            }
+          }
+        }
+      }
+
+      // 4. Fallback a body o documentElement
+      if (!targetEl) {
+        targetEl = targetDoc.body || targetDoc.documentElement;
+      }
+
+      if (targetEl && typeof targetEl.getBoundingClientRect === 'function') {
+        const elRect = targetEl.getBoundingClientRect();
+        return {
+          left: subFrameOffsetLeft + elRect.left,
+          top: subFrameOffsetTop + elRect.top,
+          width: Math.max(1, elRect.width),
+          height: Math.max(1, elRect.height)
+        };
+      }
+
+      return fallback;
+    }
+
       function handleStudentTeacherLaserEvent(payload) {
         if (!isAdmittedToClass || !payload) return;
         const laser = document.getElementById('studentTeacherLaserDot');
@@ -3165,11 +3257,27 @@
           return;
         }
 
+        const studentFrameEl = document.getElementById('studentFrame') || studentFrame;
+        const studentFrameContainer = document.getElementById('studentFrameContainer');
+        if (!studentFrameEl || !studentFrameContainer) return;
+
+        const frameRect = studentFrameEl.getBoundingClientRect();
+        const containerRect = studentFrameContainer.getBoundingClientRect();
+        const frameOffsetX = frameRect.left - containerRect.left;
+        const frameOffsetY = frameRect.top - containerRect.top;
+
+        const studentDoc = studentFrameEl.contentDocument || (studentFrameEl.contentWindow && studentFrameEl.contentWindow.document);
+        const contentBox = getLessonContentBounds(studentDoc, studentFrameEl);
+
         const rx = typeof payload.rx === 'number' ? Math.max(0, Math.min(1, payload.rx)) : 0.5;
         const ry = typeof payload.ry === 'number' ? Math.max(0, Math.min(1, payload.ry)) : 0.5;
 
-        laser.style.left = (rx * 100) + '%';
-        laser.style.top = (ry * 100) + '%';
+        // Posicionamiento calibrado exacto sobre el contenedor de la lección
+        const targetX = frameOffsetX + contentBox.left + (rx * contentBox.width);
+        const targetY = frameOffsetY + contentBox.top + (ry * contentBox.height);
+
+        laser.style.left = targetX + 'px';
+        laser.style.top = targetY + 'px';
         laser.style.opacity = '1';
 
         if (payload.clickPulse) {

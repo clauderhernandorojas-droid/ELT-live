@@ -2588,34 +2588,144 @@
     let lastTeacherLaserSendTime = 0;
     let isTeacherLaserActive = false;
 
+    function getLessonContentBounds(doc, frameEl) {
+      if (!frameEl) return { left: 0, top: 0, width: 1, height: 1 };
+      const frameRect = frameEl.getBoundingClientRect();
+      const fallback = { left: 0, top: 0, width: Math.max(1, frameRect.width), height: Math.max(1, frameRect.height) };
+
+      const topDoc = frameEl.contentDocument || (frameEl.contentWindow && frameEl.contentWindow.document);
+      let targetDoc = doc || topDoc;
+      if (!targetDoc) return fallback;
+
+      let subFrameOffsetLeft = 0;
+      let subFrameOffsetTop = 0;
+
+      // Detectar sub-iframe (#viewer) si existe en el documento raíz
+      if (topDoc) {
+        const viewerFrame = topDoc.querySelector ? topDoc.querySelector('iframe#viewer, iframe') : null;
+        if (viewerFrame) {
+          try {
+            const vDoc = viewerFrame.contentDocument || (viewerFrame.contentWindow && viewerFrame.contentWindow.document);
+            if (vDoc && (targetDoc === vDoc || targetDoc === topDoc)) {
+              if (vDoc.body) {
+                targetDoc = vDoc;
+                const vRect = viewerFrame.getBoundingClientRect();
+                subFrameOffsetLeft = vRect.left;
+                subFrameOffsetTop = vRect.top;
+              }
+            }
+          } catch (e) {}
+        }
+      }
+
+      function isElementVisible(el, d) {
+        if (!el || el.nodeType !== 1) return false;
+        try {
+          const win = d?.defaultView || window;
+          const st = win.getComputedStyle(el);
+          if (st.display === 'none' || st.visibility === 'hidden' || parseFloat(st.opacity) === 0) return false;
+          const r = el.getBoundingClientRect();
+          return r.width > 0 && r.height > 0;
+        } catch (e) {
+          return false;
+        }
+      }
+
+      let targetEl = null;
+
+      // 1. Contenedor de diapositiva activa específico
+      const activeSlide = targetDoc.querySelector ? targetDoc.querySelector('.slide.active, .slide-page.active, [data-slide].active, .swiper-slide-active, section.present') : null;
+      if (activeSlide && isElementVisible(activeSlide, targetDoc)) {
+        targetEl = activeSlide;
+      }
+
+      // 2. Etiqueta semántica principal
+      if (!targetEl && targetDoc.querySelector) {
+        const mainEl = targetDoc.querySelector('main, [role="main"]');
+        if (mainEl && isElementVisible(mainEl, targetDoc)) {
+          targetEl = mainEl;
+        }
+      }
+
+      // 3. Bloque contenedor centrado cuyo ancho sea menor al 96% pero mayor a 320px
+      if (!targetEl && targetDoc.querySelectorAll) {
+        const vpWidth = (targetDoc.defaultView ? targetDoc.defaultView.innerWidth : targetDoc.documentElement?.clientWidth) || frameRect.width;
+        const candidates = targetDoc.querySelectorAll('.slide, .slide-container, #slide-container, .lesson-container, .content-container, .container, [class*="slide"], [class*="lesson"]');
+        for (const c of candidates) {
+          if (isElementVisible(c, targetDoc)) {
+            const cr = c.getBoundingClientRect();
+            if (cr.width >= 320 && cr.width < vpWidth * 0.96 && cr.height >= 180) {
+              targetEl = c;
+              break;
+            }
+          }
+        }
+      }
+
+      // 4. Fallback a body o documentElement
+      if (!targetEl) {
+        targetEl = targetDoc.body || targetDoc.documentElement;
+      }
+
+      if (targetEl && typeof targetEl.getBoundingClientRect === 'function') {
+        const elRect = targetEl.getBoundingClientRect();
+        return {
+          left: subFrameOffsetLeft + elRect.left,
+          top: subFrameOffsetTop + elRect.top,
+          width: Math.max(1, elRect.width),
+          height: Math.max(1, elRect.height)
+        };
+      }
+
+      return fallback;
+    }
+
     function getNormalizedLessonPointerCoords(e, sourceDoc) {
-      if (!hostFrame) return null;
-      const frameRect = hostFrame.getBoundingClientRect();
+      const hostFrameEl = document.getElementById('hostFrame') || hostFrame;
+      const hostFrameContainer = document.getElementById('hostFrameContainer');
+      if (!hostFrameEl || !hostFrameContainer) return null;
+
+      const frameRect = hostFrameEl.getBoundingClientRect();
+      const containerRect = hostFrameContainer.getBoundingClientRect();
       if (frameRect.width <= 0 || frameRect.height <= 0) return null;
 
-      let clientX = e.clientX;
-      let clientY = e.clientY;
+      const frameOffsetX = frameRect.left - containerRect.left;
+      const frameOffsetY = frameRect.top - containerRect.top;
+
+      let relX = 0;
+      let relY = 0;
 
       if (sourceDoc && sourceDoc !== document) {
-        const rootDoc = hostFrame.contentDocument;
+        let subFrameOffsetLeft = 0;
+        let subFrameOffsetTop = 0;
+
+        const rootDoc = hostFrameEl.contentDocument || (hostFrameEl.contentWindow && hostFrameEl.contentWindow.document);
         if (sourceDoc !== rootDoc) {
           const viewerFrame = rootDoc?.querySelector('iframe#viewer, iframe');
           if (viewerFrame && (sourceDoc === viewerFrame.contentDocument || sourceDoc === viewerFrame.contentWindow?.document)) {
             const vRect = viewerFrame.getBoundingClientRect();
-            clientX += vRect.left;
-            clientY += vRect.top;
+            subFrameOffsetLeft = vRect.left;
+            subFrameOffsetTop = vRect.top;
           }
         }
-        const rx = Math.max(0, Math.min(1, clientX / (hostFrame.clientWidth || frameRect.width)));
-        const ry = Math.max(0, Math.min(1, clientY / (hostFrame.clientHeight || frameRect.height)));
-        return { rx, ry };
+
+        relX = subFrameOffsetLeft + e.clientX;
+        relY = subFrameOffsetTop + e.clientY;
       } else {
-        const relX = clientX - frameRect.left;
-        const relY = clientY - frameRect.top;
-        const rx = Math.max(0, Math.min(1, relX / frameRect.width));
-        const ry = Math.max(0, Math.min(1, relY / frameRect.height));
-        return { rx, ry };
+        relX = e.clientX - frameRect.left;
+        relY = e.clientY - frameRect.top;
       }
+
+      const contentBox = getLessonContentBounds(sourceDoc || hostFrameEl.contentDocument, hostFrameEl);
+
+      const rx = Math.max(0, Math.min(1, (relX - contentBox.left) / contentBox.width));
+      const ry = Math.max(0, Math.min(1, (relY - contentBox.top) / contentBox.height));
+
+      // Coordenadas relativas exactas dentro de #hostFrameContainer para el halo del profesor
+      const containerX = frameOffsetX + relX;
+      const containerY = frameOffsetY + relY;
+
+      return { rx, ry, relX, relY, containerX, containerY };
     }
 
     function handleTeacherLaserMove(e, sourceDoc) {
@@ -2625,8 +2735,8 @@
 
       const halo = document.getElementById('hostTeacherLaserHalo');
       if (halo) {
-        halo.style.left = (coords.rx * 100) + '%';
-        halo.style.top = (coords.ry * 100) + '%';
+        halo.style.left = coords.containerX + 'px';
+        halo.style.top = coords.containerY + 'px';
         halo.style.opacity = '1';
       }
 
@@ -2650,8 +2760,8 @@
 
       const halo = document.getElementById('hostTeacherLaserHalo');
       if (halo) {
-        halo.style.left = (coords.rx * 100) + '%';
-        halo.style.top = (coords.ry * 100) + '%';
+        halo.style.left = coords.containerX + 'px';
+        halo.style.top = coords.containerY + 'px';
         halo.style.opacity = '1';
         halo.style.transform = 'translate(-50%, -50%) scale(1.9)';
         setTimeout(() => {

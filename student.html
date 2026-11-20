@@ -448,6 +448,13 @@
       <button id="joinBtn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl text-sm transition shadow-sm">
         Entrar a la Clase
       </button>
+
+      <!-- Enlace discreto para cambiar de perfil si se comparte computador -->
+      <div id="studentSwitchProfileContainer" class="hidden text-center pt-1">
+        <button id="btnSwitchStudentProfile" type="button" class="text-[11px] text-slate-500 hover:text-indigo-600 transition underline underline-offset-2 cursor-pointer">
+          ¿No eres <span id="switchProfileNameLabel" class="font-semibold text-slate-700">Alumno</span>? Cambiar datos
+        </button>
+      </div>
     </div>
   </div>
 
@@ -2694,6 +2701,9 @@
       }
       document.getElementById('waitingRoomScreen').classList.add('hidden');
       document.getElementById('joinScreen').classList.remove('hidden');
+      if (typeof restoreStudentCredentials === 'function') {
+        restoreStudentCredentials();
+      }
     });
 
     let currentRoomPin = null;
@@ -2829,7 +2839,11 @@
 
       // Persistir nombre y PIN de la sala de forma segura para recordar la sesión
       try {
-        safeStorage.setItem('elt_student_name', myName);
+        if (typeof saveStudentProfile === 'function') {
+          saveStudentProfile({ name: myName });
+        } else {
+          safeStorage.setItem('elt_student_name', myName);
+        }
         safeStorage.setItem('elt_student_pin', pin);
       } catch (err) {}
 
@@ -3076,6 +3090,9 @@
           }
           document.getElementById('waitingRoomScreen').classList.add('hidden');
           document.getElementById('joinScreen').classList.remove('hidden');
+          if (typeof restoreStudentCredentials === 'function') {
+            restoreStudentCredentials();
+          }
           alert('El acceso a la sala fue denegado por el profesor.');
         }
       });
@@ -3348,14 +3365,55 @@
     }
 
     document.getElementById('joinBtn').addEventListener('click', () => {
-      myName = document.getElementById('studentNameInput').value.trim();
-      const pin = document.getElementById('roomPinInput').value.trim();
+      const nameInput = document.getElementById('studentNameInput');
+      const pinInput = document.getElementById('roomPinInput');
+      myName = (nameInput ? nameInput.value : '').trim();
+      const pin = (pinInput ? pinInput.value : '').trim();
+
+      // (a) Guardado inmediato e incondicional en localStorage al hacer clic antes de conectar a Supabase
+      if (myName && typeof saveStudentProfile === 'function') {
+        saveStudentProfile({ name: myName });
+      }
 
       if (!myName || pin.length !== 4) {
         alert("Ingresa tu nombre y el PIN de 4 dígitos.");
+        if (!myName && nameInput) nameInput.focus();
+        else if (pin.length !== 4 && pinInput) pinInput.focus();
         return;
       }
       initiateStudentSession(pin, myName, false);
+    });
+
+    // (b) Guardado reactivo al escribir o confirmar en el campo de nombre del estudiante
+    const studentNameInputEl = document.getElementById('studentNameInput');
+    if (studentNameInputEl) {
+      studentNameInputEl.addEventListener('input', (e) => {
+        const val = (e.target.value || '').trim();
+        if (val.length >= 2 && typeof saveStudentProfile === 'function') {
+          saveStudentProfile({ name: val });
+        } else if (!val && typeof updateSwitchProfileUI === 'function') {
+          updateSwitchProfileUI('');
+        }
+      });
+      studentNameInputEl.addEventListener('change', (e) => {
+        const val = (e.target.value || '').trim();
+        if (val && typeof saveStudentProfile === 'function') {
+          saveStudentProfile({ name: val });
+        }
+      });
+      studentNameInputEl.addEventListener('blur', (e) => {
+        const val = (e.target.value || '').trim();
+        if (val && typeof saveStudentProfile === 'function') {
+          saveStudentProfile({ name: val });
+        }
+      });
+    }
+
+    document.getElementById('btnSwitchStudentProfile')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (typeof clearStudentProfile === 'function') {
+        clearStudentProfile();
+      }
     });
 
     // ==================== MOTOR DE PIZARRA COLABORATIVA ZOOM STYLE (ESTUDIANTE) ====================
@@ -9939,6 +9997,11 @@ window.setVideoStripMinimized = function(minimized) {
         safeStorage.removeItem('elt_student_pin');
         sessionStorage.removeItem('elt_active_session');
       } catch (e) {}
+
+      // Restaurar credenciales y perfil guardado al volver al lobby
+      if (typeof restoreStudentCredentials === 'function') {
+        restoreStudentCredentials();
+      }
     }
 
     document.getElementById('bottomEndBtn')?.addEventListener('click', async () => {
@@ -10103,22 +10166,113 @@ window.setVideoStripMinimized = function(minimized) {
     centerWhiteboardView(1);
     updateWbOverlayInteractivity();
 
-    // Autorrellenar nombre y PIN si están guardados de forma segura
-    (function restoreStudentCredentials() {
+    // ==================== PERSISTENCIA Y BLINDAJE DE PERFIL DEL ESTUDIANTE ====================
+    const STUDENT_PROFILE_STORAGE_KEY = 'elt_student_profile_v1';
+
+    function getSavedStudentProfile() {
       try {
-        const savedName = safeStorage.getItem('elt_student_name');
-        const savedPin = safeStorage.getItem('elt_student_pin');
+        const raw = safeStorage.getItem(STUDENT_PROFILE_STORAGE_KEY) || safeStorage.getItem('elt_student_profile');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === 'object' && parsed.name) {
+            return parsed;
+          }
+        }
+      } catch (e) {}
+
+      try {
+        const legacyName = safeStorage.getItem('elt_student_name');
+        if (legacyName && typeof legacyName === 'string' && legacyName.trim()) {
+          return { name: legacyName.trim(), email: '', updatedAt: Date.now() };
+        }
+      } catch (e) {}
+
+      return null;
+    }
+
+    function saveStudentProfile(profileData) {
+      if (!profileData || typeof profileData !== 'object') return;
+      const cleanName = typeof profileData.name === 'string' ? profileData.name.trim() : '';
+      if (!cleanName) return;
+
+      const profile = {
+        name: cleanName,
+        email: typeof profileData.email === 'string' ? profileData.email.trim() : '',
+        updatedAt: Date.now()
+      };
+
+      try {
+        safeStorage.setItem(STUDENT_PROFILE_STORAGE_KEY, JSON.stringify(profile));
+        safeStorage.setItem('elt_student_name', cleanName);
+      } catch (e) {
+        console.warn('[ELT Live] Error guardando perfil de estudiante:', e);
+      }
+
+      updateSwitchProfileUI(cleanName);
+    }
+
+    function clearStudentProfile() {
+      try {
+        safeStorage.removeItem(STUDENT_PROFILE_STORAGE_KEY);
+        safeStorage.removeItem('elt_student_profile');
+        safeStorage.removeItem('elt_student_name');
+      } catch (e) {}
+
+      const nameInput = document.getElementById('studentNameInput');
+      if (nameInput) {
+        nameInput.value = '';
+        nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+        nameInput.focus();
+      }
+      updateSwitchProfileUI('');
+    }
+
+    function updateSwitchProfileUI(currentName) {
+      const switchContainer = document.getElementById('studentSwitchProfileContainer');
+      const switchNameLabel = document.getElementById('switchProfileNameLabel');
+      if (!switchContainer) return;
+
+      const nameToShow = (currentName || '').trim();
+      if (nameToShow) {
+        if (switchNameLabel) switchNameLabel.textContent = nameToShow;
+        switchContainer.classList.remove('hidden');
+      } else {
+        switchContainer.classList.add('hidden');
+      }
+    }
+
+    function restoreStudentCredentials() {
+      try {
+        const profile = getSavedStudentProfile();
         const nameInput = document.getElementById('studentNameInput');
         const pinInput = document.getElementById('roomPinInput');
 
-        if (savedName && nameInput && !nameInput.value) {
-          nameInput.value = savedName;
+        if (profile && profile.name && nameInput) {
+          if (!nameInput.value || nameInput.value.trim() !== profile.name) {
+            nameInput.value = profile.name;
+          }
+          // Disparar evento input para activar validaciones y estados reactivos inmediatamente
+          nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+          updateSwitchProfileUI(profile.name);
         }
-        if (savedPin && pinInput && !pinInput.value) {
-          pinInput.value = savedPin;
+
+        // Si ya hay un nombre cargado, enfocar automáticamente el campo del PIN
+        if (nameInput && nameInput.value.trim() && pinInput && !pinInput.value) {
+          setTimeout(() => {
+            try { pinInput.focus(); } catch (e) {}
+          }, 60);
         }
-      } catch (err) {}
-    })();
+      } catch (err) {
+        console.warn('[ELT Live] Error restaurando credenciales de estudiante:', err);
+      }
+    }
+
+    // Inicializar restauración en carga inmediata y en DOMContentLoaded
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', restoreStudentCredentials);
+    } else {
+      restoreStudentCredentials();
+    }
 
     // ==================== RESILIENCIA ANTE SEÑAL DÉBIL Y SEGUNDO PLANO EN MÓVILES ====================
     let isRestoringConnection = false;

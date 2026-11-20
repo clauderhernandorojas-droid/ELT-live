@@ -3035,10 +3035,13 @@
           const allElements = doc.querySelectorAll('*');
           for (let i = 0; i < allElements.length; i++) {
             const el = allElements[i];
-            if (!el || el.nodeType !== 1 || el.offsetParent === null) continue;
+            if (!el || el.nodeType !== 1) continue;
             if ((el.scrollHeight - el.clientHeight) <= 4) continue;
             try {
-              const oy = win.getComputedStyle(el).overflowY;
+              const st = win.getComputedStyle(el);
+              const isVisible = st.display !== 'none' && st.visibility !== 'hidden' && (typeof el.getClientRects === 'function' ? el.getClientRects().length > 0 : true);
+              if (!isVisible) continue;
+              const oy = st.overflowY;
               if (oy === 'auto' || oy === 'scroll' || oy === 'overlay') {
                 list.push(el);
               }
@@ -3082,34 +3085,62 @@
         try {
           const action = payload.action;
           if (action === 'scroll') {
-            const containers = getOrderedScrollableContainers(targetDoc);
+            let containers = getOrderedScrollableContainers(targetDoc);
+            let activeDoc = targetDoc;
+
+            // Búsqueda cruzada en sub-iframe (#viewer) para soportar lecciones anidadas
+            const viewerFrame = (targetDoc !== rootDoc ? targetDoc : rootDoc).querySelector('iframe#viewer, iframe');
+            let viewerDoc = null;
+            if (viewerFrame) {
+              try {
+                viewerDoc = viewerFrame.contentDocument || (viewerFrame.contentWindow && viewerFrame.contentWindow.document);
+              } catch (e) {}
+            }
+            const viewerContainers = viewerDoc ? getOrderedScrollableContainers(viewerDoc) : [];
+
+            if (containers.length === 0 && viewerContainers.length > 0) {
+              containers = viewerContainers;
+              activeDoc = viewerDoc;
+            }
+
             let targetScrollEl = null;
 
-            // 1. Prioridad: Índice ordenado de contenedores scrollables (soporte para 2+ columnas)
-            if (typeof payload.scrollableIndex === 'number' && payload.scrollableIndex >= 0 && containers[payload.scrollableIndex]) {
-              targetScrollEl = containers[payload.scrollableIndex];
+            // 1. Prioridad: Índice ordenado de contenedores scrollables (en targetDoc o viewerDoc)
+            if (typeof payload.scrollableIndex === 'number' && payload.scrollableIndex >= 0) {
+              if (containers[payload.scrollableIndex]) {
+                targetScrollEl = containers[payload.scrollableIndex];
+              } else if (viewerContainers[payload.scrollableIndex]) {
+                targetScrollEl = viewerContainers[payload.scrollableIndex];
+                activeDoc = viewerDoc;
+              }
             }
 
             // 2. Prioridad: Selector CSS enviado por el profesor
             if (!targetScrollEl && payload.selector && payload.selector !== '__ROOT__') {
               try {
-                const el = targetDoc.querySelector(payload.selector);
+                let el = targetDoc.querySelector(payload.selector);
                 if (el && (el.scrollHeight - el.clientHeight) > 4) {
                   targetScrollEl = el;
+                } else if (viewerDoc) {
+                  el = viewerDoc.querySelector(payload.selector);
+                  if (el && (el.scrollHeight - el.clientHeight) > 4) {
+                    targetScrollEl = el;
+                    activeDoc = viewerDoc;
+                  }
                 }
               } catch (e) {}
             }
 
             // 3. Prioridad: Primer contenedor scrollable detectado o documento raíz
             if (!targetScrollEl) {
-              targetScrollEl = containers[0] || targetDoc.scrollingElement || targetDoc.documentElement || targetDoc.body;
+              targetScrollEl = containers[0] || viewerContainers[0] || activeDoc.scrollingElement || activeDoc.documentElement || activeDoc.body;
             }
 
             if (targetScrollEl) {
               const maxScroll = Math.max(0, targetScrollEl.scrollHeight - targetScrollEl.clientHeight);
               const targetTop = (payload.ratioY || 0) * maxScroll;
-              if (targetScrollEl === targetDoc.documentElement || targetScrollEl === targetDoc.body || targetScrollEl === targetDoc.scrollingElement) {
-                const targetWin = targetDoc.defaultView || window;
+              if (targetScrollEl === activeDoc.documentElement || targetScrollEl === activeDoc.body || targetScrollEl === activeDoc.scrollingElement) {
+                const targetWin = activeDoc.defaultView || window;
                 targetWin.scrollTo({ top: targetTop, behavior: 'smooth' });
               } else if (typeof targetScrollEl.scrollTo === 'function') {
                 targetScrollEl.scrollTo({ top: targetTop, behavior: 'smooth' });

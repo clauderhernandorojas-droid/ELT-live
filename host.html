@@ -2314,10 +2314,13 @@
         const allElements = doc.querySelectorAll('*');
         for (let i = 0; i < allElements.length; i++) {
           const el = allElements[i];
-          if (!el || el.nodeType !== 1 || el.offsetParent === null) continue;
+          if (!el || el.nodeType !== 1) continue;
           if ((el.scrollHeight - el.clientHeight) <= 4) continue;
           try {
-            const oy = win.getComputedStyle(el).overflowY;
+            const st = win.getComputedStyle(el);
+            const isVisible = st.display !== 'none' && st.visibility !== 'hidden' && (typeof el.getClientRects === 'function' ? el.getClientRects().length > 0 : true);
+            if (!isVisible) continue;
+            const oy = st.overflowY;
             if (oy === 'auto' || oy === 'scroll' || oy === 'overlay') {
               list.push(el);
             }

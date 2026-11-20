@@ -790,28 +790,31 @@
   <!-- ==================== FIN LOBBY INICIAL ==================== -->
 
   <!-- Barra Superior Compacta (Estilo Centro de Mando Unificado — Oculta mientras está el Lobby) -->
-  <header id="liveClassHeader" class="hidden bg-[#090d16] px-4 py-1.5 flex items-center justify-between border-b border-slate-800/80 flex-shrink-0 z-40">
-    <div class="flex items-center gap-3">
-      <button id="btnBackToLobby" type="button" class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-bold px-2.5 py-1 rounded-lg border border-slate-700 flex items-center gap-1.5 transition" title="Volver al Lobby de Agendamiento">
-        <i class="fa-solid fa-calendar-day text-indigo-400"></i>
-        <span>Lobby</span>
-      </button>
-      <span class="bg-indigo-600 text-white text-[10px] font-black px-2 py-0.5 rounded tracking-wider">HOST</span>
-      <div class="flex flex-col leading-tight">
-        <div class="flex items-center gap-2">
-          <h1 id="liveSessionTitleLabel" class="text-xs font-bold text-white">ELT Live — Centro de Mando</h1>
-          <span id="slideStatusBadge" class="text-[10px] font-semibold px-2 py-0.2 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 hidden">
-            ● Diapositiva <span id="currentSlideLabel" class="font-bold">1</span>
-          </span>
-          <button id="btnToggleTeacherGuided" type="button" onclick="window.toggleTeacherGuidedMode()" class="hidden text-[11px] font-bold px-2.5 py-1 rounded-lg border transition flex items-center gap-1.5 cursor-pointer bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border-emerald-700/70" title="Alternar entre Guiar Clase (alumnos siguen tus clics y scroll) y Práctica Libre"><span id="teacherGuidedBtnIcon">🔓</span><span id="teacherGuidedBtnLabel">Práctica Libre</span></button>
-        </div>
-        <div class="flex items-center gap-1.5 text-[11px] text-slate-400 whitespace-nowrap">
-          <span>Session Title with PIN:</span>
-          <span id="roomPinDisplay" onclick="window.copyRoomPinToClipboard()" class="font-mono font-bold text-slate-200 hover:text-indigo-300 cursor-pointer transition" title="Clic para copiar el PIN de 4 dígitos">#----</span>
+  <header id="liveClassHeader" class="hidden bg-[#090d16] px-3.5 py-1.5 flex items-center justify-between border-b border-slate-800/80 flex-shrink-0 z-40">
+    <div class="flex items-center gap-2.5">
+      <!-- Bloque izquierdo (HOST + Lobby apilados) -->
+      <div class="flex flex-col items-center justify-center gap-0.5 shrink-0">
+        <span class="bg-indigo-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded tracking-wider leading-none">HOST</span>
+        <button id="btnBackToLobby" type="button" class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-bold px-2 py-0.5 rounded border border-slate-700 flex items-center gap-1 transition cursor-pointer" title="Volver al Lobby de Agendamiento">
+          <i class="fa-solid fa-calendar-day text-indigo-400 text-[10px]"></i>
+          <span>Lobby</span>
+        </button>
+      </div>
+
+      <!-- PIN y controles de diapositiva / guiar clase -->
+      <div class="flex items-center gap-2.5 whitespace-nowrap">
+        <div class="flex items-center gap-1.5 text-[11px] text-slate-400">
+          <span class="font-semibold text-slate-300">PIN:</span>
+          <span id="roomPinDisplay" onclick="window.copyRoomPinToClipboard()" class="font-mono font-bold text-slate-100 hover:text-indigo-300 cursor-pointer transition text-xs" title="Clic para copiar el PIN de 4 dígitos">#----</span>
           <button id="btnCopyRoomPin" type="button" onclick="window.copyRoomPinToClipboard()" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-800/90 hover:bg-indigo-600 border border-slate-700 hover:border-indigo-400 text-slate-200 hover:text-white text-[10px] font-bold transition cursor-pointer" title="Copiar PIN al portapapeles">
             <span id="copyRoomPinBtnLabel">📋</span>
           </button>
         </div>
+        <span id="liveSessionTitleLabel" class="hidden"></span>
+        <span id="slideStatusBadge" class="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 hidden">
+          ● Diapositiva <span id="currentSlideLabel" class="font-bold">1</span>
+        </span>
+        <button id="btnToggleTeacherGuided" type="button" onclick="window.toggleTeacherGuidedMode()" class="hidden text-[11px] font-bold px-2.5 py-0.5 rounded-lg border transition flex items-center gap-1.5 cursor-pointer bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border-emerald-700/70" title="Alternar entre Guiar Clase (alumnos siguen tus clics y scroll) y Práctica Libre"><span id="teacherGuidedBtnIcon">🔓</span><span id="teacherGuidedBtnLabel">Práctica Libre</span></button>
       </div>
     </div>
 
@@ -850,15 +853,11 @@
         Iniciar Sala
       </button>
 
-      <!-- Píldora de Estado Derecha (Waiting for followers... Stop) -->
-      <div class="bg-[#0d6e7a] text-white pl-3 pr-1.5 py-1 rounded-full shadow flex items-center gap-2.5 text-xs font-medium border border-cyan-400/30">
-        <span class="flex items-center gap-1.5">
-          <span class="w-2.5 h-2.5 rounded-full bg-emerald-300 animate-pulse"></span>
-          <span id="wbSyncBannerText" class="text-[11px] font-semibold">Waiting for followers...</span>
-        </span>
-        <button id="wbBannerStopBtn" type="button" class="bg-[#084c54] hover:bg-[#05353b] text-white px-2.5 py-0.5 rounded-full text-[11px] font-bold transition">
-          Stop
-        </button>
+      <!-- Píldora de Estado Derecha Compacta -->
+      <div id="roomStatusPill" class="bg-emerald-950/80 text-emerald-300 px-2.5 py-1 rounded-full shadow flex items-center gap-1.5 text-xs font-medium border border-emerald-700/60" title="Estado de la Sala">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
+        <span id="wbSyncBannerText" class="text-[11px] font-bold">Activa</span>
+        <button id="wbBannerStopBtn" type="button" class="hidden" aria-hidden="true"></button>
       </div>
     </div>
   </header>
@@ -921,6 +920,7 @@
 
       <!-- Área Didáctica Unificada (Lecciones Interactivas + Lienzo de Pizarra Colaborativa) -->
       <div id="hostFrameContainer" class="flex-1 min-h-0 w-full bg-white flex flex-col relative overflow-hidden">
+        <div id="hostTeacherLaserHalo" class="pointer-events-none absolute opacity-0" style="z-index: 45; width: 16px; height: 16px; border-radius: 9999px; border: 2px solid rgba(255, 42, 85, 0.85); box-shadow: 0 0 10px 2px rgba(255, 42, 85, 0.55); transform: translate(-50%, -50%); transition: left 40ms linear, top 40ms linear, opacity 150ms ease;"></div>
         <div id="teacherGuidedBanner" class="hidden absolute top-2.5 left-1/2 -translate-x-1/2 z-40 bg-amber-950/95 border border-amber-500/80 text-amber-100 text-xs font-semibold px-3.5 py-1.5 rounded-full shadow-xl flex items-center gap-2.5 backdrop-blur-xs transition-all"><span id="teacherGuidedBannerText">🔒 Guiando pantalla de alumnos</span><button type="button" onclick="window.toggleTeacherGuidedMode(false)" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[11px] px-2.5 py-0.5 rounded-full transition cursor-pointer">Pasar a Práctica Libre</button></div>
         <iframe id="hostFrame" class="w-full h-full border-0 bg-white"></iframe>
         
@@ -2369,6 +2369,9 @@
         startTeacherGuidedScrollWatcher();
       } else {
         stopTeacherGuidedScrollWatcher();
+        if (typeof handleTeacherLaserLeave === 'function') {
+          handleTeacherLaserLeave();
+        }
       }
 
       const btn = document.getElementById('btnToggleTeacherGuided');
@@ -2573,6 +2576,113 @@
       return path.join(' > ');
     }
 
+    // ==================== PUNTERO LÁSER ESTILO ZOOM EN MODO GUIAR CLASE ====================
+    let lastTeacherLaserSendTime = 0;
+    let isTeacherLaserActive = false;
+
+    function getNormalizedLessonPointerCoords(e, sourceDoc) {
+      if (!hostFrame) return null;
+      const frameRect = hostFrame.getBoundingClientRect();
+      if (frameRect.width <= 0 || frameRect.height <= 0) return null;
+
+      let clientX = e.clientX;
+      let clientY = e.clientY;
+
+      if (sourceDoc && sourceDoc !== document) {
+        const rootDoc = hostFrame.contentDocument;
+        if (sourceDoc !== rootDoc) {
+          const viewerFrame = rootDoc?.querySelector('iframe#viewer, iframe');
+          if (viewerFrame && (sourceDoc === viewerFrame.contentDocument || sourceDoc === viewerFrame.contentWindow?.document)) {
+            const vRect = viewerFrame.getBoundingClientRect();
+            clientX += vRect.left;
+            clientY += vRect.top;
+          }
+        }
+        const rx = Math.max(0, Math.min(1, clientX / (hostFrame.clientWidth || frameRect.width)));
+        const ry = Math.max(0, Math.min(1, clientY / (hostFrame.clientHeight || frameRect.height)));
+        return { rx, ry };
+      } else {
+        const relX = clientX - frameRect.left;
+        const relY = clientY - frameRect.top;
+        const rx = Math.max(0, Math.min(1, relX / frameRect.width));
+        const ry = Math.max(0, Math.min(1, relY / frameRect.height));
+        return { rx, ry };
+      }
+    }
+
+    function handleTeacherLaserMove(e, sourceDoc) {
+      if (!isTeacherGuidedMode) return;
+      const coords = getNormalizedLessonPointerCoords(e, sourceDoc);
+      if (!coords) return;
+
+      const halo = document.getElementById('hostTeacherLaserHalo');
+      if (halo) {
+        halo.style.left = (coords.rx * 100) + '%';
+        halo.style.top = (coords.ry * 100) + '%';
+        halo.style.opacity = '1';
+      }
+
+      if (!roomChannel) return;
+      const now = Date.now();
+      if (now - lastTeacherLaserSendTime < 50) return; // Throttle de 50 ms (~20 FPS)
+      lastTeacherLaserSendTime = now;
+      isTeacherLaserActive = true;
+
+      roomChannel.send({
+        type: 'broadcast',
+        event: 'TEACHER_LASER',
+        payload: { rx: coords.rx, ry: coords.ry, active: true, clickPulse: false }
+      });
+    }
+
+    function handleTeacherLaserClick(e, sourceDoc) {
+      if (!isTeacherGuidedMode) return;
+      const coords = getNormalizedLessonPointerCoords(e, sourceDoc);
+      if (!coords) return;
+
+      const halo = document.getElementById('hostTeacherLaserHalo');
+      if (halo) {
+        halo.style.left = (coords.rx * 100) + '%';
+        halo.style.top = (coords.ry * 100) + '%';
+        halo.style.opacity = '1';
+        halo.style.transform = 'translate(-50%, -50%) scale(1.9)';
+        setTimeout(() => {
+          if (halo) halo.style.transform = 'translate(-50%, -50%) scale(1)';
+        }, 180);
+      }
+
+      if (roomChannel) {
+        roomChannel.send({
+          type: 'broadcast',
+          event: 'TEACHER_LASER',
+          payload: { rx: coords.rx, ry: coords.ry, active: true, clickPulse: true }
+        });
+      }
+    }
+
+    function handleTeacherLaserLeave() {
+      const halo = document.getElementById('hostTeacherLaserHalo');
+      if (halo) halo.style.opacity = '0';
+      if (isTeacherLaserActive && roomChannel) {
+        isTeacherLaserActive = false;
+        roomChannel.send({
+          type: 'broadcast',
+          event: 'TEACHER_LASER',
+          payload: { active: false }
+        });
+      }
+    }
+
+    // Escuchar eventos directos sobre el contenedor del visor de la lección
+    (function initHostLaserContainerListeners() {
+      const hostFrameContainerEl = document.getElementById('hostFrameContainer');
+      if (hostFrameContainerEl) {
+        hostFrameContainerEl.addEventListener('mousemove', (e) => handleTeacherLaserMove(e, document), { passive: true });
+        hostFrameContainerEl.addEventListener('click', (e) => handleTeacherLaserClick(e, document), true);
+        hostFrameContainerEl.addEventListener('mouseleave', () => handleTeacherLaserLeave());
+      }
+    })();
+
     function bindTeacherActionCapture(innerDoc) {
       if (!innerDoc || innerDoc.__teacherActionBound) return;
       innerDoc.__teacherActionBound = true;
@@ -2647,6 +2757,11 @@
       };
       innerDoc.addEventListener('input', onInputHandler, true);
       innerDoc.addEventListener('change', onInputHandler, true);
+
+      // 4. Puntero Láser estilo Zoom sincronizado
+      innerDoc.addEventListener('mousemove', (e) => handleTeacherLaserMove(e, innerDoc), { passive: true });
+      innerDoc.addEventListener('click', (e) => handleTeacherLaserClick(e, innerDoc), true);
+      innerDoc.addEventListener('mouseleave', () => handleTeacherLaserLeave());
     }
 
     function injectIntoHost(html) {
@@ -3255,12 +3370,12 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
           : 'ELT Live — Centro de Mando';
       }
 
-      // Mostrar aviso de Sala de Espera lista en el Panel de Resultados
+      // Estado de sala compacto
       const syncBanner = document.getElementById('wbSyncBannerText');
       if (syncBanner) {
         syncBanner.textContent = targetStudentName
-          ? `Esperando a ${targetStudentName} (PIN #${roomPin})...`
-          : `Sala #${roomPin} activa — Sala de Espera lista`;
+          ? `Con ${targetStudentName}`
+          : 'Activa';
       }
 
       // Reiniciar Sala de Espera y estudiantes admitidos para la nueva sesión
@@ -4640,7 +4755,7 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
           toggleBtn.innerHTML = '<span>📖 Volver a Lección</span>';
           toggleBtn.classList.add('bg-[#0e72ed]', 'text-white');
         }
-        if (syncBanner) syncBanner.textContent = 'Pizarra Colaborativa en Vivo';
+        if (syncBanner) syncBanner.textContent = 'Pizarra';
         updateWbOverlayInteractivity();
         setTimeout(() => {
           if (wbPanX === 0 && wbPanY === 0) centerWhiteboardView(1);
@@ -4651,7 +4766,7 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
           toggleBtn.innerHTML = '<span>🎨 Pizarra Blanca</span>';
           toggleBtn.classList.remove('bg-[#0e72ed]', 'text-white');
         }
-        if (syncBanner) syncBanner.textContent = 'Waiting for followers...';
+        if (syncBanner) syncBanner.textContent = (typeof roomPin !== 'undefined' && roomPin) ? 'Activa' : 'En espera';
         updateWbOverlayInteractivity();
       }
       if (typeof syncHostVideoGalleryMode === 'function') {
@@ -7081,6 +7196,9 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
           ? 'fa-solid fa-microphone text-sm text-emerald-400'
           : 'fa-solid fa-microphone-slash text-sm text-rose-400';
       }
+      if (!webrtcAudioEnabled && typeof updateVoiceGateVisualIndicator === 'function') {
+        updateVoiceGateVisualIndicator(false);
+      }
       if (audioLabel) {
         audioLabel.textContent = webrtcAudioEnabled ? 'Mute' : 'Audio';
       }
@@ -7395,8 +7513,20 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
       }
     }
 
-    // ==================== FILTRO DSP DE VOZ Y SUPRESIÓN DE RUIDO PROFESIONAL ====================
-    function applyVoiceNoiseReduction(rawStream) {
+    // ==================== PIPELINE DSP CON NOISE GATE REAL PARA WEBRTC ====================
+    function updateVoiceGateVisualIndicator(isOpen) {
+      const audioBtn = document.getElementById('bottomAudioBtn');
+      const cardMicBtn = document.getElementById('cardToggleMicBtn');
+      const active = Boolean(isOpen && typeof webrtcAudioEnabled !== 'undefined' && webrtcAudioEnabled);
+      if (audioBtn) {
+        audioBtn.style.boxShadow = active ? '0 0 0 2px #10b981' : '';
+      }
+      if (cardMicBtn) {
+        cardMicBtn.style.boxShadow = active ? '0 0 0 2px #10b981' : '';
+      }
+    }
+
+    function createVoiceNoiseGateStream(rawStream) {
       if (!rawStream) return rawStream;
       try {
         const audioTracks = typeof rawStream.getAudioTracks === 'function' ? rawStream.getAudioTracks() : [];
@@ -7409,41 +7539,89 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
         if (!AudioContextClass) return rawStream;
 
         if (!window._eltNoiseCtx || window._eltNoiseCtx.state === 'closed') {
-          window._eltNoiseCtx = new AudioContextClass();
+          try {
+            window._eltNoiseCtx = new AudioContextClass({ sampleRate: 48000 });
+          } catch (e) {
+            window._eltNoiseCtx = new AudioContextClass();
+          }
         }
         const ctx = window._eltNoiseCtx;
         if (ctx && ctx.state === 'suspended' && typeof ctx.resume === 'function') {
           ctx.resume().catch(() => {});
         }
 
-        // 1. Highpass Filter: elimina ruidos graves de ventilador, tráfico vehicular y golpes de mesa (< 85 Hz)
+        // 1. Highpass Filter (105 Hz, Q: 0.7): elimina zumbidos graves de ventilador, tráfico y golpes de mesa
         const highpass = ctx.createBiquadFilter();
         highpass.type = 'highpass';
-        highpass.frequency.value = 85;
-        highpass.Q.value = 0.7;
+        highpass.frequency.setValueAtTime(105, ctx.currentTime);
+        highpass.Q.setValueAtTime(0.7, ctx.currentTime);
 
-        // 2. Lowpass Filter: elimina estática electromagnética y siseo agudo (> 7500 Hz)
-        const lowpass = ctx.createBiquadFilter();
-        lowpass.type = 'lowpass';
-        lowpass.frequency.value = 7500;
-        lowpass.Q.value = 0.7;
-
-        // 3. Compresor de dinámica: nivela volumen de voz y atenúa piso de ruido ambiental
+        // 2. Compresor de dinámica: nivela picos de voz para que suene clara y pareja
         const compressor = ctx.createDynamicsCompressor();
-        compressor.threshold.value = -28;
-        compressor.knee.value = 12;
-        compressor.ratio.value = 4;
-        compressor.attack.value = 0.005;
-        compressor.release.value = 0.15;
+        compressor.threshold.setValueAtTime(-24, ctx.currentTime);
+        compressor.knee.setValueAtTime(12, ctx.currentTime);
+        compressor.ratio.setValueAtTime(4, ctx.currentTime);
+        compressor.attack.setValueAtTime(0.005, ctx.currentTime);
+        compressor.release.setValueAtTime(0.15, ctx.currentTime);
+
+        // 3. Compuerta de Ruido (Noise Gate) con GainNode y AnalyserNode
+        const gateGain = ctx.createGain();
+        gateGain.gain.setValueAtTime(0.02, ctx.currentTime); // Inicia cerrado atenuando piso de ruido
+
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 512;
+        analyser.smoothingTimeConstant = 0.2;
 
         const audioOnlyStream = new MediaStream([rawTrack]);
         const sourceNode = ctx.createMediaStreamSource(audioOnlyStream);
         const destinationNode = ctx.createMediaStreamDestination();
 
         sourceNode.connect(highpass);
-        highpass.connect(lowpass);
-        lowpass.connect(compressor);
-        compressor.connect(destinationNode);
+        highpass.connect(compressor);
+        compressor.connect(gateGain);
+        compressor.connect(analyser);
+        gateGain.connect(destinationNode);
+
+        // Algoritmo de detección RMS en banda de voz con retención suave
+        const timeData = new Float32Array(analyser.fftSize);
+        const voiceThreshold = 0.014;
+        let holdUntil = 0;
+        let isGateOpen = false;
+
+        const gateIntervalId = setInterval(() => {
+          if (rawTrack.readyState === 'ended' || !rawTrack.enabled || (typeof webrtcAudioEnabled !== 'undefined' && !webrtcAudioEnabled)) {
+            if (isGateOpen) {
+              isGateOpen = false;
+              try { gateGain.gain.setTargetAtTime(0.02, ctx.currentTime, 0.04); } catch (e) {}
+              updateVoiceGateVisualIndicator(false);
+            }
+            return;
+          }
+
+          analyser.getFloatTimeDomainData(timeData);
+          let sumSquares = 0;
+          for (let i = 0; i < timeData.length; i++) {
+            const val = timeData[i];
+            sumSquares += val * val;
+          }
+          const rms = Math.sqrt(sumSquares / timeData.length);
+          const now = performance.now();
+
+          if (rms >= voiceThreshold) {
+            holdUntil = now + 260; // 260 ms de retención
+            if (!isGateOpen) {
+              isGateOpen = true;
+              try { gateGain.gain.setTargetAtTime(1.0, ctx.currentTime, 0.012); } catch (e) {} // 12 ms ataque rápido
+              updateVoiceGateVisualIndicator(true);
+            }
+          } else if (now > holdUntil) {
+            if (isGateOpen) {
+              isGateOpen = false;
+              try { gateGain.gain.setTargetAtTime(0.02, ctx.currentTime, 0.08); } catch (e) {} // 80 ms caída suave
+              updateVoiceGateVisualIndicator(false);
+            }
+          }
+        }, 20);
 
         const processedTrack = destinationNode.stream.getAudioTracks()[0];
         if (!processedTrack) return rawStream;
@@ -7452,14 +7630,31 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
         processedTrack._rawTrack = rawTrack;
         processedTrack.enabled = rawTrack.enabled;
 
-        rawTrack.addEventListener('mute', () => { processedTrack.enabled = false; });
-        rawTrack.addEventListener('unmute', () => { processedTrack.enabled = rawTrack.enabled; });
+        function cleanupGate() {
+          clearInterval(gateIntervalId);
+          updateVoiceGateVisualIndicator(false);
+          try { sourceNode.disconnect(); } catch (e) {}
+          try { highpass.disconnect(); } catch (e) {}
+          try { compressor.disconnect(); } catch (e) {}
+          try { analyser.disconnect(); } catch (e) {}
+          try { gateGain.disconnect(); } catch (e) {}
+        }
+
+        rawTrack.addEventListener('mute', () => {
+          processedTrack.enabled = false;
+          updateVoiceGateVisualIndicator(false);
+        });
+        rawTrack.addEventListener('unmute', () => {
+          processedTrack.enabled = rawTrack.enabled;
+        });
         rawTrack.addEventListener('ended', () => {
+          cleanupGate();
           try { processedTrack.stop(); } catch (e) {}
         });
 
         const origStop = processedTrack.stop.bind(processedTrack);
         processedTrack.stop = function() {
+          cleanupGate();
           try { rawTrack.stop(); } catch (e) {}
           origStop();
         };
@@ -7467,14 +7662,18 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
         rawStream.removeTrack(rawTrack);
         rawStream.addTrack(processedTrack);
 
+        console.log('[ELT Live Audio DSP] Noise Gate activo en pista saliente: ' + (processedTrack.label || 'AudioTrack'));
+
         return rawStream;
       } catch (err) {
         if (typeof console !== 'undefined' && console.warn) {
-          console.warn('[DSP Noise Reduction] Fallback a stream original:', err);
+          console.warn('[ELT Live Audio DSP] Fallback a stream original:', err);
         }
         return rawStream;
       }
     }
+
+    const applyVoiceNoiseReduction = createVoiceNoiseGateStream;
 
     // ==================== FUNCIONES WEBRTC P2P DIRECTO (GRATIS ILIMITADO) ====================
     async function ensureP2PLocalStream(wantAudio, wantVideo) {

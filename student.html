@@ -639,6 +639,7 @@
           <!-- Escudo visual y bloqueo de interacción para Modo Guiar Clase -->
           <div id="studentTeacherGuidedShield" class="hidden absolute inset-0 z-30 bg-transparent cursor-not-allowed"></div>
           <div id="studentTeacherGuidedPill" class="hidden absolute top-2.5 left-1/2 -translate-x-1/2 z-30 bg-indigo-950/90 border border-indigo-400/60 text-indigo-100 text-[11px] font-semibold px-3 py-1 rounded-full shadow-lg pointer-events-none">👁️ El profesor está guiando la pantalla</div>
+          <div id="studentTeacherLaserDot" class="pointer-events-none absolute opacity-0" style="z-index: 45; width: 14px; height: 14px; border-radius: 9999px; background: radial-gradient(circle, #ffffff 0%, #ff2a55 45%, rgba(255,42,85,0) 100%); box-shadow: 0 0 12px 4px rgba(255, 42, 85, 0.75); transform: translate(-50%, -50%); transition: left 55ms linear, top 55ms linear, opacity 180ms ease;"></div>
           <iframe id="studentFrame" class="w-full h-full flex-1 block border-0 bg-white"></iframe>
           
           <div id="waitingCover" class="absolute inset-0 bg-white flex flex-col items-center justify-center p-6 text-center text-slate-700 z-10">
@@ -3133,12 +3134,61 @@
         return list;
       }
 
+      let studentLaserFadeTimer = null;
+
+      function hideStudentLaserPointer() {
+        const laser = document.getElementById('studentTeacherLaserDot');
+        if (laser) {
+          laser.style.opacity = '0';
+        }
+        if (studentLaserFadeTimer) {
+          clearTimeout(studentLaserFadeTimer);
+          studentLaserFadeTimer = null;
+        }
+      }
+
+      function handleStudentTeacherLaserEvent(payload) {
+        if (!isAdmittedToClass || !payload) return;
+        const laser = document.getElementById('studentTeacherLaserDot');
+        if (!laser) return;
+
+        if (payload.active === false) {
+          hideStudentLaserPointer();
+          return;
+        }
+
+        const rx = typeof payload.rx === 'number' ? Math.max(0, Math.min(1, payload.rx)) : 0.5;
+        const ry = typeof payload.ry === 'number' ? Math.max(0, Math.min(1, payload.ry)) : 0.5;
+
+        laser.style.left = (rx * 100) + '%';
+        laser.style.top = (ry * 100) + '%';
+        laser.style.opacity = '1';
+
+        if (payload.clickPulse) {
+          laser.style.transform = 'translate(-50%, -50%) scale(1.8)';
+          setTimeout(() => {
+            if (laser) laser.style.transform = 'translate(-50%, -50%) scale(1)';
+          }, 220);
+        }
+
+        if (studentLaserFadeTimer) {
+          clearTimeout(studentLaserFadeTimer);
+        }
+        studentLaserFadeTimer = setTimeout(() => {
+          if (laser) laser.style.opacity = '0';
+          studentLaserFadeTimer = null;
+        }, 2500);
+      }
+
       function applyTeacherGuidedModeUI(active) {
         const shield = document.getElementById('studentTeacherGuidedShield');
         const pill = document.getElementById('studentTeacherGuidedPill');
         const isGuided = Boolean(active);
         if (shield) shield.classList.toggle('hidden', !isGuided);
         if (pill) pill.classList.toggle('hidden', !isGuided);
+        if (!isGuided) {
+          hideStudentLaserPointer();
+        }
       }
 
       function executeTeacherGuidedAction(payload) {
@@ -3290,6 +3340,10 @@
       myChannel.on('broadcast', { event: 'TEACHER_ACTION' }, ({ payload }) => {
         if (!isAdmittedToClass || !payload) return;
         executeTeacherGuidedAction(payload);
+      });
+
+      myChannel.on('broadcast', { event: 'TEACHER_LASER' }, ({ payload }) => {
+        handleStudentTeacherLaserEvent(payload);
       });
 
       setupWhiteboardChannelListeners(myChannel);
@@ -6806,6 +6860,9 @@
           ? 'fa-solid fa-microphone text-sm text-emerald-400'
           : 'fa-solid fa-microphone-slash text-sm text-rose-400';
       }
+      if (!webrtcAudioEnabled && typeof updateVoiceGateVisualIndicator === 'function') {
+        updateVoiceGateVisualIndicator(false);
+      }
       if (audioLabel) {
         audioLabel.textContent = webrtcAudioEnabled ? 'Mute' : 'Audio';
       }
@@ -7169,8 +7226,20 @@
       }
     }
 
-    // ==================== FILTRO DSP DE VOZ Y SUPRESIÓN DE RUIDO PROFESIONAL ====================
-    function applyVoiceNoiseReduction(rawStream) {
+    // ==================== PIPELINE DSP CON NOISE GATE REAL PARA WEBRTC ====================
+    function updateVoiceGateVisualIndicator(isOpen) {
+      const audioBtn = document.getElementById('bottomAudioBtn');
+      const cardMicBtn = document.getElementById('cardToggleMicBtn');
+      const active = Boolean(isOpen && typeof webrtcAudioEnabled !== 'undefined' && webrtcAudioEnabled);
+      if (audioBtn) {
+        audioBtn.style.boxShadow = active ? '0 0 0 2px #10b981' : '';
+      }
+      if (cardMicBtn) {
+        cardMicBtn.style.boxShadow = active ? '0 0 0 2px #10b981' : '';
+      }
+    }
+
+    function createVoiceNoiseGateStream(rawStream) {
       if (!rawStream) return rawStream;
       try {
         const audioTracks = typeof rawStream.getAudioTracks === 'function' ? rawStream.getAudioTracks() : [];
@@ -7183,41 +7252,89 @@
         if (!AudioContextClass) return rawStream;
 
         if (!window._eltNoiseCtx || window._eltNoiseCtx.state === 'closed') {
-          window._eltNoiseCtx = new AudioContextClass();
+          try {
+            window._eltNoiseCtx = new AudioContextClass({ sampleRate: 48000 });
+          } catch (e) {
+            window._eltNoiseCtx = new AudioContextClass();
+          }
         }
         const ctx = window._eltNoiseCtx;
         if (ctx && ctx.state === 'suspended' && typeof ctx.resume === 'function') {
           ctx.resume().catch(() => {});
         }
 
-        // 1. Highpass Filter: elimina ruidos graves de ventilador, tráfico vehicular y golpes de mesa (< 85 Hz)
+        // 1. Highpass Filter (105 Hz, Q: 0.7): elimina zumbidos graves de ventilador, tráfico y golpes de mesa
         const highpass = ctx.createBiquadFilter();
         highpass.type = 'highpass';
-        highpass.frequency.value = 85;
-        highpass.Q.value = 0.7;
+        highpass.frequency.setValueAtTime(105, ctx.currentTime);
+        highpass.Q.setValueAtTime(0.7, ctx.currentTime);
 
-        // 2. Lowpass Filter: elimina estática electromagnética y siseo agudo (> 7500 Hz)
-        const lowpass = ctx.createBiquadFilter();
-        lowpass.type = 'lowpass';
-        lowpass.frequency.value = 7500;
-        lowpass.Q.value = 0.7;
-
-        // 3. Compresor de dinámica: nivela volumen de voz y atenúa piso de ruido ambiental
+        // 2. Compresor de dinámica: nivela picos de voz para que suene clara y pareja
         const compressor = ctx.createDynamicsCompressor();
-        compressor.threshold.value = -28;
-        compressor.knee.value = 12;
-        compressor.ratio.value = 4;
-        compressor.attack.value = 0.005;
-        compressor.release.value = 0.15;
+        compressor.threshold.setValueAtTime(-24, ctx.currentTime);
+        compressor.knee.setValueAtTime(12, ctx.currentTime);
+        compressor.ratio.setValueAtTime(4, ctx.currentTime);
+        compressor.attack.setValueAtTime(0.005, ctx.currentTime);
+        compressor.release.setValueAtTime(0.15, ctx.currentTime);
+
+        // 3. Compuerta de Ruido (Noise Gate) con GainNode y AnalyserNode
+        const gateGain = ctx.createGain();
+        gateGain.gain.setValueAtTime(0.02, ctx.currentTime); // Inicia cerrado atenuando piso de ruido
+
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 512;
+        analyser.smoothingTimeConstant = 0.2;
 
         const audioOnlyStream = new MediaStream([rawTrack]);
         const sourceNode = ctx.createMediaStreamSource(audioOnlyStream);
         const destinationNode = ctx.createMediaStreamDestination();
 
         sourceNode.connect(highpass);
-        highpass.connect(lowpass);
-        lowpass.connect(compressor);
-        compressor.connect(destinationNode);
+        highpass.connect(compressor);
+        compressor.connect(gateGain);
+        compressor.connect(analyser);
+        gateGain.connect(destinationNode);
+
+        // Algoritmo de detección RMS en banda de voz con retención suave
+        const timeData = new Float32Array(analyser.fftSize);
+        const voiceThreshold = 0.014;
+        let holdUntil = 0;
+        let isGateOpen = false;
+
+        const gateIntervalId = setInterval(() => {
+          if (rawTrack.readyState === 'ended' || !rawTrack.enabled || (typeof webrtcAudioEnabled !== 'undefined' && !webrtcAudioEnabled)) {
+            if (isGateOpen) {
+              isGateOpen = false;
+              try { gateGain.gain.setTargetAtTime(0.02, ctx.currentTime, 0.04); } catch (e) {}
+              updateVoiceGateVisualIndicator(false);
+            }
+            return;
+          }
+
+          analyser.getFloatTimeDomainData(timeData);
+          let sumSquares = 0;
+          for (let i = 0; i < timeData.length; i++) {
+            const val = timeData[i];
+            sumSquares += val * val;
+          }
+          const rms = Math.sqrt(sumSquares / timeData.length);
+          const now = performance.now();
+
+          if (rms >= voiceThreshold) {
+            holdUntil = now + 260; // 260 ms de retención
+            if (!isGateOpen) {
+              isGateOpen = true;
+              try { gateGain.gain.setTargetAtTime(1.0, ctx.currentTime, 0.012); } catch (e) {} // 12 ms ataque rápido
+              updateVoiceGateVisualIndicator(true);
+            }
+          } else if (now > holdUntil) {
+            if (isGateOpen) {
+              isGateOpen = false;
+              try { gateGain.gain.setTargetAtTime(0.02, ctx.currentTime, 0.08); } catch (e) {} // 80 ms caída suave
+              updateVoiceGateVisualIndicator(false);
+            }
+          }
+        }, 20);
 
         const processedTrack = destinationNode.stream.getAudioTracks()[0];
         if (!processedTrack) return rawStream;
@@ -7226,14 +7343,31 @@
         processedTrack._rawTrack = rawTrack;
         processedTrack.enabled = rawTrack.enabled;
 
-        rawTrack.addEventListener('mute', () => { processedTrack.enabled = false; });
-        rawTrack.addEventListener('unmute', () => { processedTrack.enabled = rawTrack.enabled; });
+        function cleanupGate() {
+          clearInterval(gateIntervalId);
+          updateVoiceGateVisualIndicator(false);
+          try { sourceNode.disconnect(); } catch (e) {}
+          try { highpass.disconnect(); } catch (e) {}
+          try { compressor.disconnect(); } catch (e) {}
+          try { analyser.disconnect(); } catch (e) {}
+          try { gateGain.disconnect(); } catch (e) {}
+        }
+
+        rawTrack.addEventListener('mute', () => {
+          processedTrack.enabled = false;
+          updateVoiceGateVisualIndicator(false);
+        });
+        rawTrack.addEventListener('unmute', () => {
+          processedTrack.enabled = rawTrack.enabled;
+        });
         rawTrack.addEventListener('ended', () => {
+          cleanupGate();
           try { processedTrack.stop(); } catch (e) {}
         });
 
         const origStop = processedTrack.stop.bind(processedTrack);
         processedTrack.stop = function() {
+          cleanupGate();
           try { rawTrack.stop(); } catch (e) {}
           origStop();
         };
@@ -7241,14 +7375,18 @@
         rawStream.removeTrack(rawTrack);
         rawStream.addTrack(processedTrack);
 
+        console.log('[ELT Live Audio DSP] Noise Gate activo en pista saliente: ' + (processedTrack.label || 'AudioTrack'));
+
         return rawStream;
       } catch (err) {
         if (typeof console !== 'undefined' && console.warn) {
-          console.warn('[DSP Noise Reduction] Fallback a stream original:', err);
+          console.warn('[ELT Live Audio DSP] Fallback a stream original:', err);
         }
         return rawStream;
       }
     }
+
+    const applyVoiceNoiseReduction = createVoiceNoiseGateStream;
 
     // ==================== FUNCIONES WEBRTC P2P DIRECTO (GRATIS ILIMITADO) ====================
     async function ensureP2PLocalStream(wantAudio, wantVideo) {
@@ -10001,6 +10139,9 @@ window.setVideoStripMinimized = function(minimized) {
       // Restaurar credenciales y perfil guardado al volver al lobby
       if (typeof restoreStudentCredentials === 'function') {
         restoreStudentCredentials();
+      }
+      if (typeof hideStudentLaserPointer === 'function') {
+        hideStudentLaserPointer();
       }
     }
 

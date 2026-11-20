@@ -406,10 +406,11 @@
       pointer-events: auto !important;
     }
 
-    /* Reserva de espacio inferior en el área de trabajo para evitar superposición con la barra fija */
+    /* Eliminar cualquier padding o margen inferior residual en el contenedor de lección */
     #leftWorkspaceColumn,
     #studentFrameContainer {
-      padding-bottom: calc(56px + env(safe-area-inset-bottom, 12px)) !important;
+      padding-bottom: 0 !important;
+      margin-bottom: 0 !important;
     }
 
     /* Scroll horizontal fluido sin barras antiestéticas en pantallas móviles pequeñas */
@@ -627,11 +628,11 @@
         </div>
 
         <!-- Área Didáctica Unificada (Lección Interactiva + Lienzo de Pizarra Colaborativa) -->
-        <main id="studentFrameContainer" class="flex-1 min-h-0 w-full relative overflow-hidden bg-[#0a0c10]">
+        <main id="studentFrameContainer" class="flex-1 min-h-0 w-full h-full relative overflow-hidden flex flex-col bg-[#0a0c10]">
           <!-- Escudo visual y bloqueo de interacción para Modo Guiar Clase -->
           <div id="studentTeacherGuidedShield" class="hidden absolute inset-0 z-30 bg-transparent cursor-not-allowed"></div>
           <div id="studentTeacherGuidedPill" class="hidden absolute top-2.5 left-1/2 -translate-x-1/2 z-30 bg-indigo-950/90 border border-indigo-400/60 text-indigo-100 text-[11px] font-semibold px-3 py-1 rounded-full shadow-lg pointer-events-none">👁️ El profesor está guiando la pantalla</div>
-          <iframe id="studentFrame" class="w-full h-full border-0 bg-white"></iframe>
+          <iframe id="studentFrame" class="w-full h-full flex-1 block border-0 bg-white"></iframe>
           
           <div id="waitingCover" class="absolute inset-0 bg-white flex flex-col items-center justify-center p-6 text-center text-slate-700 z-10">
             <div class="w-9 h-9 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-4"></div>
@@ -1309,8 +1310,60 @@
     window.hasLoadedLesson = false;
     let assignedSlide = 1;
     let analyticsInterval = null;
+    function injectFullHeightStyle(doc) {
+      if (!doc) return;
+      try {
+        let style = doc.getElementById('eltLiveFullHeightFix');
+        if (!style) {
+          style = doc.createElement('style');
+          style.id = 'eltLiveFullHeightFix';
+          const targetParent = doc.head || doc.body || doc.documentElement;
+          if (targetParent) targetParent.appendChild(style);
+        }
+        if (style) {
+          style.textContent = `
+            html, body {
+              height: 100% !important;
+              min-height: 100% !important;
+              margin: 0 !important;
+              padding: 0 !important;
+            }
+          `;
+        }
+      } catch (e) {}
+    }
+
+    function applyFullHeightFixToFrame(frame) {
+      if (!frame) return;
+      try {
+        const frameDoc = frame.contentDocument || (frame.contentWindow && frame.contentWindow.document);
+        if (frameDoc) {
+          injectFullHeightStyle(frameDoc);
+          const subIframes = frameDoc.querySelectorAll('iframe#viewer, iframe');
+          subIframes.forEach(sub => {
+            try {
+              const subDoc = sub.contentDocument || (sub.contentWindow && sub.contentWindow.document);
+              if (subDoc) injectFullHeightStyle(subDoc);
+              if (!sub.__eltFullHeightBound) {
+                sub.__eltFullHeightBound = true;
+                sub.addEventListener('load', () => {
+                  try {
+                    const loadedSubDoc = sub.contentDocument || (sub.contentWindow && sub.contentWindow.document);
+                    if (loadedSubDoc) injectFullHeightStyle(loadedSubDoc);
+                  } catch (e) {}
+                });
+              }
+            } catch (e) {}
+          });
+        }
+      } catch (e) {}
+    }
+
     let studentFrame = document.getElementById('studentFrame');
     const studentFrameContainer = document.getElementById('studentFrameContainer');
+    if (studentFrame) {
+      studentFrame.addEventListener('load', () => applyFullHeightFixToFrame(studentFrame));
+    }
     const waitingCover = document.getElementById('waitingCover');
     const studentSlideBadge = document.getElementById('studentSlideBadge');
 
@@ -1353,6 +1406,7 @@
           }
         }
 
+        injectFullHeightStyle(doc);
         let style = doc.getElementById('elt-student-clean-style');
         if (!style) {
           style = doc.createElement('style');
@@ -2497,7 +2551,10 @@
       if (studentFrame) studentFrame.remove();
       studentFrame = document.createElement('iframe');
       studentFrame.id = 'studentFrame';
-      studentFrame.className = 'w-full h-full border-0 bg-white';
+      studentFrame.className = 'w-full h-full flex-1 block border-0 bg-white';
+      studentFrame.addEventListener('load', () => {
+        applyFullHeightFixToFrame(studentFrame);
+      });
       studentFrameContainer.insertBefore(studentFrame, waitingCover);
 
       const preparedHTML = prepareStudentHTMLContent(htmlContent);
@@ -2507,6 +2564,7 @@
       doc.close();
 
       setTimeout(() => {
+        applyFullHeightFixToFrame(studentFrame);
         const innerDoc = studentFrame.contentDocument || studentFrame.contentWindow.document;
         optimizeStudentLayout(innerDoc);
         injectLiveAnalytics(innerDoc);
@@ -3136,17 +3194,37 @@
               targetScrollEl = containers[0] || viewerContainers[0] || activeDoc.scrollingElement || activeDoc.documentElement || activeDoc.body;
             }
 
-            if (targetScrollEl) {
-              const maxScroll = Math.max(0, targetScrollEl.scrollHeight - targetScrollEl.clientHeight);
-              const targetTop = (payload.ratioY || 0) * maxScroll;
-              if (targetScrollEl === activeDoc.documentElement || targetScrollEl === activeDoc.body || targetScrollEl === activeDoc.scrollingElement) {
-                const targetWin = activeDoc.defaultView || window;
-                targetWin.scrollTo({ top: targetTop, behavior: 'smooth' });
-              } else if (typeof targetScrollEl.scrollTo === 'function') {
-                targetScrollEl.scrollTo({ top: targetTop, behavior: 'smooth' });
-              } else {
-                targetScrollEl.scrollTop = targetTop;
+            let maxScroll = targetScrollEl ? Math.max(0, targetScrollEl.scrollHeight - targetScrollEl.clientHeight) : 0;
+            // Si containers está vacío o targetScrollEl tiene maxScroll <= 0, busca en rootDoc y viewerDoc cualquier elemento con scrollHeight - clientHeight > 4
+            if (maxScroll <= 0) {
+              const fallbackCandidates = [
+                ...((rootDoc && rootDoc.querySelectorAll) ? rootDoc.querySelectorAll('*') : []),
+                ...((viewerDoc && viewerDoc.querySelectorAll) ? viewerDoc.querySelectorAll('*') : [])
+              ];
+              for (let i = 0; i < fallbackCandidates.length; i++) {
+                const el = fallbackCandidates[i];
+                if (el && el.nodeType === 1 && (el.scrollHeight - el.clientHeight) > 4) {
+                  targetScrollEl = el;
+                  activeDoc = el.ownerDocument || activeDoc;
+                  maxScroll = el.scrollHeight - el.clientHeight;
+                  break;
+                }
               }
+            }
+
+            if (targetScrollEl) {
+              const targetTop = (payload.ratioY || 0) * maxScroll;
+              try {
+                targetScrollEl.scrollTop = targetTop;
+              } catch (e) {}
+              try {
+                if (targetScrollEl === activeDoc.documentElement || targetScrollEl === activeDoc.body || targetScrollEl === activeDoc.scrollingElement) {
+                  const targetWin = activeDoc.defaultView || window;
+                  targetWin.scrollTo({ top: targetTop, behavior: 'smooth' });
+                } else if (typeof targetScrollEl.scrollTo === 'function') {
+                  targetScrollEl.scrollTo({ top: targetTop, behavior: 'smooth' });
+                }
+              } catch (e) {}
             }
           } else if (action === 'click' && payload.selector) {
             const el = targetDoc.querySelector(payload.selector);

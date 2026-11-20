@@ -3602,6 +3602,93 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
       return { x: finalX, y: finalY };
     }
 
+    function applyWbResizeSmartGuidesSnap(resizeItem, proposedWidth, proposedHeight, disableSnap) {
+      if (!resizeItem) return { width: Math.max(24, Math.round(proposedWidth)), height: Math.max(24, Math.round(proposedHeight)) };
+
+      if (disableSnap) {
+        clearWbSmartGuides();
+        return { width: Math.max(24, Math.round(proposedWidth)), height: Math.max(24, Math.round(proposedHeight)) };
+      }
+
+      const threshold = Math.max(4, Math.round(7 / (wbZoom || 1)));
+      const left = resizeItem.x || 0;
+      const top = resizeItem.y || 0;
+      const propRight = left + proposedWidth;
+      const propBottom = top + proposedHeight;
+
+      let minDiffX = threshold + 1;
+      let bestTargetX = null;
+      let guideSpanY = null;
+
+      let minDiffY = threshold + 1;
+      let bestTargetY = null;
+      let guideSpanX = null;
+
+      for (let i = 0; i < wbItems.length; i++) {
+        const other = wbItems[i];
+        if (other.id === resizeItem.id || other.type === 'stroke') continue;
+
+        const ob = getWbItemBounds(other);
+
+        // Comparación Eje X (borde derecho propuesto vs left, center, right del otro objeto)
+        const otherXPoints = [ob.left, ob.centerX, ob.right];
+        for (let ox of otherXPoints) {
+          const diff = Math.abs(propRight - ox);
+          if (diff < minDiffX) {
+            minDiffX = diff;
+            bestTargetX = ox;
+            guideSpanY = [Math.min(top, ob.top), Math.max(propBottom, ob.bottom)];
+          }
+        }
+
+        // Comparación Eje Y (borde inferior propuesto vs top, center, bottom del otro objeto)
+        const otherYPoints = [ob.top, ob.centerY, ob.bottom];
+        for (let oy of otherYPoints) {
+          const diff = Math.abs(propBottom - oy);
+          if (diff < minDiffY) {
+            minDiffY = diff;
+            bestTargetY = oy;
+            guideSpanX = [Math.min(left, ob.left), Math.max(propRight, ob.right)];
+          }
+        }
+      }
+
+      const snappedWidth = (bestTargetX !== null)
+        ? Math.max(24, Math.round(bestTargetX - left))
+        : Math.max(24, Math.round(proposedWidth));
+
+      const snappedHeight = (bestTargetY !== null)
+        ? Math.max(24, Math.round(bestTargetY - top))
+        : Math.max(24, Math.round(proposedHeight));
+
+      const finalRight = left + snappedWidth;
+      const finalBottom = top + snappedHeight;
+
+      // Renderizado de líneas punteadas en SVG
+      const layer = document.getElementById('wbSmartGuidesLayer');
+      if (layer) {
+        const lines = [];
+        if (bestTargetX !== null && guideSpanY) {
+          const y1 = Math.round(Math.min(top, guideSpanY[0]) - 24);
+          const y2 = Math.round(Math.max(finalBottom, guideSpanY[1]) + 24);
+          lines.push(`<line x1="${bestTargetX}" y1="${y1}" x2="${bestTargetX}" y2="${y2}" stroke="#f43f5e" stroke-width="1.5" stroke-dasharray="5,4" />`);
+        }
+        if (bestTargetY !== null && guideSpanX) {
+          const x1 = Math.round(Math.min(left, guideSpanX[0]) - 24);
+          const x2 = Math.round(Math.max(finalRight, guideSpanX[1]) + 24);
+          lines.push(`<line x1="${x1}" y1="${bestTargetY}" x2="${x2}" y2="${bestTargetY}" stroke="#f43f5e" stroke-width="1.5" stroke-dasharray="5,4" />`);
+        }
+
+        if (lines.length > 0) {
+          layer.innerHTML = lines.join('');
+        } else {
+          layer.innerHTML = '';
+        }
+      }
+
+      return { width: snappedWidth, height: snappedHeight };
+    }
+
     function doesWbItemIntersectBox(item, rx, ry, rw, rh) {
       if (item.type === 'stroke' && item.points && item.points.length > 0) {
         for (let i = 0; i < item.points.length; i++) {
@@ -4626,13 +4713,16 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
       }
 
       if (wbIsResizingItem && wbDragItem && wbDragOrigState) {
-        clearWbSmartGuides();
         const dx = worldPt.x - wbDragStartWorld.x;
         const dy = worldPt.y - wbDragStartWorld.y;
         if (wbDragItem.type === 'image') {
-          wbDragItem.width = Math.max(40, Math.round(wbDragOrigState.width + dx));
-          wbDragItem.height = Math.max(40, Math.round(wbDragOrigState.height + dy));
+          const rawW = Math.max(24, Math.round(wbDragOrigState.width + dx));
+          const rawH = Math.max(24, Math.round(wbDragOrigState.height + dy));
+          const snapped = applyWbResizeSmartGuidesSnap(wbDragItem, rawW, rawH, e.altKey);
+          wbDragItem.width = snapped.width;
+          wbDragItem.height = snapped.height;
         } else {
+          clearWbSmartGuides();
           wbDragItem.fontSize = Math.max(12, Math.min(160, Math.round(wbDragOrigState.fontSize + (dx + dy) * 0.25)));
         }
         renderWbObjects();

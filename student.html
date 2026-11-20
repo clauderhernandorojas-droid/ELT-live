@@ -984,13 +984,7 @@
                 <span id="bottomVideoLabel" class="text-[10px] text-slate-300 font-medium mt-0.5">Video</span>
               </button>
 
-              <!-- Fondo Desenfocado (Blur) -->
-              <button id="bottomVideoBlurBtn" type="button" class="group flex flex-col items-center justify-center px-2 py-1 rounded-lg hover:bg-white/10 transition relative text-slate-300 hover:text-white" title="Activar / Desactivar fondo desenfocado (Blur)">
-                <div class="flex items-center gap-1">
-                  <span id="bottomVideoBlurIcon" class="text-xs">🪄</span>
-                </div>
-                <span id="bottomVideoBlurLabel" class="text-[9px] text-slate-300 font-medium mt-0.5">Fondo</span>
-              </button>
+
 
               <button id="bottomChatToggleBtn" type="button" class="group flex flex-col items-center justify-center px-2.5 py-1 rounded-lg hover:bg-white/10 transition relative" title="Mostrar / Ocultar el panel de chat">
                 <div class="flex items-center gap-1 relative">
@@ -3266,15 +3260,52 @@
         const frameOffsetX = frameRect.left - containerRect.left;
         const frameOffsetY = frameRect.top - containerRect.top;
 
-        const studentDoc = studentFrameEl.contentDocument || (studentFrameEl.contentWindow && studentFrameEl.contentWindow.document);
-        const contentBox = getLessonContentBounds(studentDoc, studentFrameEl);
+        const rootDoc = studentFrameEl.contentDocument || (studentFrameEl.contentWindow && studentFrameEl.contentWindow.document);
+        if (!rootDoc) return;
 
-        const rx = typeof payload.rx === 'number' ? Math.max(0, Math.min(1, payload.rx)) : 0.5;
-        const ry = typeof payload.ry === 'number' ? Math.max(0, Math.min(1, payload.ry)) : 0.5;
+        let studentDoc = rootDoc;
+        let subFrameOffsetLeft = 0;
+        let subFrameOffsetTop = 0;
 
-        // Posicionamiento calibrado exacto sobre el contenedor de la lección
-        const targetX = frameOffsetX + contentBox.left + (rx * contentBox.width);
-        const targetY = frameOffsetY + contentBox.top + (ry * contentBox.height);
+        const viewerFrame = rootDoc.querySelector ? rootDoc.querySelector('iframe#viewer, iframe') : null;
+        if (viewerFrame) {
+          try {
+            const vDoc = viewerFrame.contentDocument || (viewerFrame.contentWindow && viewerFrame.contentWindow.document);
+            if (vDoc && (payload.isInnerViewer || !payload.tagName || vDoc.body)) {
+              studentDoc = vDoc;
+              const vRect = viewerFrame.getBoundingClientRect();
+              subFrameOffsetLeft = vRect.left;
+              subFrameOffsetTop = vRect.top;
+            }
+          } catch (e) {}
+        }
+
+        let targetX = null;
+        let targetY = null;
+
+        // 1. Calibración exacta 1:1 por elemento DOM
+        if (payload.tagName && typeof payload.elIndex === 'number' && typeof payload.elRx === 'number' && typeof payload.elRy === 'number') {
+          try {
+            const elements = studentDoc.querySelectorAll(payload.tagName);
+            const studentTargetEl = elements[payload.elIndex];
+            if (studentTargetEl) {
+              const rect = studentTargetEl.getBoundingClientRect();
+              if (rect.width > 0 && rect.height > 0) {
+                targetX = frameOffsetX + subFrameOffsetLeft + rect.left + (payload.elRx * rect.width);
+                targetY = frameOffsetY + subFrameOffsetTop + rect.top + (payload.elRy * rect.height);
+              }
+            }
+          } catch (e) {}
+        }
+
+        // 2. Fallback: usar coordenadas normalizadas del contenedor de lección (contentBox)
+        if (targetX === null || targetY === null) {
+          const contentBox = getLessonContentBounds(studentDoc, studentFrameEl);
+          const rx = typeof payload.rx === 'number' ? Math.max(0, Math.min(1, payload.rx)) : 0.5;
+          const ry = typeof payload.ry === 'number' ? Math.max(0, Math.min(1, payload.ry)) : 0.5;
+          targetX = frameOffsetX + contentBox.left + (rx * contentBox.width);
+          targetY = frameOffsetY + contentBox.top + (ry * contentBox.height);
+        }
 
         laser.style.left = targetX + 'px';
         laser.style.top = targetY + 'px';
@@ -6069,17 +6100,6 @@
     }
 
 
-    // ==================== VIRTUAL BACKGROUND BLUR (MEDIAPIPE SELFIE SEGMENTATION) ====================
-    let isVideoBgBlurEnabled = false;
-    let blurSegmenterInstance = null;
-    let blurSourceVideoEl = null;
-    let blurCanvas = null;
-    let blurCtx = null;
-    let blurMaskCanvas = null;
-    let blurMaskCtx = null;
-    let blurLoopAnimId = null;
-    let blurredVideoStream = null;
-
     function linkifyChatText(rawText) {
       if (!rawText) return '';
       const escaped = String(rawText)
@@ -6099,271 +6119,6 @@
         const href = url.startsWith('www.') ? `https://${url}` : url;
         return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="underline text-sky-300 hover:text-sky-200 break-all font-medium">${url}</a>${trailing}`;
       });
-    }
-
-    function loadMediaPipeSelfieSegmentation() {
-      if (typeof window !== 'undefined' && window.SelfieSegmentation) {
-        return Promise.resolve(window.SelfieSegmentation);
-      }
-      return new Promise((resolve, reject) => {
-        const existing = document.getElementById('mediapipe-selfie-segmentation-script');
-        if (existing) {
-          if (window.SelfieSegmentation) return resolve(window.SelfieSegmentation);
-          existing.addEventListener('load', () => resolve(window.SelfieSegmentation));
-          existing.addEventListener('error', (err) => reject(err));
-          return;
-        }
-        const script = document.createElement('script');
-        script.id = 'mediapipe-selfie-segmentation-script';
-        script.src = 'https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js';
-        script.crossOrigin = 'anonymous';
-        script.onload = () => {
-          if (window.SelfieSegmentation) resolve(window.SelfieSegmentation);
-          else reject(new Error('SelfieSegmentation no disponible tras cargar script'));
-        };
-        script.onerror = () => reject(new Error('No se pudo descargar selfie_segmentation.js desde CDN'));
-        document.head.appendChild(script);
-      });
-    }
-
-    function getActiveLocalVideoTrack() {
-      if (isVideoBgBlurEnabled && blurredVideoStream) {
-        const bTrack = blurredVideoStream.getVideoTracks()[0];
-        if (bTrack && bTrack.readyState === 'live') {
-          return bTrack;
-        }
-      }
-      if (typeof p2pLocalStream !== 'undefined' && p2pLocalStream) {
-        const rawTrack = p2pLocalStream.getVideoTracks().find(t => t.readyState === 'live');
-        if (rawTrack) return rawTrack;
-      }
-      return null;
-    }
-
-    function updateVideoBlurBtnUI(active, loading) {
-      const btn = document.getElementById('bottomVideoBlurBtn');
-      const label = document.getElementById('bottomVideoBlurLabel');
-      const icon = document.getElementById('bottomVideoBlurIcon');
-      if (!btn) return;
-      if (loading) {
-        btn.className = 'group flex flex-col items-center justify-center px-2 py-1 rounded-lg bg-sky-500/20 text-sky-300 border border-sky-500/40 transition relative animate-pulse';
-        if (label) label.textContent = 'Cargando...';
-        if (icon) icon.textContent = '⏳';
-        return;
-      }
-      if (active) {
-        btn.className = 'group flex flex-col items-center justify-center px-2 py-1 rounded-lg bg-purple-600/30 text-purple-300 border border-purple-400/50 transition relative shadow-[0_0_10px_rgba(168,85,247,0.35)]';
-        if (label) {
-          label.textContent = 'Fondo Blur';
-          label.className = 'text-[9px] text-purple-300 font-semibold mt-0.5';
-        }
-        if (icon) icon.textContent = '🪄';
-      } else {
-        btn.className = 'group flex flex-col items-center justify-center px-2 py-1 rounded-lg hover:bg-white/10 transition relative text-slate-300 hover:text-white';
-        if (label) {
-          label.textContent = 'Fondo';
-          label.className = 'text-[9px] text-slate-300 font-medium mt-0.5';
-        }
-        if (icon) icon.textContent = '🪄';
-      }
-    }
-
-    async function startBlurredVideoStream(rawStream) {
-      if (!rawStream) return null;
-      const SelfieSegmentationClass = await loadMediaPipeSelfieSegmentation();
-
-      if (!blurCanvas) {
-        blurCanvas = document.createElement('canvas');
-        blurCanvas.width = 640;
-        blurCanvas.height = 360;
-        blurCtx = blurCanvas.getContext('2d', { alpha: false });
-      }
-
-      if (!blurMaskCanvas) {
-        blurMaskCanvas = document.createElement('canvas');
-        blurMaskCanvas.width = 640;
-        blurMaskCanvas.height = 360;
-        blurMaskCtx = blurMaskCanvas.getContext('2d');
-      }
-
-      if (!blurSourceVideoEl) {
-        blurSourceVideoEl = document.createElement('video');
-        blurSourceVideoEl.muted = true;
-        blurSourceVideoEl.setAttribute('muted', '');
-        blurSourceVideoEl.setAttribute('playsinline', '');
-        blurSourceVideoEl.setAttribute('webkit-playsinline', '');
-        blurSourceVideoEl.playsInline = true;
-        blurSourceVideoEl.autoplay = true;
-      }
-      blurSourceVideoEl.srcObject = rawStream;
-      try {
-        await blurSourceVideoEl.play();
-      } catch (e) {}
-
-      if (!blurSegmenterInstance) {
-        blurSegmenterInstance = new SelfieSegmentationClass({
-          locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
-        });
-        blurSegmenterInstance.setOptions({
-          modelSelection: 1,
-          selfieMode: false
-        });
-        blurSegmenterInstance.onResults((results) => {
-          if (!blurCanvas || !blurCtx || !blurMaskCanvas || !blurMaskCtx) return;
-          const w = blurCanvas.width;
-          const h = blurCanvas.height;
-
-          // 1. Silueta nítida del usuario en máscara temporal
-          blurMaskCtx.save();
-          blurMaskCtx.clearRect(0, 0, w, h);
-          blurMaskCtx.drawImage(results.segmentationMask, 0, 0, w, h);
-          blurMaskCtx.globalCompositeOperation = 'source-in';
-          blurMaskCtx.drawImage(results.image, 0, 0, w, h);
-          blurMaskCtx.restore();
-
-          // 2. Fondo desenfocado con filtro blur
-          blurCtx.save();
-          blurCtx.clearRect(0, 0, w, h);
-          blurCtx.filter = 'blur(14px) brightness(0.75)';
-          blurCtx.drawImage(results.image, 0, 0, w, h);
-          blurCtx.filter = 'none';
-
-          // 3. Superponer silueta nítida sobre el fondo
-          blurCtx.drawImage(blurMaskCanvas, 0, 0, w, h);
-          blurCtx.restore();
-        });
-      }
-
-      // Dibujar frame inicial si ya está listo
-      if (blurSourceVideoEl && blurSourceVideoEl.readyState >= 2 && blurCtx) {
-        try { blurCtx.drawImage(blurSourceVideoEl, 0, 0, blurCanvas.width, blurCanvas.height); } catch (e) {}
-      }
-
-      if (blurLoopAnimId) {
-        cancelAnimationFrame(blurLoopAnimId);
-        blurLoopAnimId = null;
-      }
-
-      let isProcessingFrame = false;
-      function processBlurFrame() {
-        if (!isVideoBgBlurEnabled || !blurSegmenterInstance) return;
-        if (!isProcessingFrame && blurSourceVideoEl && blurSourceVideoEl.readyState >= 2 && !blurSourceVideoEl.paused) {
-          isProcessingFrame = true;
-          blurSegmenterInstance.send({ image: blurSourceVideoEl })
-            .catch(() => {})
-            .finally(() => {
-              isProcessingFrame = false;
-            });
-        }
-        blurLoopAnimId = requestAnimationFrame(processBlurFrame);
-      }
-      processBlurFrame();
-
-      if (!blurredVideoStream || !blurredVideoStream.getVideoTracks().length || blurredVideoStream.getVideoTracks()[0].readyState === 'ended') {
-        blurredVideoStream = (blurCanvas.captureStream && blurCanvas.captureStream(24)) ||
-                             (blurCanvas.mozCaptureStream && blurCanvas.mozCaptureStream(24)) ||
-                             null;
-      }
-      return blurredVideoStream;
-    }
-
-    async function stopBlurredVideoStream() {
-      if (blurLoopAnimId) {
-        cancelAnimationFrame(blurLoopAnimId);
-        blurLoopAnimId = null;
-      }
-      if (blurredVideoStream) {
-        try {
-          blurredVideoStream.getVideoTracks().forEach(t => t.stop());
-        } catch (e) {}
-        blurredVideoStream = null;
-      }
-      if (blurSourceVideoEl) {
-        try { blurSourceVideoEl.pause(); } catch (e) {}
-        blurSourceVideoEl.srcObject = null;
-      }
-    }
-
-    async function applyActiveVideoTrackToPeersAndUI() {
-      const activeTrack = getActiveLocalVideoTrack();
-
-      // P2P: replaceTrack en todos los videoSenders sin cortar la llamada
-      if (typeof currentVideoMode !== 'undefined' && currentVideoMode === 'p2p' && typeof webrtcPeers !== 'undefined') {
-        for (const remotePeerId of Object.keys(webrtcPeers)) {
-          const peerObj = webrtcPeers[remotePeerId];
-          if (!peerObj || !peerObj.pc) continue;
-          if (peerObj.videoSender && activeTrack) {
-            try {
-              await peerObj.videoSender.replaceTrack(activeTrack);
-            } catch (e) {
-              console.warn('[VideoBlur] Error en peer replaceTrack:', e);
-            }
-          }
-        }
-      }
-
-      // LiveKit: si está activo
-      if (typeof currentVideoMode !== 'undefined' && currentVideoMode === 'livekit' && typeof livekitRoom !== 'undefined' && livekitRoom?.localParticipant) {
-        try {
-          const pubs = livekitRoom.localParticipant.videoTrackPublications;
-          if (pubs) {
-            for (const pub of pubs.values()) {
-              if (pub.track && typeof pub.track.replaceTrack === 'function' && activeTrack) {
-                await pub.track.replaceTrack(activeTrack);
-              }
-            }
-          }
-        } catch (lkErr) {
-          console.warn('[VideoBlur] LiveKit replaceTrack error:', lkErr);
-        }
-      }
-
-      // Actualizar vista local propia
-      if (typeof handleP2PLocalVideoUI === 'function') {
-        handleP2PLocalVideoUI();
-      }
-    }
-
-    async function enableVideoBackgroundBlur() {
-      try {
-        updateVideoBlurBtnUI(true, true);
-        if (!p2pLocalStream || !p2pLocalStream.getVideoTracks().length || !p2pLocalStream.getVideoTracks().some(t => t.readyState === 'live')) {
-          if (typeof ensureP2PLocalStream === 'function') {
-            await ensureP2PLocalStream(webrtcAudioEnabled, true);
-            webrtcVideoEnabled = true;
-            if (typeof updateLocalMediaButtonsUI === 'function') updateLocalMediaButtonsUI();
-          }
-        }
-        if (!p2pLocalStream || !p2pLocalStream.getVideoTracks().some(t => t.readyState === 'live')) {
-          throw new Error('No se detectó cámara disponible para aplicar fondo desenfocado.');
-        }
-
-        await startBlurredVideoStream(p2pLocalStream);
-        isVideoBgBlurEnabled = true;
-        updateVideoBlurBtnUI(true, false);
-        await applyActiveVideoTrackToPeersAndUI();
-      } catch (err) {
-        console.warn('[VideoBlur] Fallo al activar blur:', err);
-        isVideoBgBlurEnabled = false;
-        updateVideoBlurBtnUI(false, false);
-        await stopBlurredVideoStream();
-        await applyActiveVideoTrackToPeersAndUI();
-      }
-    }
-
-    async function disableVideoBackgroundBlur() {
-      isVideoBgBlurEnabled = false;
-      updateVideoBlurBtnUI(false, false);
-      await stopBlurredVideoStream();
-      await applyActiveVideoTrackToPeersAndUI();
-    }
-
-    async function toggleVideoBackgroundBlur() {
-      if (isVideoBgBlurEnabled) {
-        await disableVideoBackgroundBlur();
-      } else {
-        await enableVideoBackgroundBlur();
-      }
     }
 
     function escapeHtmlChat(str) {
@@ -7677,23 +7432,15 @@
           ctx.resume().catch(() => {});
         }
 
-        // 1. Highpass Filter (105 Hz, Q: 0.7): elimina zumbidos graves de ventilador, tráfico y golpes de mesa
+        // 1. Highpass Filter (70 Hz, Q: 0.5): conserva el cuerpo natural de la voz y elimina zumbidos subsónicos
         const highpass = ctx.createBiquadFilter();
         highpass.type = 'highpass';
-        highpass.frequency.setValueAtTime(105, ctx.currentTime);
-        highpass.Q.setValueAtTime(0.7, ctx.currentTime);
+        highpass.frequency.setValueAtTime(70, ctx.currentTime);
+        highpass.Q.setValueAtTime(0.5, ctx.currentTime);
 
-        // 2. Compresor de dinámica: nivela picos de voz para que suene clara y pareja
-        const compressor = ctx.createDynamicsCompressor();
-        compressor.threshold.setValueAtTime(-24, ctx.currentTime);
-        compressor.knee.setValueAtTime(12, ctx.currentTime);
-        compressor.ratio.setValueAtTime(4, ctx.currentTime);
-        compressor.attack.setValueAtTime(0.005, ctx.currentTime);
-        compressor.release.setValueAtTime(0.15, ctx.currentTime);
-
-        // 3. Compuerta de Ruido (Noise Gate) con GainNode y AnalyserNode
+        // 2. Compuerta de Ruido (Noise Gate) con GainNode y AnalyserNode (sin DynamicsCompressorNode para no sobre-comprimir)
         const gateGain = ctx.createGain();
-        gateGain.gain.setValueAtTime(0.02, ctx.currentTime); // Inicia cerrado atenuando piso de ruido
+        gateGain.gain.setValueAtTime(0.12, ctx.currentTime); // Inicia en reposo suave (0.12) evitando sonido hueco o bombeo
 
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 512;
@@ -7704,14 +7451,13 @@
         const destinationNode = ctx.createMediaStreamDestination();
 
         sourceNode.connect(highpass);
-        highpass.connect(compressor);
-        compressor.connect(gateGain);
-        compressor.connect(analyser);
+        highpass.connect(gateGain);
+        highpass.connect(analyser);
         gateGain.connect(destinationNode);
 
-        // Algoritmo de detección RMS en banda de voz con retención suave
+        // Algoritmo de detección RMS en banda de voz con retención suave y transparente
         const timeData = new Float32Array(analyser.fftSize);
-        const voiceThreshold = 0.014;
+        const voiceThreshold = 0.008;
         let holdUntil = 0;
         let isGateOpen = false;
 
@@ -7719,7 +7465,7 @@
           if (rawTrack.readyState === 'ended' || !rawTrack.enabled || (typeof webrtcAudioEnabled !== 'undefined' && !webrtcAudioEnabled)) {
             if (isGateOpen) {
               isGateOpen = false;
-              try { gateGain.gain.setTargetAtTime(0.02, ctx.currentTime, 0.04); } catch (e) {}
+              try { gateGain.gain.setTargetAtTime(0.12, ctx.currentTime, 0.04); } catch (e) {}
               updateVoiceGateVisualIndicator(false);
             }
             return;
@@ -7735,7 +7481,7 @@
           const now = performance.now();
 
           if (rms >= voiceThreshold) {
-            holdUntil = now + 260; // 260 ms de retención
+            holdUntil = now + 450; // 450 ms de retención para no cortar respiraciones ni finales de palabra
             if (!isGateOpen) {
               isGateOpen = true;
               try { gateGain.gain.setTargetAtTime(1.0, ctx.currentTime, 0.012); } catch (e) {} // 12 ms ataque rápido
@@ -7744,7 +7490,7 @@
           } else if (now > holdUntil) {
             if (isGateOpen) {
               isGateOpen = false;
-              try { gateGain.gain.setTargetAtTime(0.02, ctx.currentTime, 0.08); } catch (e) {} // 80 ms caída suave
+              try { gateGain.gain.setTargetAtTime(0.12, ctx.currentTime, 0.18); } catch (e) {} // 180 ms caída suave
               updateVoiceGateVisualIndicator(false);
             }
           }
@@ -7762,7 +7508,6 @@
           updateVoiceGateVisualIndicator(false);
           try { sourceNode.disconnect(); } catch (e) {}
           try { highpass.disconnect(); } catch (e) {}
-          try { compressor.disconnect(); } catch (e) {}
           try { analyser.disconnect(); } catch (e) {}
           try { gateGain.disconnect(); } catch (e) {}
         }
@@ -8004,11 +7749,11 @@
       localVideo.setAttribute('webkit-playsinline', '');
       localVideo.setAttribute('autoplay', '');
 
-      const activeVideoTrack = typeof getActiveLocalVideoTrack === 'function' ? getActiveLocalVideoTrack() : (p2pLocalStream?.getVideoTracks().find(t => t.enabled && t.readyState !== 'ended') || null);
+      const videoTrack = p2pLocalStream?.getVideoTracks().find(t => t.enabled && t.readyState !== 'ended');
 
-      if (webrtcVideoEnabled && activeVideoTrack) {
-        if (!localVideo.srcObject || localVideo.srcObject.getVideoTracks()[0] !== activeVideoTrack) {
-          localVideo.srcObject = new MediaStream([activeVideoTrack]);
+      if (webrtcVideoEnabled && videoTrack) {
+        if (localVideo.srcObject !== p2pLocalStream) {
+          localVideo.srcObject = p2pLocalStream;
         }
         localVideo.classList.remove('hidden');
         if (localPlaceholder) {
@@ -8116,7 +7861,7 @@
 
         const currentTrack = isSharingScreen && screenStream
           ? screenStream.getVideoTracks()[0]
-          : (webrtcVideoEnabled ? (typeof getActiveLocalVideoTrack === 'function' ? getActiveLocalVideoTrack() : (p2pLocalStream ? p2pLocalStream.getVideoTracks().find(t => t.readyState === 'live') || null : null)) : null);
+          : (webrtcVideoEnabled && p2pLocalStream ? p2pLocalStream.getVideoTracks().find(t => t.readyState === 'live') || null : null);
 
         if (peerObj.videoSender) {
           try { await peerObj.videoSender.replaceTrack(currentTrack || null); } catch (e) {}
@@ -8151,6 +7896,142 @@
       }
     }
 
+    function sanitizeWebRTCSdp(input) {
+      if (!input) return input;
+      let isObj = false;
+      let sdp = '';
+      let type = '';
+
+      if (typeof input === 'string') {
+        sdp = input;
+      } else if (typeof input === 'object' && input.sdp) {
+        isObj = true;
+        sdp = input.sdp;
+        type = input.type || (sdp.includes('a=setup:actpass') ? 'offer' : 'answer');
+      } else {
+        return input;
+      }
+
+      const lines = sdp.split(/\r\n|\n/);
+      const outLines = [];
+      const seenRtpMaps = new Set();
+      const seenFmtps = new Set();
+      let seenFlexFec = false;
+      let opusPt = null;
+      let hasOpusFmtp = false;
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+
+        // Deduplicar payload types en la línea m=
+        if (line.startsWith('m=')) {
+          seenRtpMaps.clear();
+          seenFmtps.clear();
+          seenFlexFec = false;
+          const parts = line.split(/\s+/);
+          if (parts.length > 3) {
+            const header = parts.slice(0, 3);
+            const pts = parts.slice(3);
+            const uniquePts = [];
+            const ptsSet = new Set();
+            for (const pt of pts) {
+              if (!ptsSet.has(pt)) {
+                ptsSet.add(pt);
+                uniquePts.push(pt);
+              }
+            }
+            outLines.push(header.concat(uniquePts).join(' '));
+          } else {
+            outLines.push(line);
+          }
+          continue;
+        }
+
+        // Detectar códec Opus en audio
+        const opusMatch = line.match(/^a=rtpmap:(\d+)\s+opus\/48000/i);
+        if (opusMatch) {
+          opusPt = opusMatch[1];
+          seenRtpMaps.add(opusPt);
+          outLines.push(line);
+          continue;
+        }
+
+        // Detectar flexfec-03 o rtpmap duplicado
+        const rtpMatch = line.match(/^a=rtpmap:(\d+)\s+([^\/\s]+)/i);
+        if (rtpMatch) {
+          const pt = rtpMatch[1];
+          const codec = rtpMatch[2].toLowerCase();
+
+          if (codec.includes('flexfec')) {
+            if (seenFlexFec || seenRtpMaps.has(pt)) {
+              // Descartar línea duplicada de flexfec-03
+              continue;
+            }
+            seenFlexFec = true;
+          } else if (seenRtpMaps.has(pt)) {
+            // Descartar payload type duplicado
+            continue;
+          }
+          seenRtpMaps.add(pt);
+          outLines.push(line);
+          continue;
+        }
+
+        // Deduplicar o descartar líneas fmtp
+        const fmtpMatch = line.match(/^a=fmtp:(\d+)\s*(.*)$/i);
+        if (fmtpMatch) {
+          const pt = fmtpMatch[1];
+          if (!seenRtpMaps.has(pt) || seenFmtps.has(pt)) {
+            continue;
+          }
+          seenFmtps.add(pt);
+
+          // Optimizar línea fmtp de Opus con bitrate y FEC para alta fidelidad de voz
+          if (opusPt && pt === opusPt) {
+            hasOpusFmtp = true;
+            let fmtpParams = fmtpMatch[2] || '';
+            if (!fmtpParams.includes('maxaveragebitrate=')) {
+              fmtpParams = fmtpParams ? `${fmtpParams};maxaveragebitrate=48000` : 'maxaveragebitrate=48000';
+            }
+            if (!fmtpParams.includes('useinbandfec=')) {
+              fmtpParams = fmtpParams ? `${fmtpParams};useinbandfec=1` : 'useinbandfec=1';
+            } else {
+              fmtpParams = fmtpParams.replace(/useinbandfec=\d+/g, 'useinbandfec=1');
+            }
+            outLines.push(`a=fmtp:${opusPt} ${fmtpParams}`);
+            continue;
+          }
+
+          outLines.push(line);
+          continue;
+        }
+
+        // Descartar rtcp-fb huérfanos si el rtpmap fue descartado
+        const rtcpFbMatch = line.match(/^a=rtcp-fb:(\d+)\b/i);
+        if (rtcpFbMatch && !seenRtpMaps.has(rtcpFbMatch[1])) {
+          continue;
+        }
+
+        outLines.push(line);
+      }
+
+      // Si Opus no tenía línea fmtp explícita, agregarla tras el rtpmap correspondiente
+      if (opusPt && !hasOpusFmtp) {
+        const rtpIndex = outLines.findIndex(l => l.startsWith(`a=rtpmap:${opusPt} `));
+        if (rtpIndex !== -1) {
+          outLines.splice(rtpIndex + 1, 0, `a=fmtp:${opusPt} maxaveragebitrate=48000;useinbandfec=1`);
+        }
+      }
+
+      const cleanSdp = outLines.join('\r\n') + '\r\n';
+
+      if (isObj) {
+        return { type: type || 'offer', sdp: cleanSdp };
+      }
+      return cleanSdp;
+    }
+
     async function createAndSendP2POffer(remotePeerId, remoteName, remoteRole, offerOptions) {
       if (!myChannel || currentVideoMode !== 'p2p' || !isAdmittedToClass) return;
       const role = remoteRole || (remotePeerId.startsWith('host_') || (remoteName && remoteName.includes('Profesor')) ? 'host' : 'student');
@@ -8167,7 +8048,8 @@
       try {
         const offer = await pc.createOffer(offerOptions || {});
         if (pc.signalingState !== 'stable') return;
-        await pc.setLocalDescription(offer);
+        const sanitizedOffer = sanitizeWebRTCSdp(offer);
+        await pc.setLocalDescription(sanitizedOffer);
         myChannel.send({
           type: 'broadcast',
           event: 'WEBRTC_OFFER',
@@ -9490,7 +9372,8 @@
             try { await pc.setLocalDescription({ type: 'rollback' }); } catch (rb) {}
           }
 
-          await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+          const sanitizedOffer = sanitizeWebRTCSdp(payload.sdp);
+          await pc.setRemoteDescription(new RTCSessionDescription(sanitizedOffer));
 
           // Desahogar candidatos ICE recibidos antes de fijar la descripción remota
           if (peerObj && peerObj.pendingIce && peerObj.pendingIce.length > 0) {
@@ -9531,7 +9414,8 @@
           }
 
           const answer = await pc.createAnswer();
-          await pc.setLocalDescription(answer);
+          const sanitizedAnswer = sanitizeWebRTCSdp(answer);
+          await pc.setLocalDescription(sanitizedAnswer);
 
           channel.send({
             type: 'broadcast',
@@ -9585,7 +9469,8 @@
           }
           if (payload.audioEnabled !== undefined) peerObj.audioEnabled = Boolean(payload.audioEnabled);
           if (payload.videoEnabled !== undefined) peerObj.videoEnabled = Boolean(payload.videoEnabled);
-          await peerObj.pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+          const sanitizedAnswer = sanitizeWebRTCSdp(payload.sdp);
+          await peerObj.pc.setRemoteDescription(new RTCSessionDescription(sanitizedAnswer));
 
             if (peerObj.pendingIce && peerObj.pendingIce.length > 0) {
               for (const cand of peerObj.pendingIce) {
@@ -10427,9 +10312,7 @@ window.setVideoStripMinimized = function(minimized) {
       toggleLocalVideo();
     });
 
-    document.getElementById('bottomVideoBlurBtn')?.addEventListener('click', () => {
-      toggleVideoBackgroundBlur();
-    });
+
 
     document.getElementById('bottomChatToggleBtn')?.addEventListener('click', () => {
       toggleChatPanel();

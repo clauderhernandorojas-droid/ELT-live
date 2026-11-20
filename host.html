@@ -2298,8 +2298,116 @@
           event: 'TEACHER_MODE_STATE',
           payload: { active: isTeacherGuidedMode, slide: currentSlide }
         });
+        if (isTeacherGuidedMode) {
+          setTimeout(() => broadcastCurrentLessonScrollState(), 60);
+        }
       }
     };
+
+    function findLessonActiveScrollTarget(doc, eventTarget) {
+      if (!doc) return null;
+      if (eventTarget && eventTarget.nodeType === 1 && eventTarget !== doc.documentElement && eventTarget !== doc.body) {
+        if ((eventTarget.scrollHeight - eventTarget.clientHeight) > 4) {
+          return eventTarget;
+        }
+      }
+
+      const rootEl = doc.scrollingElement || doc.documentElement || doc.body;
+      if (rootEl && (rootEl.scrollHeight - rootEl.clientHeight) > 4) {
+        return rootEl;
+      }
+
+      // Fallback para contenedores internos scrollables en la diapositiva activa
+      try {
+        const activeSlide = doc.querySelector('.slide.active, .slide-page.active, [data-slide].active, .swiper-slide-active');
+        if (activeSlide && (activeSlide.scrollHeight - activeSlide.clientHeight) > 4) {
+          return activeSlide;
+        }
+
+        const candidates = [...doc.querySelectorAll('*')].filter(el => {
+          if (!el || el.nodeType !== 1 || el.offsetParent === null) return false;
+          const diff = el.scrollHeight - el.clientHeight;
+          if (diff <= 4) return false;
+          try {
+            const oy = doc.defaultView ? doc.defaultView.getComputedStyle(el).overflowY : '';
+            return oy === 'auto' || oy === 'scroll' || oy === 'overlay';
+          } catch (e) {
+            return false;
+          }
+        });
+
+        if (candidates.length > 0) {
+          candidates.sort((a, b) => (b.clientWidth * b.clientHeight) - (a.clientWidth * a.clientHeight));
+          return candidates[0];
+        }
+      } catch (err) {}
+
+      return rootEl;
+    }
+
+    function buildSimpleScrollTargetSelector(el, doc) {
+      if (!el || !doc || el === doc.documentElement || el === doc.body || el === doc.scrollingElement) {
+        return '__ROOT__';
+      }
+      try {
+        if (el.id && doc.querySelectorAll('#' + CSS.escape(el.id)).length === 1) {
+          return '#' + CSS.escape(el.id);
+        }
+      } catch (e) {}
+
+      if (el.classList) {
+        if (el.classList.contains('slide') && el.classList.contains('active')) return '.slide.active';
+        if (el.classList.contains('slide-page') && el.classList.contains('active')) return '.slide-page.active';
+      }
+
+      const path = [];
+      let curr = el;
+      while (curr && curr.nodeType === 1 && curr !== doc.body && curr !== doc.documentElement) {
+        let tag = curr.tagName.toLowerCase();
+        let sib = curr;
+        let nth = 1;
+        while ((sib = sib.previousElementSibling)) {
+          if (sib.tagName.toLowerCase() === tag) nth++;
+        }
+        path.unshift(`${tag}:nth-of-type(${nth})`);
+        curr = curr.parentElement;
+      }
+      return path.length > 0 ? path.join(' > ') : '__ROOT__';
+    }
+
+    function broadcastCurrentLessonScrollState() {
+      if (!isTeacherGuidedMode || !roomChannel || !hostFrame) return;
+      try {
+        const rootDoc = hostFrame.contentDocument || (hostFrame.contentWindow && hostFrame.contentWindow.document);
+        if (!rootDoc) return;
+        let targetDoc = rootDoc;
+        let isInnerViewer = false;
+        const viewerFrame = rootDoc.querySelector('iframe#viewer, iframe');
+        if (viewerFrame) {
+          try {
+            const vDoc = viewerFrame.contentDocument || (viewerFrame.contentWindow && viewerFrame.contentWindow.document);
+            if (vDoc) {
+              targetDoc = vDoc;
+              isInnerViewer = true;
+            }
+          } catch (e) {}
+        }
+
+        const scrollEl = findLessonActiveScrollTarget(targetDoc, null);
+        if (!scrollEl) return;
+        const maxScrollY = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight);
+        const ratioY = maxScrollY > 0 ? (scrollEl.scrollTop / maxScrollY) : 0;
+        const selector = buildSimpleScrollTargetSelector(scrollEl, targetDoc);
+
+        roomChannel.send({
+          type: 'broadcast',
+          event: 'TEACHER_ACTION',
+          payload: { action: 'scroll', ratioY, selector, isInnerViewer, slide: currentSlide }
+        });
+      } catch (err) {
+        console.warn('[ELT Live] Error emitiendo estado de scroll guiado:', err);
+      }
+    }
 
     function buildUniqueDomSelector(el, doc) {
       if (!el || el.nodeType !== Node.ELEMENT_NODE) return '';
@@ -2350,23 +2458,25 @@
         });
       }, true);
 
-      // 2. Scroll con throttle
+      // 2. Scroll con throttle (detecta contenedores internos de diapositivas)
       let lastScrollTime = 0;
-      const onScrollHandler = () => {
+      const onScrollHandler = (e) => {
         if (!isTeacherGuidedMode) return;
         const now = Date.now();
-        if (now - lastScrollTime < 120) return;
+        if (now - lastScrollTime < 90) return;
         lastScrollTime = now;
         resetTeacherInactivityTimer();
 
-        const scrollEl = innerDoc.scrollingElement || innerDoc.documentElement || innerDoc.body;
+        const scrollEl = findLessonActiveScrollTarget(innerDoc, e && e.target);
         if (!scrollEl || !roomChannel) return;
         const maxScroll = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight);
         const ratioY = maxScroll > 0 ? (scrollEl.scrollTop / maxScroll) : 0;
+        const selector = buildSimpleScrollTargetSelector(scrollEl, innerDoc);
+
         roomChannel.send({
           type: 'broadcast',
           event: 'TEACHER_ACTION',
-          payload: { action: 'scroll', ratioY, isInnerViewer, slide: currentSlide }
+          payload: { action: 'scroll', ratioY, selector, isInnerViewer, slide: currentSlide }
         });
       };
       innerDoc.addEventListener('scroll', onScrollHandler, { passive: true, capture: true });
@@ -2507,6 +2617,9 @@
         payload: { targetSlide: num, teacherGuidedMode: isTeacherGuidedMode }
       });
       renderStudentsDashboard();
+      if (isTeacherGuidedMode) {
+        setTimeout(() => broadcastCurrentLessonScrollState(), 120);
+      }
     }
 
     function broadcastDeckToStudents() {

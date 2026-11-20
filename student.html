@@ -3052,11 +3052,53 @@
         try {
           const action = payload.action;
           if (action === 'scroll') {
-            const scrollEl = targetDoc.scrollingElement || targetDoc.documentElement || targetDoc.body;
-            if (scrollEl) {
-              const maxScroll = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight);
-              const targetWin = targetDoc.defaultView || window;
-              targetWin.scrollTo({ top: (payload.ratioY || 0) * maxScroll, behavior: 'smooth' });
+            let targetScrollEl = null;
+            if (payload.selector && payload.selector !== '__ROOT__') {
+              try {
+                targetScrollEl = targetDoc.querySelector(payload.selector);
+              } catch (e) {}
+            }
+
+            if (!targetScrollEl || (targetScrollEl.scrollHeight - targetScrollEl.clientHeight) <= 4) {
+              try {
+                const activeSlide = targetDoc.querySelector('.slide.active, .slide-page.active, [data-slide].active, .swiper-slide-active');
+                if (activeSlide && (activeSlide.scrollHeight - activeSlide.clientHeight) > 4) {
+                  targetScrollEl = activeSlide;
+                } else {
+                  const candidates = [...targetDoc.querySelectorAll('*')].filter(el => {
+                    if (!el || el.nodeType !== 1 || el.offsetParent === null) return false;
+                    const diff = el.scrollHeight - el.clientHeight;
+                    if (diff <= 4) return false;
+                    try {
+                      const oy = targetDoc.defaultView ? targetDoc.defaultView.getComputedStyle(el).overflowY : '';
+                      return oy === 'auto' || oy === 'scroll' || oy === 'overlay';
+                    } catch (e) {
+                      return false;
+                    }
+                  });
+                  if (candidates.length > 0) {
+                    candidates.sort((a, b) => (b.clientWidth * b.clientHeight) - (a.clientWidth * a.clientHeight));
+                    targetScrollEl = candidates[0];
+                  }
+                }
+              } catch (e) {}
+            }
+
+            if (!targetScrollEl) {
+              targetScrollEl = targetDoc.scrollingElement || targetDoc.documentElement || targetDoc.body;
+            }
+
+            if (targetScrollEl) {
+              const maxScroll = Math.max(0, targetScrollEl.scrollHeight - targetScrollEl.clientHeight);
+              const targetTop = (payload.ratioY || 0) * maxScroll;
+              if (targetScrollEl === targetDoc.documentElement || targetScrollEl === targetDoc.body || targetScrollEl === targetDoc.scrollingElement) {
+                const targetWin = targetDoc.defaultView || window;
+                targetWin.scrollTo({ top: targetTop, behavior: 'smooth' });
+              } else if (typeof targetScrollEl.scrollTo === 'function') {
+                targetScrollEl.scrollTo({ top: targetTop, behavior: 'smooth' });
+              } else {
+                targetScrollEl.scrollTop = targetTop;
+              }
             }
           } else if (action === 'click' && payload.selector) {
             const el = targetDoc.querySelector(payload.selector);

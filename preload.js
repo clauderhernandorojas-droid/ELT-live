@@ -10,10 +10,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   closeWindow: () => ipcRenderer.invoke('window:close'),
   isMaximized: () => ipcRenderer.invoke('window:isMaximized'),
 
-  // Fuentes para compartir pantalla (desktopCapturer)
+  // Fuentes para compartir pantalla (desktopCapturer) y borde verde de compartición
   getDesktopSources: () => ipcRenderer.invoke('get-desktop-sources'),
-  setSelectedDesktopSource: (sourceId) => ipcRenderer.invoke('set-selected-desktop-source', sourceId),
+  setSelectedDesktopSource: (sourceId, withAudio) => ipcRenderer.invoke('set-selected-desktop-source', sourceId, withAudio),
   getScreenSources: (opts) => ipcRenderer.invoke('screen:getSources', opts),
+  showShareBorder: (opts) => ipcRenderer.invoke('show-share-border', opts),
+  hideShareBorder: () => ipcRenderer.invoke('hide-share-border'),
 
   // Escuchar eventos desde el proceso principal
   onWindowStateChange: (callback) => {

@@ -955,19 +955,86 @@
           </div>
         </div>
 
+        <!-- Banner compacto local cuando el propio Host comparte pantalla (evita espejo infinito) -->
+        <div id="localScreenShareBanner" class="hidden absolute top-2.5 left-1/2 -translate-x-1/2 z-50 bg-emerald-950/95 border border-emerald-400/80 text-emerald-100 text-xs font-semibold px-3.5 py-1.5 rounded-full shadow-2xl flex items-center gap-2.5 backdrop-blur-xs transition-all">
+          <span class="flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+            <span id="localScreenShareBannerText">🖥️ Estás compartiendo tu pantalla</span>
+          </span>
+          <span id="localScreenShareAudioBadge" class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-900/90 border border-emerald-500/50 text-emerald-200">🔊 Audio del sistema activo</span>
+          <button id="btnToggleLocalScreenPreview" type="button" onclick="window.toggleLocalScreenPreview && window.toggleLocalScreenPreview()" class="bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-400/40 font-bold text-[11px] px-2.5 py-0.5 rounded-full transition cursor-pointer">👁️ Ver vista previa</button>
+          <button type="button" onclick="if (typeof toggleScreenShare === 'function') toggleScreenShare();" class="bg-rose-600 hover:bg-rose-500 text-white font-bold text-[11px] px-2.5 py-0.5 rounded-full transition cursor-pointer">Detener</button>
+        </div>
+
+        <!-- Modal Selector de Pantalla y Ventanas Estilo Zoom (#zoomStyleScreenPickerModal) -->
+        <div id="zoomStyleScreenPickerModal" class="hidden fixed inset-0 z-[999998] bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 select-none">
+          <div class="bg-[#181a20] border border-slate-700/80 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[88vh] flex flex-col overflow-hidden text-slate-100">
+            <div class="flex items-center justify-between px-5 py-3.5 border-b border-slate-800 bg-[#12141a]">
+              <div>
+                <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                  <i class="fa-solid fa-desktop text-[#0e72ed]"></i>
+                  <span>Selecciona una ventana o pantalla para compartir</span>
+                </h3>
+                <p class="text-[11px] text-slate-400 mt-0.5">Elige una pantalla completa o una ventana de aplicación específica (las ventanas de ELT Live se excluyen automáticamente)</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <button type="button" id="zoomPickerRefreshBtn" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition cursor-pointer flex items-center gap-1.5" title="Actualizar miniaturas">
+                  <i class="fa-solid fa-arrows-rotate text-[11px]"></i>
+                  <span>Actualizar</span>
+                </button>
+                <button type="button" id="zoomPickerCloseBtn" class="w-7 h-7 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center transition cursor-pointer text-sm">✕</button>
+              </div>
+            </div>
+
+            <div class="flex-1 overflow-y-auto p-5 space-y-5">
+              <!-- Bloque 1: Pantallas completas -->
+              <div>
+                <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2.5 flex items-center gap-1.5">
+                  <i class="fa-solid fa-display text-sky-400"></i>
+                  <span>Pantallas completas</span>
+                </h4>
+                <div id="zoomPickerScreensGrid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3"></div>
+              </div>
+
+              <!-- Bloque 2: Ventanas de aplicaciones -->
+              <div>
+                <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2.5 flex items-center gap-1.5">
+                  <i class="fa-regular fa-window-maximize text-indigo-400"></i>
+                  <span>Ventanas de aplicaciones</span>
+                </h4>
+                <div id="zoomPickerWindowsGrid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3"></div>
+              </div>
+            </div>
+
+            <div class="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5 border-t border-slate-800 bg-[#12141a]">
+              <label class="inline-flex items-center gap-2.5 cursor-pointer text-xs font-semibold text-slate-200 hover:text-white">
+                <input type="checkbox" id="zoomPickerAudioCheckbox" class="w-4 h-4 rounded accent-[#0e72ed] cursor-pointer" checked>
+                <span>🔊 Compartir sonido del sistema</span>
+              </label>
+              <div class="flex items-center gap-2.5">
+                <button type="button" id="zoomPickerCancelBtn" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700 transition cursor-pointer">Cancelar</button>
+                <button type="button" id="zoomPickerConfirmBtn" class="px-5 py-2 rounded-xl bg-[#0e72ed] hover:bg-[#0b5ed7] text-white text-xs font-bold shadow-lg transition cursor-pointer flex items-center gap-1.5">
+                  <i class="fa-solid fa-arrow-up-from-bracket text-[11px]"></i>
+                  <span>Compartir</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Botón flotante para restaurar la vista de pantalla compartida si fue minimizada -->
         <button id="btnRestoreScreenShareStage" type="button" onclick="restoreScreenShareStage()" class="hidden absolute top-3 right-3 z-30 bg-[#0e72ed] hover:bg-[#0b5ed7] text-white border border-white/20 px-3.5 py-2 rounded-xl text-xs font-bold shadow-2xl transition cursor-pointer flex items-center gap-2 animate-bounce">
           <i class="fa-solid fa-expand text-[11px]"></i>
           <span>Restaurar pantalla compartida</span>
         </button>
 
-        <!-- Visor en Escenario Principal (Main Stage) cuando se comparte pantalla -->
+        <!-- Visor en Escenario Principal (Main Stage) cuando un participante remoto comparte pantalla -->
         <div id="remoteScreenShareOverlay" class="hidden absolute inset-0 z-40 bg-slate-950 flex flex-col items-center justify-center overflow-hidden" style="z-index: 38;">
-          <div class="absolute top-3 left-3 z-10 flex items-center gap-2 bg-slate-900/90 border border-emerald-500/40 text-emerald-300 px-3 py-1.5 rounded-xl text-xs font-bold shadow-lg">
+          <div class="absolute top-3 left-3 z-30 flex items-center gap-2 bg-slate-900/90 border border-emerald-500/40 text-emerald-300 px-3 py-1.5 rounded-xl text-xs font-bold shadow-lg">
             <i class="fa-solid fa-display animate-pulse"></i>
             <span id="remoteScreenShareLabel">Pantalla compartida en vivo</span>
           </div>
-          <div class="absolute top-3 right-3 z-10 flex items-center gap-2">
+          <div class="absolute top-3 right-3 z-30 flex items-center gap-2">
             <button id="btnStopScreenShareStage" type="button" onclick="if (typeof stopScreenShare === 'function') stopScreenShare();" class="hidden bg-rose-600 hover:bg-rose-500 text-white border border-rose-400/40 px-3 py-1.5 rounded-xl text-xs font-bold shadow-lg transition cursor-pointer items-center gap-1.5">
               <i class="fa-solid fa-stop text-[10px]"></i>
               <span>Dejar de compartir</span>
@@ -978,6 +1045,71 @@
             </button>
           </div>
           <video id="remoteScreenShareVideo" autoplay playsinline class="w-full h-full object-contain bg-black"></video>
+          <!-- Capa Vectorial Calibrada 1:1 sobre el rectángulo activo del video compartido -->
+          <div id="screenAnnotateStage" class="absolute pointer-events-none select-none overflow-hidden" style="z-index: 25; left: 0px; top: 0px; width: 0px; height: 0px;">
+            <canvas id="screenAnnotateCanvas" class="absolute inset-0 w-full h-full pointer-events-none"></canvas>
+            <div id="screenAnnotateObjectsLayer" class="absolute inset-0 w-full h-full pointer-events-none"></div>
+            <svg id="screenAnnotateGuidesLayer" class="absolute inset-0 w-full h-full pointer-events-none" style="z-index: 30;"></svg>
+          </div>
+        </div>
+
+        <!-- Lápiz Flotante Arrastrable y Paleta de Anotación sobre Pantalla Compartida -->
+        <button id="screenAnnotateFab" type="button" class="hidden absolute z-50 w-11 h-11 rounded-full bg-[#0e72ed] hover:bg-[#0b5ed7] text-white shadow-2xl border-2 border-white/80 flex items-center justify-center cursor-grab active:cursor-grabbing transition-transform hover:scale-105 select-none" style="bottom: 76px; left: 20px; z-index: 49;" title="Anotar sobre la pantalla compartida (Arrastra para mover)">
+          <i class="fa-solid fa-pen-nib text-sm pointer-events-none"></i>
+        </button>
+        <div id="screenAnnotateToolbar" class="hidden absolute z-50 bg-[#181a1f]/95 border border-white/15 rounded-2xl shadow-2xl px-2.5 py-2 flex flex-wrap items-center gap-1.5 text-white backdrop-blur-md select-none" style="bottom: 76px; left: 78px; z-index: 49; max-width: calc(100% - 96px);">
+          <button type="button" data-sa-tool="cursor" class="sa-tool-btn px-2 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/10 transition flex items-center gap-1" title="Modo Ratón (Interactuar sin dibujar)">
+            <i class="fa-solid fa-arrow-pointer"></i>
+          </button>
+          <button type="button" data-sa-tool="select" class="sa-tool-btn px-2 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/10 transition flex items-center gap-1" title="Seleccionar, mover y redimensionar objetos (con guías de alineación)">
+            <i class="fa-solid fa-up-down-left-right"></i>
+          </button>
+          <button type="button" data-sa-tool="pen" class="sa-tool-btn active bg-[#0e72ed] text-white px-2 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/10 transition flex items-center gap-1" title="Lápiz libre">
+            <i class="fa-solid fa-pen"></i>
+          </button>
+          <button type="button" data-sa-tool="highlighter" class="sa-tool-btn px-2 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/10 transition flex items-center gap-1" title="Resaltador translúcido">
+            <i class="fa-solid fa-highlighter"></i>
+          </button>
+          <button type="button" data-sa-tool="text" class="sa-tool-btn px-2 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/10 transition flex items-center gap-1" title="Cuadro de Texto (doble clic para editar, esquina para redimensionar)">
+            <i class="fa-solid fa-font"></i>
+          </button>
+          <button type="button" data-sa-tool="rect" class="sa-tool-btn px-2 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/10 transition flex items-center gap-1" title="Rectángulo">
+            <i class="fa-regular fa-square"></i>
+          </button>
+          <button type="button" data-sa-tool="ellipse" class="sa-tool-btn px-2 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/10 transition flex items-center gap-1" title="Círculo / Elipse">
+            <i class="fa-regular fa-circle"></i>
+          </button>
+          <button type="button" data-sa-tool="arrow" class="sa-tool-btn px-2 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/10 transition flex items-center gap-1" title="Flecha direccional">
+            <i class="fa-solid fa-arrow-right-long"></i>
+          </button>
+          <button type="button" data-sa-tool="eraser" class="sa-tool-btn px-2 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/10 transition flex items-center gap-1" title="Borrador de trazos u objetos">
+            <i class="fa-solid fa-eraser"></i>
+          </button>
+          <div class="h-5 w-[1px] bg-white/15 mx-0.5"></div>
+          <div class="flex items-center gap-1">
+            <button type="button" data-sa-color="#ef4444" class="sa-color-btn w-4 h-4 rounded-full bg-[#ef4444] ring-2 ring-white scale-110 transition cursor-pointer"></button>
+            <button type="button" data-sa-color="#0e72ed" class="sa-color-btn w-4 h-4 rounded-full bg-[#0e72ed] hover:scale-110 transition cursor-pointer"></button>
+            <button type="button" data-sa-color="#10b981" class="sa-color-btn w-4 h-4 rounded-full bg-[#10b981] hover:scale-110 transition cursor-pointer"></button>
+            <button type="button" data-sa-color="#f59e0b" class="sa-color-btn w-4 h-4 rounded-full bg-[#f59e0b] hover:scale-110 transition cursor-pointer"></button>
+            <button type="button" data-sa-color="#ffffff" class="sa-color-btn w-4 h-4 rounded-full bg-white hover:scale-110 transition cursor-pointer"></button>
+            <input id="screenAnnotateCustomColor" type="color" value="#ef4444" class="w-4 h-4 rounded cursor-pointer bg-transparent border-0 p-0" title="Color personalizado">
+          </div>
+          <div class="h-5 w-[1px] bg-white/15 mx-0.5"></div>
+          <select id="screenAnnotateSizeSelect" class="bg-slate-800 border border-slate-600 text-white text-[10px] rounded px-1.5 py-1 cursor-pointer" title="Grosor / Tamaño">
+            <option value="3">Fino</option>
+            <option value="5" selected>Medio</option>
+            <option value="9">Grueso</option>
+          </select>
+          <button type="button" id="screenAnnotateUndoBtn" class="px-2 py-1 rounded-lg text-xs hover:bg-white/10 text-slate-300 hover:text-white transition cursor-pointer" title="Deshacer">
+            <i class="fa-solid fa-rotate-left"></i>
+          </button>
+          <button type="button" id="screenAnnotateRedoBtn" class="px-2 py-1 rounded-lg text-xs hover:bg-white/10 text-slate-300 hover:text-white transition cursor-pointer" title="Rehacer">
+            <i class="fa-solid fa-rotate-right"></i>
+          </button>
+          <button type="button" id="screenAnnotateClearBtn" class="px-2 py-1 rounded-lg text-xs hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 transition cursor-pointer" title="Limpiar todas las anotaciones">
+            <i class="fa-solid fa-trash-can"></i>
+          </button>
+          <button type="button" id="screenAnnotateCloseBtn" class="px-1.5 py-1 rounded-lg text-xs hover:bg-white/10 text-slate-400 hover:text-white transition cursor-pointer" title="Ocultar paleta">✕</button>
         </div>
 
         <!-- ==================== PIZARRA COLABORATIVA (SOLO VISIBLE EN MODO PIZARRA BLANCA) ==================== -->
@@ -1329,13 +1461,19 @@
           <div class="flex items-center gap-3">
             <div class="h-7 w-[1px] bg-slate-700/80"></div>
 
-            <!-- Share Screen with System/Tab Audio -->
-            <button id="bottomShareBtn" type="button" class="flex flex-col items-center justify-center px-2.5 py-1 rounded-lg hover:bg-white/10 transition cursor-pointer" title="Compartir pantalla con audio del sistema / pestaña">
-              <div id="bottomShareIconBox" class="w-6 h-5 rounded border border-emerald-400/80 bg-emerald-500/10 flex items-center justify-center text-emerald-400 transition">
-                <i id="bottomShareIcon" class="fa-solid fa-arrow-up text-[10px]"></i>
-              </div>
-              <span id="bottomShareLabel" class="text-[10px] text-slate-300 font-medium mt-0.5">Share</span>
-            </button>
+            <!-- Share Screen + Toggle Audio del Sistema -->
+            <div class="inline-flex items-center bg-white/5 rounded-lg border border-slate-700/60 p-0.5">
+              <button id="bottomShareBtn" type="button" class="flex flex-col items-center justify-center px-2.5 py-1 rounded-lg hover:bg-white/10 transition cursor-pointer" title="Compartir pantalla">
+                <div id="bottomShareIconBox" class="w-6 h-5 rounded border border-emerald-400/80 bg-emerald-500/10 flex items-center justify-center text-emerald-400 transition">
+                  <i id="bottomShareIcon" class="fa-solid fa-arrow-up text-[10px]"></i>
+                </div>
+                <span id="bottomShareLabel" class="text-[10px] text-slate-300 font-medium mt-0.5">Share</span>
+              </button>
+              <button id="bottomShareAudioToggleBtn" type="button" onclick="window.toggleIncludeSystemAudio && window.toggleIncludeSystemAudio(event)" class="flex flex-col items-center justify-center px-2 py-1 rounded-lg transition cursor-pointer border border-emerald-400/60 bg-emerald-500/20 text-emerald-300" title="Audio del sistema al compartir: ACTIVADO (clic para cambiar)">
+                <i id="bottomShareAudioToggleIcon" class="fa-solid fa-volume-high text-xs"></i>
+                <span id="bottomShareAudioToggleLabel" class="text-[9px] font-bold mt-0.5 whitespace-nowrap">🔊 Audio</span>
+              </button>
+            </div>
 
             <!-- End -->
             <button id="bottomEndBtn" type="button" class="flex flex-col items-center justify-center px-2 py-1 rounded-lg hover:bg-rose-500/15 transition group" title="Finalizar o salir de la sesión">
@@ -5465,7 +5603,1340 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
       });
     }
 
+    
+    // ==================== MOTOR VECTORIAL 1:1 SOBRE PANTALLA COMPARTIDA + AUDIO DEL SISTEMA ====================
+    let includeSystemAudio = true;
+    let screenAudioTrack = null;
+    let screenStream = null;
+    let isSharingScreen = false;
+    let selectedSourceId = null;
+    let selectedSourceIsScreen = true;
+    let selectedSourceName = '';
+    let forceLocalScreenPreview = false;
+
+    function updateShareSystemAudioToggleUI() {
+      const btn = document.getElementById('bottomShareAudioToggleBtn');
+      const icon = document.getElementById('bottomShareAudioToggleIcon');
+      const label = document.getElementById('bottomShareAudioToggleLabel');
+      const modalCheckbox = document.getElementById('zoomPickerAudioCheckbox');
+      if (modalCheckbox) modalCheckbox.checked = Boolean(includeSystemAudio);
+      if (btn) {
+        if (includeSystemAudio) {
+          btn.className = 'flex flex-col items-center justify-center px-2 py-1 rounded-lg transition cursor-pointer border border-emerald-400/60 bg-emerald-500/20 text-emerald-300';
+          btn.title = 'Audio del sistema al compartir: ACTIVADO (clic para desactivar)';
+        } else {
+          btn.className = 'flex flex-col items-center justify-center px-2 py-1 rounded-lg transition cursor-pointer border border-transparent bg-transparent text-slate-400 hover:text-white';
+          btn.title = 'Audio del sistema al compartir: DESACTIVADO (clic para activar)';
+        }
+      }
+      if (icon) {
+        icon.className = includeSystemAudio ? 'fa-solid fa-volume-high text-xs' : 'fa-solid fa-volume-xmark text-xs';
+      }
+      if (label) {
+        label.textContent = includeSystemAudio ? '🔊 Audio' : '🔇 Audio';
+      }
+      updateLocalScreenShareBannerUI();
+    }
+
+    function updateLocalScreenShareBannerUI() {
+      const banner = document.getElementById('localScreenShareBanner');
+      const bannerText = document.getElementById('localScreenShareBannerText');
+      const badge = document.getElementById('localScreenShareAudioBadge');
+      const previewBtn = document.getElementById('btnToggleLocalScreenPreview');
+      if (!banner) return;
+      if (isSharingScreen) {
+        banner.classList.remove('hidden');
+        if (bannerText) {
+          bannerText.textContent = (!selectedSourceIsScreen && selectedSourceName)
+            ? `🪟 Compartiendo: ${selectedSourceName.slice(0, 38)}`
+            : '🖥️ Estás compartiendo tu pantalla';
+        }
+        const hasAudioTrack = Boolean(
+          (screenStream && screenStream.getAudioTracks().some(t => t.readyState === 'live')) ||
+          (screenAudioTrack && screenAudioTrack.readyState === 'live')
+        );
+        if (badge) {
+          if (hasAudioTrack) {
+            badge.textContent = '🔊 Audio del sistema activo';
+            badge.className = 'text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-900/90 border border-emerald-500/50 text-emerald-200';
+          } else {
+            badge.textContent = '🔇 Sin audio del sistema';
+            badge.className = 'text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800/90 border border-slate-600/50 text-slate-300';
+          }
+        }
+        if (previewBtn) {
+          const showingPreview = Boolean(!selectedSourceIsScreen || forceLocalScreenPreview);
+          previewBtn.textContent = showingPreview ? '🙈 Ocultar vista previa' : '👁️ Ver vista previa';
+        }
+      } else {
+        banner.classList.add('hidden');
+      }
+    }
+
+    window.toggleLocalScreenPreview = function() {
+      if (!selectedSourceIsScreen) {
+        // Si compartía ventana y pulsa ocultar/mostrar, alternar
+        selectedSourceIsScreen = true;
+        forceLocalScreenPreview = false;
+      } else {
+        forceLocalScreenPreview = !forceLocalScreenPreview;
+      }
+      updateLocalScreenShareBannerUI();
+      if (typeof syncHostScreenShareStage === 'function') syncHostScreenShareStage();
+      if (typeof syncStudentRemoteScreenShareOverlay === 'function') syncStudentRemoteScreenShareOverlay();
+    };
+
+    window.toggleIncludeSystemAudio = function(e) {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      includeSystemAudio = !includeSystemAudio;
+      updateShareSystemAudioToggleUI();
+    };
+
+    window.stopScreenShare = function() {
+      try { window.electronAPI?.hideShareBorder?.(); } catch (e) {}
+      if (isSharingScreen && typeof toggleScreenShare === 'function') {
+        toggleScreenShare();
+      }
+    };
+
+    function openZoomStyleScreenPickerModal() {
+      return new Promise(async (resolve) => {
+        const modal = document.getElementById('zoomStyleScreenPickerModal');
+        const screensGrid = document.getElementById('zoomPickerScreensGrid');
+        const windowsGrid = document.getElementById('zoomPickerWindowsGrid');
+        const audioChk = document.getElementById('zoomPickerAudioCheckbox');
+        const confirmBtn = document.getElementById('zoomPickerConfirmBtn');
+        const cancelBtn = document.getElementById('zoomPickerCancelBtn');
+        const closeBtn = document.getElementById('zoomPickerCloseBtn');
+        const refreshBtn = document.getElementById('zoomPickerRefreshBtn');
+
+        if (!modal || !screensGrid || !windowsGrid || !window.electronAPI?.getDesktopSources) {
+          resolve({ confirmed: true, useNative: true });
+          return;
+        }
+
+        if (modal.parentElement !== document.body) {
+          document.body.appendChild(modal);
+        }
+        if (audioChk) audioChk.checked = Boolean(includeSystemAudio);
+
+        let currentSources = [];
+        let pickedSource = null;
+
+        const renderSourceCards = () => {
+          screensGrid.innerHTML = '';
+          windowsGrid.innerHTML = '';
+          const screens = currentSources.filter(s => s.isScreen || String(s.id || '').startsWith('screen:'));
+          const windows = currentSources.filter(s => !s.isScreen && !String(s.id || '').startsWith('screen:'));
+
+          const buildCard = (src, isScreenCard) => {
+            const isSelected = pickedSource && pickedSource.id === src.id;
+            const card = document.createElement('div');
+            card.className = `group rounded-xl border-2 p-2 transition cursor-pointer flex flex-col justify-between ${
+              isSelected
+                ? 'border-[#0e72ed] bg-[#0e72ed]/15 ring-2 ring-[#0e72ed]/50 shadow-lg'
+                : 'border-slate-700/80 bg-[#1e212a] hover:border-slate-500 hover:bg-[#242834]'
+            }`;
+            const thumbSrc = src.thumbnailDataUrl || src.thumbnail || '';
+            const iconHtml = src.appIconDataUrl
+              ? `<img src="${src.appIconDataUrl}" class="w-4 h-4 rounded-xs object-contain flex-shrink-0" alt="">`
+              : `<i class="fa-solid ${isScreenCard ? 'fa-display text-sky-400' : 'fa-window-maximize text-indigo-400'} text-xs flex-shrink-0"></i>`;
+
+            card.innerHTML = `
+              <div class="relative w-full aspect-video bg-slate-950 rounded-lg overflow-hidden border border-white/10 mb-2 flex items-center justify-center">
+                ${thumbSrc ? `<img src="${thumbSrc}" class="w-full h-full object-contain" alt="">` : '<span class="text-[11px] text-slate-500">Sin vista previa</span>'}
+                ${isSelected ? '<span class="absolute top-1.5 right-1.5 bg-[#0e72ed] text-white text-[10px] font-extrabold px-1.5 py-0.5 rounded-md shadow">✓ Seleccionado</span>' : ''}
+              </div>
+              <div class="flex items-center gap-1.5 px-0.5">
+                ${iconHtml}
+                <span class="text-xs font-semibold text-slate-100 truncate" title="${String(src.name || '').replace(/"/g, '&quot;')}">${src.name || (isScreenCard ? 'Pantalla' : 'Ventana')}</span>
+              </div>
+            `;
+            card.addEventListener('click', () => {
+              pickedSource = src;
+              renderSourceCards();
+            });
+            card.addEventListener('dblclick', () => {
+              pickedSource = src;
+              finish(true);
+            });
+            return card;
+          };
+
+          if (screens.length === 0) {
+            screensGrid.innerHTML = '<p class="text-xs text-slate-500 col-span-3">No se detectaron pantallas.</p>';
+          } else {
+            screens.forEach(s => screensGrid.appendChild(buildCard(s, true)));
+          }
+
+          if (windows.length === 0) {
+            windowsGrid.innerHTML = '<p class="text-xs text-slate-500 col-span-3">No hay otras ventanas abiertas.</p>';
+          } else {
+            windows.forEach(w => windowsGrid.appendChild(buildCard(w, false)));
+          }
+        };
+
+        const loadSources = async () => {
+          screensGrid.innerHTML = '<p class="text-xs text-slate-400 col-span-3 py-4">Cargando pantallas y ventanas...</p>';
+          windowsGrid.innerHTML = '';
+          try {
+            currentSources = await window.electronAPI.getDesktopSources();
+          } catch (e) {
+            currentSources = [];
+          }
+          if (!pickedSource || !currentSources.some(s => s.id === pickedSource.id)) {
+            pickedSource = currentSources.find(s => s.isScreen || String(s.id || '').startsWith('screen:')) || currentSources[0] || null;
+          }
+          renderSourceCards();
+        };
+
+        const cleanup = () => {
+          modal.classList.add('hidden');
+          confirmBtn?.removeEventListener('click', onConfirm);
+          cancelBtn?.removeEventListener('click', onCancel);
+          closeBtn?.removeEventListener('click', onCancel);
+          refreshBtn?.removeEventListener('click', loadSources);
+        };
+
+        const finish = async (confirmed) => {
+          const withAudio = audioChk ? Boolean(audioChk.checked) : includeSystemAudio;
+          cleanup();
+          if (!confirmed || !pickedSource) {
+            resolve({ confirmed: false });
+            return;
+          }
+          includeSystemAudio = withAudio;
+          selectedSourceId = pickedSource.id;
+          selectedSourceIsScreen = Boolean(pickedSource.isScreen || String(pickedSource.id || '').startsWith('screen:'));
+          selectedSourceName = pickedSource.name || '';
+          forceLocalScreenPreview = !selectedSourceIsScreen;
+          updateShareSystemAudioToggleUI();
+
+          try {
+            await window.electronAPI.setSelectedDesktopSource(selectedSourceId, includeSystemAudio);
+          } catch (e) {}
+          resolve({
+            confirmed: true,
+            sourceId: selectedSourceId,
+            isScreen: selectedSourceIsScreen,
+            name: selectedSourceName,
+            withAudio: includeSystemAudio
+          });
+        };
+
+        const onConfirm = () => finish(true);
+        const onCancel = () => finish(false);
+
+        confirmBtn?.addEventListener('click', onConfirm);
+        cancelBtn?.addEventListener('click', onCancel);
+        closeBtn?.addEventListener('click', onCancel);
+        refreshBtn?.addEventListener('click', loadSources);
+
+        modal.classList.remove('hidden');
+        await loadSources();
+      });
+    }
+
+    async function acquireScreenDisplayStream() {
+      const hasElectronPicker = Boolean(window.electronAPI && typeof window.electronAPI.getDesktopSources === 'function');
+      if (hasElectronPicker) {
+        const choice = await openZoomStyleScreenPickerModal();
+        if (!choice || !choice.confirmed) {
+          const cancelErr = new Error('Selection cancelled by user');
+          cancelErr.name = 'NotAllowedError';
+          throw cancelErr;
+        }
+      }
+
+      const audioConstraint = includeSystemAudio
+        ? { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+        : false;
+
+      let stream = null;
+      try {
+        stream = await navigator.mediaDevices.getDisplayMedia({
+          video: hasElectronPicker ? { cursor: 'always' } : { displaySurface: 'monitor', cursor: 'always' },
+          audio: audioConstraint,
+          selfBrowserSurface: 'exclude',
+          surfaceSwitching: 'include'
+        });
+      } catch (err1) {
+        if (err1 && (err1.name === 'NotAllowedError' || err1.name === 'AbortError')) {
+          throw err1;
+        }
+        try {
+          stream = await navigator.mediaDevices.getDisplayMedia({
+            video: true,
+            audio: Boolean(includeSystemAudio),
+            selfBrowserSurface: 'exclude',
+            surfaceSwitching: 'include'
+          });
+        } catch (err2) {
+          if (err2 && (err2.name === 'NotAllowedError' || err2.name === 'AbortError')) {
+            throw err2;
+          }
+          stream = await navigator.mediaDevices.getDisplayMedia({
+            video: true,
+            audio: false
+          });
+        }
+      }
+
+      if (!hasElectronPicker && stream) {
+        try {
+          const vt = stream.getVideoTracks()[0];
+          const settings = vt && typeof vt.getSettings === 'function' ? vt.getSettings() : {};
+          if (settings && (settings.displaySurface === 'window' || settings.displaySurface === 'browser')) {
+            selectedSourceIsScreen = false;
+            selectedSourceName = vt.label || 'Ventana compartida';
+            forceLocalScreenPreview = true;
+          } else {
+            selectedSourceIsScreen = true;
+            selectedSourceName = 'Pantalla completa';
+            forceLocalScreenPreview = false;
+          }
+        } catch (e) {}
+      }
+      if (stream) {
+        try {
+          window.electronAPI?.showShareBorder?.({
+            sourceId: selectedSourceId,
+            isScreen: selectedSourceIsScreen
+          });
+          const vt = stream.getVideoTracks()[0];
+          if (vt) {
+            vt.addEventListener('ended', () => {
+              try { window.electronAPI?.hideShareBorder?.(); } catch (e) {}
+            });
+          }
+        } catch (e) {}
+      }
+      return stream;
+    }
+
+    // Función pura que calcula el rectángulo exacto del fotograma de video dentro de un <video> con object-fit: contain
+    function getRenderedVideoContentRect(videoEl) {
+      if (!videoEl) return { left: 0, top: 0, width: 0, height: 0 };
+      const cw = videoEl.clientWidth || videoEl.offsetWidth || 0;
+      const ch = videoEl.clientHeight || videoEl.offsetHeight || 0;
+      const vw = videoEl.videoWidth || 0;
+      const vh = videoEl.videoHeight || 0;
+      if (cw <= 0 || ch <= 0) return { left: 0, top: 0, width: 0, height: 0 };
+      if (vw <= 0 || vh <= 0) return { left: 0, top: 0, width: cw, height: ch };
+
+      const containerRatio = cw / ch;
+      const videoRatio = vw / vh;
+      let width, height, left, top;
+      if (videoRatio > containerRatio) {
+        width = cw;
+        height = cw / videoRatio;
+        left = 0;
+        top = (ch - height) / 2;
+      } else {
+        height = ch;
+        width = ch * videoRatio;
+        top = 0;
+        left = (cw - width) / 2;
+      }
+      return {
+        left: Math.round(left * 100) / 100,
+        top: Math.round(top * 100) / 100,
+        width: Math.max(1, Math.round(width * 100) / 100),
+        height: Math.max(1, Math.round(height * 100) / 100)
+      };
+    }
+    window.getRenderedVideoContentRect = getRenderedVideoContentRect;
+
+    let saItems = [];
+    let saHistory = [];
+    let saRedoStack = [];
+    let saTool = 'pen';
+    let saColor = '#ef4444';
+    let saSize = 5;
+    let saSelectedId = null;
+    let saEditingTextId = null;
+    let saToolbarOpen = false;
+    let saIsDrawing = false;
+    let saIsDraggingItem = false;
+    let saIsResizingItem = false;
+    let saIsErasing = false;
+    let saActiveItem = null;
+    let saDragStartNorm = null;
+    let saDragOrigNorm = null;
+    const saClientId = 'sa_' + Math.random().toString(36).slice(2, 9);
+
+    function getActiveScreenAnnotateChannel() {
+      if (typeof roomChannel !== 'undefined' && roomChannel) return roomChannel;
+      if (typeof myChannel !== 'undefined' && myChannel) return myChannel;
+      return null;
+    }
+
+    function isAnyScreenShareActive() {
+      try {
+        if (isSharingScreen) return true;
+        if (window.__remoteScreenSharingActive) return true;
+        if (webrtcPeers && Object.values(webrtcPeers).some(p => p && p.isSharingScreen)) return true;
+      } catch (e) {}
+      return false;
+    }
+
+    function pushSaHistory() {
+      saHistory.push(JSON.stringify(saItems));
+      if (saHistory.length > 40) saHistory.shift();
+      saRedoStack = [];
+    }
+
+    function syncScreenAnnotateStageGeometry() {
+      const stage = document.getElementById('screenAnnotateStage');
+      const canvas = document.getElementById('screenAnnotateCanvas');
+      const guides = document.getElementById('screenAnnotateGuidesLayer');
+      const videoEl = document.getElementById('remoteScreenShareVideo');
+      const overlay = document.getElementById('remoteScreenShareOverlay');
+      const mainContainer = document.getElementById('hostFrameContainer') || document.getElementById('studentFrameContainer');
+      const fab = document.getElementById('screenAnnotateFab');
+      const toolbar = document.getElementById('screenAnnotateToolbar');
+
+      const activeShare = isAnyScreenShareActive();
+      if (fab) {
+        fab.classList.toggle('hidden', !activeShare);
+      }
+      if (!activeShare && toolbar) {
+        saToolbarOpen = false;
+        toolbar.classList.add('hidden');
+      }
+
+      if (!stage || !canvas) return { left: 0, top: 0, width: 1, height: 1 };
+
+      // Si un remoto comparte, el stage vive dentro de #remoteScreenShareOverlay calibrado 1:1 con getRenderedVideoContentRect(videoEl).
+      // Si el usuario local comparte (donde #remoteScreenShareOverlay está oculto para evitar espejo infinito),
+      // el stage se monta en el contenedor principal cuando hay trazos o la barra está abierta.
+      const remoteOverlayVisible = overlay && !overlay.classList.contains('hidden');
+      let rect = { left: 0, top: 0, width: 0, height: 0 };
+
+      if (remoteOverlayVisible && videoEl) {
+        if (stage.parentElement !== overlay) {
+          overlay.appendChild(stage);
+        }
+        rect = getRenderedVideoContentRect(videoEl);
+      } else if (mainContainer && activeShare) {
+        if (stage.parentElement !== mainContainer) {
+          mainContainer.appendChild(stage);
+        }
+        rect = {
+          left: 0,
+          top: 0,
+          width: Math.max(1, mainContainer.clientWidth || 1),
+          height: Math.max(1, mainContainer.clientHeight || 1)
+        };
+      }
+
+      if (rect.width > 0 && rect.height > 0) {
+        stage.style.left = rect.left + 'px';
+        stage.style.top = rect.top + 'px';
+        stage.style.width = rect.width + 'px';
+        stage.style.height = rect.height + 'px';
+
+        const cw = Math.max(1, Math.round(rect.width));
+        const ch = Math.max(1, Math.round(rect.height));
+        if (canvas.width !== cw || canvas.height !== ch) {
+          canvas.width = cw;
+          canvas.height = ch;
+        }
+        if (guides) {
+          guides.setAttribute('viewBox', `0 0 ${cw} ${ch}`);
+          guides.setAttribute('width', cw);
+          guides.setAttribute('height', ch);
+        }
+      }
+
+      const canInteract = activeShare && saToolbarOpen && saTool !== 'cursor';
+      stage.style.pointerEvents = canInteract ? 'auto' : 'none';
+      stage.style.cursor = !canInteract ? 'default' : (saTool === 'select' ? 'default' : (saTool === 'text' ? 'text' : 'crosshair'));
+
+      renderScreenAnnotateAll();
+      return rect;
+    }
+
+    function getSaStagePixelSize() {
+      const canvas = document.getElementById('screenAnnotateCanvas');
+      return {
+        w: Math.max(1, (canvas && canvas.width) || 1),
+        h: Math.max(1, (canvas && canvas.height) || 1)
+      };
+    }
+
+    function clientToSaNormalized(clientX, clientY) {
+      const stage = document.getElementById('screenAnnotateStage');
+      if (!stage) return { nx: 0, ny: 0 };
+      const r = stage.getBoundingClientRect();
+      const nx = Math.max(0, Math.min(1, (clientX - r.left) / Math.max(1, r.width)));
+      const ny = Math.max(0, Math.min(1, (clientY - r.top) / Math.max(1, r.height)));
+      return { nx: Math.round(nx * 10000) / 10000, ny: Math.round(ny * 10000) / 10000 };
+    }
+
+    function getSaItemNormalizedBounds(item) {
+      if (!item) return { nx: 0, ny: 0, nw: 0.05, nh: 0.05, left: 0, centerX: 0.025, right: 0.05, top: 0, centerY: 0.025, bottom: 0.05 };
+      if (item.type === 'stroke' && Array.isArray(item.points) && item.points.length > 0) {
+        let minX = 1, minY = 1, maxX = 0, maxY = 0;
+        for (const p of item.points) {
+          if (p.nx < minX) minX = p.nx;
+          if (p.ny < minY) minY = p.ny;
+          if (p.nx > maxX) maxX = p.nx;
+          if (p.ny > maxY) maxY = p.ny;
+        }
+        const pad = 0.01;
+        const nx = Math.max(0, minX - pad);
+        const ny = Math.max(0, minY - pad);
+        const nw = Math.max(0.015, (maxX - minX) + pad * 2);
+        const nh = Math.max(0.015, (maxY - minY) + pad * 2);
+        return { nx, ny, nw, nh, left: nx, centerX: nx + nw / 2, right: nx + nw, top: ny, centerY: ny + nh / 2, bottom: ny + nh };
+      }
+      if (item.type === 'shape') {
+        const left = Math.min(item.nx, item.nx + (item.nw || 0));
+        const top = Math.min(item.ny, item.ny + (item.nh || 0));
+        const nw = Math.max(0.01, Math.abs(item.nw || 0.05));
+        const nh = Math.max(0.01, Math.abs(item.nh || 0.05));
+        return { nx: left, ny: top, nw, nh, left, centerX: left + nw / 2, right: left + nw, top, centerY: top + nh / 2, bottom: top + nh };
+      }
+      // Text item
+      const { w: stageW, h: stageH } = getSaStagePixelSize();
+      const objLayer = document.getElementById('screenAnnotateObjectsLayer');
+      const domEl = objLayer ? objLayer.querySelector(`[data-sa-id="${item.id}"]`) : null;
+      let nw = item.nw || 0.14;
+      let nh = item.nh || 0.06;
+      if (domEl && domEl.offsetWidth > 0 && domEl.offsetHeight > 0) {
+        nw = domEl.offsetWidth / stageW;
+        nh = domEl.offsetHeight / stageH;
+      } else {
+        const fsNorm = item.fontSizeNorm || 0.038;
+        const lines = String(item.text || 'Texto').split('\n');
+        const maxChars = Math.max(...lines.map(l => l.length), 4);
+        nw = Math.max(0.06, maxChars * fsNorm * 0.42);
+        nh = Math.max(0.04, lines.length * fsNorm * 1.35);
+      }
+      const left = item.nx || 0;
+      const top = item.ny || 0;
+      return { nx: left, ny: top, nw, nh, left, centerX: left + nw / 2, right: left + nw, top, centerY: top + nh / 2, bottom: top + nh };
+    }
+
+    function clearSaSmartGuides() {
+      const guides = document.getElementById('screenAnnotateGuidesLayer');
+      if (guides && guides.innerHTML !== '') guides.innerHTML = '';
+    }
+
+    // Guías punteadas de alineación (Smart Guides) en coordenadas normalizadas [0..1]
+    function applySaSmartGuidesSnap(dragItem, proposedNx, proposedNy, disableSnap) {
+      if (!dragItem || disableSnap) {
+        clearSaSmartGuides();
+        return { nx: Math.max(0, Math.min(0.98, proposedNx)), ny: Math.max(0, Math.min(0.98, proposedNy)) };
+      }
+      const b = getSaItemNormalizedBounds(dragItem);
+      const nw = b.nw;
+      const nh = b.nh;
+      const threshold = 0.012;
+
+      const dragLeft = proposedNx;
+      const dragCenterX = proposedNx + nw / 2;
+      const dragRight = proposedNx + nw;
+      const dragTop = proposedNy;
+      const dragCenterY = proposedNy + nh / 2;
+      const dragBottom = proposedNy + nh;
+
+      let minDiffX = threshold;
+      let snappedNx = proposedNx;
+      let guideX = null;
+
+      let minDiffY = threshold;
+      let snappedNy = proposedNy;
+      let guideY = null;
+
+      // Incluir centro del video (0.5, 0.5) + bordes de otros objetos
+      const xTargets = [0.5];
+      const yTargets = [0.5];
+      for (const other of saItems) {
+        if (other.id === dragItem.id) continue;
+        const ob = getSaItemNormalizedBounds(other);
+        xTargets.push(ob.left, ob.centerX, ob.right);
+        yTargets.push(ob.top, ob.centerY, ob.bottom);
+      }
+
+      const xCands = [
+        { val: dragLeft, offset: 0 },
+        { val: dragCenterX, offset: nw / 2 },
+        { val: dragRight, offset: nw }
+      ];
+      for (const tx of xTargets) {
+        for (const c of xCands) {
+          const d = Math.abs(c.val - tx);
+          if (d < minDiffX) {
+            minDiffX = d;
+            snappedNx = tx - c.offset;
+            guideX = tx;
+          }
+        }
+      }
+
+      const yCands = [
+        { val: dragTop, offset: 0 },
+        { val: dragCenterY, offset: nh / 2 },
+        { val: dragBottom, offset: nh }
+      ];
+      for (const ty of yTargets) {
+        for (const c of yCands) {
+          const d = Math.abs(c.val - ty);
+          if (d < minDiffY) {
+            minDiffY = d;
+            snappedNy = ty - c.offset;
+            guideY = ty;
+          }
+        }
+      }
+
+      const guides = document.getElementById('screenAnnotateGuidesLayer');
+      if (guides) {
+        const { w, h } = getSaStagePixelSize();
+        const lines = [];
+        if (guideX !== null) {
+          const gx = Math.round(guideX * w);
+          lines.push(`<line x1="${gx}" y1="0" x2="${gx}" y2="${h}" stroke="#22d3ee" stroke-width="1.5" stroke-dasharray="5,4" />`);
+        }
+        if (guideY !== null) {
+          const gy = Math.round(guideY * h);
+          lines.push(`<line x1="0" y1="${gy}" x2="${w}" y2="${gy}" stroke="#22d3ee" stroke-width="1.5" stroke-dasharray="5,4" />`);
+        }
+        guides.innerHTML = lines.join('');
+      }
+
+      return {
+        nx: Math.round(Math.max(0, Math.min(0.98, snappedNx)) * 10000) / 10000,
+        ny: Math.round(Math.max(0, Math.min(0.98, snappedNy)) * 10000) / 10000
+      };
+    }
+
+    function isPointNearSaItem(item, nx, ny) {
+      if (!item) return false;
+      if (item.type === 'stroke' && Array.isArray(item.points)) {
+        const tol = Math.max(0.015, (item.sizeNorm || 0.005) * 2);
+        for (let i = 0; i < item.points.length; i++) {
+          const p = item.points[i];
+          if (Math.hypot(p.nx - nx, p.ny - ny) <= tol) return true;
+          if (i > 0) {
+            const prev = item.points[i - 1];
+            const l2 = (p.nx - prev.nx) ** 2 + (p.ny - prev.ny) ** 2;
+            if (l2 > 0) {
+              const t = Math.max(0, Math.min(1, ((nx - prev.nx) * (p.nx - prev.nx) + (ny - prev.ny) * (p.ny - prev.ny)) / l2));
+              const px = prev.nx + t * (p.nx - prev.nx);
+              const py = prev.ny + t * (p.ny - prev.ny);
+              if (Math.hypot(nx - px, ny - py) <= tol) return true;
+            }
+          }
+        }
+        return false;
+      }
+      const b = getSaItemNormalizedBounds(item);
+      return nx >= b.left && nx <= b.right && ny >= b.top && ny <= b.bottom;
+    }
+
+    function renderScreenAnnotateCanvas() {
+      const canvas = document.getElementById('screenAnnotateCanvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+
+      for (const item of saItems) {
+        if (item.type === 'stroke' && Array.isArray(item.points) && item.points.length > 0) {
+          ctx.save();
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.strokeStyle = item.color || '#ef4444';
+          ctx.lineWidth = Math.max(1.5, (item.sizeNorm || 0.004) * w);
+          ctx.globalAlpha = item.isHighlighter ? 0.38 : 1;
+          ctx.beginPath();
+          ctx.moveTo(item.points[0].nx * w, item.points[0].ny * h);
+          for (let i = 1; i < item.points.length; i++) {
+            ctx.lineTo(item.points[i].nx * w, item.points[i].ny * h);
+          }
+          if (item.points.length === 1) {
+            ctx.lineTo(item.points[0].nx * w + 0.5, item.points[0].ny * h + 0.5);
+          }
+          ctx.stroke();
+
+          if (saSelectedId === item.id) {
+            const b = getSaItemNormalizedBounds(item);
+            ctx.globalAlpha = 1;
+            ctx.strokeStyle = '#22d3ee';
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([5, 4]);
+            ctx.strokeRect(b.left * w, b.top * h, b.nw * w, b.nh * h);
+          }
+          ctx.restore();
+        } else if (item.type === 'shape') {
+          ctx.save();
+          ctx.strokeStyle = item.color || '#ef4444';
+          ctx.fillStyle = item.color || '#ef4444';
+          ctx.lineWidth = Math.max(2, (item.sizeNorm || 0.004) * w);
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          const x1 = (item.nx || 0) * w;
+          const y1 = (item.ny || 0) * h;
+          const sw = (item.nw || 0) * w;
+          const sh = (item.nh || 0) * h;
+
+          if (item.shape === 'rect') {
+            ctx.strokeRect(x1, y1, sw, sh);
+          } else if (item.shape === 'ellipse') {
+            ctx.beginPath();
+            ctx.ellipse(x1 + sw / 2, y1 + sh / 2, Math.abs(sw / 2), Math.abs(sh / 2), 0, 0, Math.PI * 2);
+            ctx.stroke();
+          } else if (item.shape === 'arrow') {
+            const x2 = x1 + sw;
+            const y2 = y1 + sh;
+            const headLen = Math.max(10, ctx.lineWidth * 3.2);
+            const angle = Math.atan2(y2 - y1, x2 - x1);
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(x2, y2);
+            ctx.lineTo(x2 - headLen * Math.cos(angle - Math.PI / 6), y2 - headLen * Math.sin(angle - Math.PI / 6));
+            ctx.lineTo(x2 - headLen * Math.cos(angle + Math.PI / 6), y2 - headLen * Math.sin(angle + Math.PI / 6));
+            ctx.closePath();
+            ctx.fill();
+          }
+
+          if (saSelectedId === item.id) {
+            const b = getSaItemNormalizedBounds(item);
+            ctx.strokeStyle = '#22d3ee';
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([5, 4]);
+            ctx.strokeRect(b.left * w - 4, b.top * h - 4, b.nw * w + 8, b.nh * h + 8);
+          }
+          ctx.restore();
+        }
+      }
+    }
+
+    function renderScreenAnnotateObjects() {
+      const layer = document.getElementById('screenAnnotateObjectsLayer');
+      if (!layer) return;
+      const { w, h } = getSaStagePixelSize();
+
+      const activeInputEl = saEditingTextId ? layer.querySelector(`[data-sa-id="${saEditingTextId}"] .sa-text-editable`) : null;
+      const activeTextVal = activeInputEl ? activeInputEl.innerText : null;
+
+      layer.innerHTML = '';
+
+      for (const item of saItems) {
+        const isSelected = saSelectedId === item.id;
+
+        if (item.type === 'stroke' || item.type === 'shape') {
+          if (!isSelected) continue;
+          const b = getSaItemNormalizedBounds(item);
+          const box = document.createElement('div');
+          box.dataset.saId = item.id;
+          box.style.position = 'absolute';
+          box.style.left = `${Math.round(b.left * w)}px`;
+          box.style.top = `${Math.round(b.top * h)}px`;
+          box.style.width = `${Math.max(24, Math.round(b.nw * w))}px`;
+          box.style.height = `${Math.max(24, Math.round(b.nh * h))}px`;
+          box.style.pointerEvents = 'none';
+
+          const delBtn = document.createElement('button');
+          delBtn.type = 'button';
+          delBtn.textContent = '✕';
+          delBtn.title = 'Eliminar';
+          delBtn.className = 'absolute -top-6 right-0 w-5 h-5 rounded-full bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center shadow pointer-events-auto cursor-pointer';
+          delBtn.addEventListener('mousedown', (e) => {
+            e.stopPropagation();
+            pushSaHistory();
+            deleteSaItemById(item.id, true);
+          });
+          box.appendChild(delBtn);
+
+          if (item.type === 'shape') {
+            const handle = document.createElement('div');
+            handle.title = 'Arrastrar para redimensionar forma';
+            handle.className = 'absolute -bottom-2 -right-2 w-4 h-4 rounded-full bg-cyan-400 border-2 border-slate-950 cursor-nwse-resize shadow pointer-events-auto';
+            handle.addEventListener('mousedown', (e) => {
+              e.stopPropagation();
+              pushSaHistory();
+              saIsResizingItem = true;
+              saActiveItem = item;
+              saDragStartNorm = clientToSaNormalized(e.clientX, e.clientY);
+              saDragOrigNorm = { nw: item.nw || 0.08, nh: item.nh || 0.08 };
+            });
+            box.appendChild(handle);
+          }
+
+          layer.appendChild(box);
+          continue;
+        }
+
+        if (item.type === 'text') {
+          const isEditing = saEditingTextId === item.id;
+          const wrap = document.createElement('div');
+          wrap.dataset.saId = item.id;
+          wrap.style.position = 'absolute';
+          wrap.style.left = `${Math.round((item.nx || 0) * w)}px`;
+          wrap.style.top = `${Math.round((item.ny || 0) * h)}px`;
+          wrap.style.pointerEvents = (saToolbarOpen && saTool !== 'cursor') ? 'auto' : 'none';
+          wrap.style.zIndex = isEditing ? '40' : (isSelected ? '35' : '25');
+          wrap.className = isSelected
+            ? 'rounded-lg outline outline-2 outline-cyan-400 bg-slate-950/35 backdrop-blur-[1px]'
+            : 'rounded-lg hover:outline hover:outline-1 hover:outline-cyan-400/60';
+
+          const fontPx = Math.max(12, Math.round((item.fontSizeNorm || 0.038) * h));
+          const textEl = document.createElement('div');
+          textEl.className = 'sa-text-editable outline-none whitespace-pre-wrap break-words px-2 py-1 min-w-[64px] min-h-[28px]';
+          textEl.style.color = item.color || '#ffffff';
+          textEl.style.fontSize = `${fontPx}px`;
+          textEl.style.fontWeight = '700';
+          textEl.style.lineHeight = '1.25';
+          textEl.style.textShadow = '0 1px 4px rgba(0,0,0,0.85)';
+          textEl.style.cursor = isEditing ? 'text' : 'move';
+          textEl.contentEditable = isEditing ? 'true' : 'false';
+          textEl.innerText = (isEditing && activeTextVal !== null) ? activeTextVal : (item.text || 'Texto');
+
+          textEl.addEventListener('dblclick', (e) => {
+            e.stopPropagation();
+            pushSaHistory();
+            saSelectedId = item.id;
+            saEditingTextId = item.id;
+            renderScreenAnnotateAll();
+            setTimeout(() => {
+              const el = layer.querySelector(`[data-sa-id="${item.id}"] .sa-text-editable`);
+              if (el) el.focus();
+            }, 15);
+          });
+
+          textEl.addEventListener('input', () => {
+            item.text = textEl.innerText;
+            broadcastScreenAnnotateState('upsert', { item });
+          });
+
+          textEl.addEventListener('blur', () => {
+            item.text = textEl.innerText;
+            if (saEditingTextId === item.id) saEditingTextId = null;
+            broadcastScreenAnnotateState('upsert', { item });
+          });
+
+          wrap.appendChild(textEl);
+
+          wrap.addEventListener('mousedown', (e) => {
+            if (e.button !== 0) return;
+            if (saEditingTextId === item.id) return;
+            e.stopPropagation();
+
+            if (saTool === 'eraser') {
+              pushSaHistory();
+              deleteSaItemById(item.id, true);
+              return;
+            }
+
+            saSelectedId = item.id;
+            saEditingTextId = null;
+            pushSaHistory();
+            saIsDraggingItem = true;
+            saActiveItem = item;
+            saDragStartNorm = clientToSaNormalized(e.clientX, e.clientY);
+            saDragOrigNorm = { nx: item.nx || 0, ny: item.ny || 0 };
+            renderScreenAnnotateAll();
+          });
+
+          if (isSelected) {
+            const delBtn = document.createElement('button');
+            delBtn.type = 'button';
+            delBtn.textContent = '✕';
+            delBtn.title = 'Eliminar texto';
+            delBtn.className = 'absolute -top-6 right-0 w-5 h-5 rounded-full bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center shadow pointer-events-auto cursor-pointer';
+            delBtn.addEventListener('mousedown', (e) => {
+              e.stopPropagation();
+              pushSaHistory();
+              deleteSaItemById(item.id, true);
+            });
+            wrap.appendChild(delBtn);
+
+            const resizeHandle = document.createElement('div');
+            resizeHandle.title = 'Arrastrar para redimensionar tamaño de texto';
+            resizeHandle.className = 'absolute -bottom-2 -right-2 w-4 h-4 rounded-full bg-cyan-400 border-2 border-slate-950 cursor-nwse-resize shadow pointer-events-auto';
+            resizeHandle.addEventListener('mousedown', (e) => {
+              e.stopPropagation();
+              pushSaHistory();
+              saIsResizingItem = true;
+              saActiveItem = item;
+              saDragStartNorm = clientToSaNormalized(e.clientX, e.clientY);
+              saDragOrigNorm = { fontSizeNorm: item.fontSizeNorm || 0.038 };
+            });
+            wrap.appendChild(resizeHandle);
+          }
+
+          layer.appendChild(wrap);
+        }
+      }
+    }
+
+    function renderScreenAnnotateAll() {
+      renderScreenAnnotateCanvas();
+      renderScreenAnnotateObjects();
+    }
+
+    function upsertSaItemLocal(item) {
+      if (!item || !item.id) return;
+      const idx = saItems.findIndex(x => x.id === item.id);
+      if (idx >= 0) saItems[idx] = item;
+      else saItems.push(item);
+    }
+
+    function deleteSaItemById(id, shouldBroadcast) {
+      saItems = saItems.filter(x => x.id !== id);
+      if (saSelectedId === id) saSelectedId = null;
+      if (saEditingTextId === id) saEditingTextId = null;
+      renderScreenAnnotateAll();
+      if (shouldBroadcast) {
+        broadcastScreenAnnotateState('delete', { id });
+      }
+    }
+
+    function setActiveSaTool(tool) {
+      saTool = tool;
+      document.querySelectorAll('.sa-tool-btn[data-sa-tool]').forEach(btn => {
+        const active = btn.getAttribute('data-sa-tool') === tool;
+        btn.classList.toggle('active', active);
+        btn.classList.toggle('bg-[#0e72ed]', active);
+        btn.classList.toggle('text-white', active);
+      });
+      if (tool !== 'select') {
+        saSelectedId = null;
+        saEditingTextId = null;
+      }
+      syncScreenAnnotateStageGeometry();
+    }
+
+    function broadcastScreenAnnotateState(action, data = {}) {
+      const ch = getActiveScreenAnnotateChannel();
+      if (!ch) return;
+      try {
+        ch.send({
+          type: 'broadcast',
+          event: 'SCREEN_ANNOTATE_STATE',
+          payload: Object.assign({
+            action,
+            senderId: saClientId
+          }, data)
+        });
+      } catch (e) {}
+    }
+
+    function setupScreenAnnotateChannelListeners(channel) {
+      if (!channel || channel.__saListenersBound) return;
+      channel.__saListenersBound = true;
+
+      channel.on('broadcast', { event: 'SCREEN_ANNOTATE_STATE' }, ({ payload }) => {
+        if (!payload || payload.senderId === saClientId) return;
+        const action = payload.action;
+        if (action === 'upsert' && payload.item) {
+          upsertSaItemLocal(payload.item);
+          renderScreenAnnotateAll();
+        } else if (action === 'delete' && payload.id) {
+          deleteSaItemById(payload.id, false);
+        } else if (action === 'clear') {
+          saItems = [];
+          saSelectedId = null;
+          saEditingTextId = null;
+          renderScreenAnnotateAll();
+        } else if (action === 'full_sync' && Array.isArray(payload.items)) {
+          saItems = payload.items;
+          renderScreenAnnotateAll();
+        } else if (action === 'request_sync' && saItems.length > 0) {
+          broadcastScreenAnnotateState('full_sync', { items: saItems });
+        }
+      });
+    }
+
+    (function initScreenAnnotateInteractiveSystem() {
+      const stage = document.getElementById('screenAnnotateStage');
+      const fab = document.getElementById('screenAnnotateFab');
+      const toolbar = document.getElementById('screenAnnotateToolbar');
+      const videoEl = document.getElementById('remoteScreenShareVideo');
+      const overlay = document.getElementById('remoteScreenShareOverlay');
+
+      if (videoEl) {
+        ['loadedmetadata', 'resize', 'play'].forEach(ev => {
+          videoEl.addEventListener(ev, () => syncScreenAnnotateStageGeometry());
+        });
+        if (typeof ResizeObserver !== 'undefined') {
+          const ro = new ResizeObserver(() => syncScreenAnnotateStageGeometry());
+          ro.observe(videoEl);
+          if (overlay) ro.observe(overlay);
+        }
+      }
+      window.addEventListener('resize', () => syncScreenAnnotateStageGeometry());
+
+      // Lápiz flotante arrastrable (#screenAnnotateFab) con protección de iframes
+      if (fab) {
+        let fabDragging = false;
+        let fabMoved = false;
+        let fabStartX = 0;
+        let fabStartY = 0;
+        let fabOrigLeft = 20;
+        let fabOrigBottom = 76;
+
+        const setIframesPe = (val) => {
+          try { document.querySelectorAll('iframe').forEach(f => { f.style.pointerEvents = val; }); } catch (e) {}
+        };
+
+        const stopFabDrag = () => {
+          if (!fabDragging) return;
+          fabDragging = false;
+          setIframesPe('');
+          document.body.style.userSelect = '';
+        };
+
+        fab.addEventListener('pointerdown', (e) => {
+          if (e.button !== 0 && e.pointerType === 'mouse') return;
+          const parent = fab.parentElement || document.body;
+          const pRect = parent.getBoundingClientRect();
+          const fRect = fab.getBoundingClientRect();
+          fabDragging = true;
+          fabMoved = false;
+          fabStartX = e.clientX;
+          fabStartY = e.clientY;
+          fabOrigLeft = fRect.left - pRect.left;
+          fabOrigBottom = pRect.bottom - fRect.bottom;
+          setIframesPe('none');
+          document.body.style.userSelect = 'none';
+          try { fab.setPointerCapture?.(e.pointerId); } catch (err) {}
+          e.preventDefault();
+          e.stopPropagation();
+        });
+
+        window.addEventListener('pointermove', (e) => {
+          if (!fabDragging) return;
+          if (e.pointerType === 'mouse' && typeof e.buttons === 'number' && e.buttons === 0) {
+            stopFabDrag();
+            return;
+          }
+          const dx = e.clientX - fabStartX;
+          const dy = e.clientY - fabStartY;
+          if (Math.hypot(dx, dy) > 5) fabMoved = true;
+          if (!fabMoved) return;
+
+          const parent = fab.parentElement || document.body;
+          const pRect = parent.getBoundingClientRect();
+          const newLeft = Math.max(8, Math.min(pRect.width - 52, fabOrigLeft + dx));
+          const newBottom = Math.max(8, Math.min(pRect.height - 52, fabOrigBottom - dy));
+          fab.style.left = Math.round(newLeft) + 'px';
+          fab.style.bottom = Math.round(newBottom) + 'px';
+          fab.style.top = 'auto';
+          fab.style.right = 'auto';
+
+          if (toolbar) {
+            toolbar.style.left = Math.min(pRect.width - 260, Math.round(newLeft + 56)) + 'px';
+            toolbar.style.bottom = Math.round(newBottom) + 'px';
+          }
+        });
+
+        window.addEventListener('pointerup', (e) => {
+          if (!fabDragging) return;
+          const wasMoved = fabMoved;
+          stopFabDrag();
+          if (!wasMoved) {
+            saToolbarOpen = !saToolbarOpen;
+            if (toolbar) toolbar.classList.toggle('hidden', !saToolbarOpen);
+            fab.classList.toggle('ring-4', saToolbarOpen);
+            fab.classList.toggle('ring-cyan-300', saToolbarOpen);
+            syncScreenAnnotateStageGeometry();
+          }
+        }, true);
+
+        window.addEventListener('pointercancel', stopFabDrag, true);
+        window.addEventListener('blur', stopFabDrag);
+      }
+
+      // Controles de la paleta de herramientas
+      document.querySelectorAll('.sa-tool-btn[data-sa-tool]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          setActiveSaTool(btn.getAttribute('data-sa-tool'));
+        });
+      });
+
+      document.querySelectorAll('.sa-color-btn[data-sa-color]').forEach(sw => {
+        sw.addEventListener('click', (e) => {
+          e.stopPropagation();
+          saColor = sw.getAttribute('data-sa-color');
+          document.querySelectorAll('.sa-color-btn').forEach(b => b.classList.remove('ring-2', 'ring-white', 'scale-110'));
+          sw.classList.add('ring-2', 'ring-white', 'scale-110');
+          if (saSelectedId) {
+            const sel = saItems.find(x => x.id === saSelectedId);
+            if (sel) {
+              pushSaHistory();
+              sel.color = saColor;
+              renderScreenAnnotateAll();
+              broadcastScreenAnnotateState('upsert', { item: sel });
+            }
+          }
+        });
+      });
+
+      document.getElementById('screenAnnotateCustomColor')?.addEventListener('input', (e) => {
+        saColor = e.target.value;
+        if (saSelectedId) {
+          const sel = saItems.find(x => x.id === saSelectedId);
+          if (sel) {
+            sel.color = saColor;
+            renderScreenAnnotateAll();
+            broadcastScreenAnnotateState('upsert', { item: sel });
+          }
+        }
+      });
+
+      document.getElementById('screenAnnotateSizeSelect')?.addEventListener('change', (e) => {
+        saSize = parseInt(e.target.value, 10) || 5;
+      });
+
+      document.getElementById('screenAnnotateUndoBtn')?.addEventListener('click', () => {
+        if (saHistory.length === 0) return;
+        saRedoStack.push(JSON.stringify(saItems));
+        saItems = JSON.parse(saHistory.pop());
+        saSelectedId = null;
+        saEditingTextId = null;
+        renderScreenAnnotateAll();
+        broadcastScreenAnnotateState('full_sync', { items: saItems });
+      });
+
+      document.getElementById('screenAnnotateRedoBtn')?.addEventListener('click', () => {
+        if (saRedoStack.length === 0) return;
+        saHistory.push(JSON.stringify(saItems));
+        saItems = JSON.parse(saRedoStack.pop());
+        saSelectedId = null;
+        saEditingTextId = null;
+        renderScreenAnnotateAll();
+        broadcastScreenAnnotateState('full_sync', { items: saItems });
+      });
+
+      document.getElementById('screenAnnotateClearBtn')?.addEventListener('click', () => {
+        if (saItems.length === 0) return;
+        pushSaHistory();
+        saItems = [];
+        saSelectedId = null;
+        saEditingTextId = null;
+        renderScreenAnnotateAll();
+        broadcastScreenAnnotateState('clear');
+      });
+
+      document.getElementById('screenAnnotateCloseBtn')?.addEventListener('click', () => {
+        saToolbarOpen = false;
+        toolbar?.classList.add('hidden');
+        fab?.classList.remove('ring-4', 'ring-cyan-300');
+        syncScreenAnnotateStageGeometry();
+      });
+
+      // Eventos de dibujo, selección, arrastre con guías y redimensionado sobre #screenAnnotateStage
+      if (stage) {
+        stage.addEventListener('mousedown', (e) => {
+          if (e.button !== 0 || !saToolbarOpen || saTool === 'cursor') return;
+          const pt = clientToSaNormalized(e.clientX, e.clientY);
+          const { w } = getSaStagePixelSize();
+
+          if (saEditingTextId) {
+            saEditingTextId = null;
+            renderScreenAnnotateAll();
+          }
+
+          if (saTool === 'select') {
+            let hit = null;
+            for (let i = saItems.length - 1; i >= 0; i--) {
+              if (isPointNearSaItem(saItems[i], pt.nx, pt.ny)) {
+                hit = saItems[i];
+                break;
+              }
+            }
+            if (hit) {
+              saSelectedId = hit.id;
+              pushSaHistory();
+              saIsDraggingItem = true;
+              saActiveItem = hit;
+              saDragStartNorm = pt;
+              if (hit.type === 'stroke') {
+                saDragOrigNorm = { points: hit.points.map(p => ({ nx: p.nx, ny: p.ny })) };
+              } else {
+                saDragOrigNorm = { nx: hit.nx || 0, ny: hit.ny || 0 };
+              }
+            } else {
+              saSelectedId = null;
+            }
+            renderScreenAnnotateAll();
+            return;
+          }
+
+          if (saTool === 'eraser') {
+            pushSaHistory();
+            saIsErasing = true;
+            for (let i = saItems.length - 1; i >= 0; i--) {
+              if (isPointNearSaItem(saItems[i], pt.nx, pt.ny)) {
+                deleteSaItemById(saItems[i].id, true);
+              }
+            }
+            return;
+          }
+
+          if (saTool === 'pen' || saTool === 'highlighter') {
+            pushSaHistory();
+            saIsDrawing = true;
+            const pxSize = saTool === 'highlighter' ? Math.max(16, saSize * 3.2) : saSize;
+            saActiveItem = {
+              id: 'sa_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+              type: 'stroke',
+              color: saColor,
+              isHighlighter: saTool === 'highlighter',
+              sizeNorm: Math.round((pxSize / Math.max(1, w)) * 10000) / 10000,
+              points: [pt]
+            };
+            upsertSaItemLocal(saActiveItem);
+            renderScreenAnnotateCanvas();
+            return;
+          }
+
+          if (saTool === 'rect' || saTool === 'ellipse' || saTool === 'arrow') {
+            pushSaHistory();
+            saIsDrawing = true;
+            saActiveItem = {
+              id: 'sa_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+              type: 'shape',
+              shape: saTool,
+              color: saColor,
+              sizeNorm: Math.round((saSize / Math.max(1, w)) * 10000) / 10000,
+              nx: pt.nx,
+              ny: pt.ny,
+              nw: 0.001,
+              nh: 0.001
+            };
+            upsertSaItemLocal(saActiveItem);
+            renderScreenAnnotateCanvas();
+            return;
+          }
+
+          if (saTool === 'text') {
+            e.preventDefault();
+            pushSaHistory();
+            const fsNorm = saSize <= 3 ? 0.032 : (saSize <= 5 ? 0.042 : 0.056);
+            const newText = {
+              id: 'sa_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+              type: 'text',
+              nx: pt.nx,
+              ny: Math.max(0, pt.ny - fsNorm / 2),
+              fontSizeNorm: fsNorm,
+              color: saColor,
+              text: 'Texto'
+            };
+            upsertSaItemLocal(newText);
+            saSelectedId = newText.id;
+            saEditingTextId = newText.id;
+            setActiveSaTool('select');
+            saSelectedId = newText.id;
+            saEditingTextId = newText.id;
+            renderScreenAnnotateAll();
+            broadcastScreenAnnotateState('upsert', { item: newText });
+            setTimeout(() => {
+              const el = document.querySelector(`#screenAnnotateObjectsLayer [data-sa-id="${newText.id}"] .sa-text-editable`);
+              if (el) {
+                el.focus();
+                try { document.execCommand('selectAll', false, null); } catch (err) {}
+              }
+            }, 20);
+          }
+        });
+      }
+
+      window.addEventListener('mousemove', (e) => {
+        if (!saIsDrawing && !saIsDraggingItem && !saIsResizingItem && !saIsErasing) return;
+        const pt = clientToSaNormalized(e.clientX, e.clientY);
+
+        if (saIsDrawing && saActiveItem) {
+          if (saActiveItem.type === 'stroke') {
+            saActiveItem.points.push(pt);
+          } else if (saActiveItem.type === 'shape') {
+            saActiveItem.nw = Math.round((pt.nx - saActiveItem.nx) * 10000) / 10000;
+            saActiveItem.nh = Math.round((pt.ny - saActiveItem.ny) * 10000) / 10000;
+          }
+          renderScreenAnnotateCanvas();
+          broadcastScreenAnnotateState('upsert', { item: saActiveItem });
+          return;
+        }
+
+        if (saIsErasing) {
+          for (let i = saItems.length - 1; i >= 0; i--) {
+            if (isPointNearSaItem(saItems[i], pt.nx, pt.ny)) {
+              deleteSaItemById(saItems[i].id, true);
+            }
+          }
+          return;
+        }
+
+        if (saIsDraggingItem && saActiveItem && saDragStartNorm && saDragOrigNorm) {
+          const dnx = pt.nx - saDragStartNorm.nx;
+          const dny = pt.ny - saDragStartNorm.ny;
+          if (saActiveItem.type === 'stroke' && Array.isArray(saDragOrigNorm.points)) {
+            clearSaSmartGuides();
+            saActiveItem.points = saDragOrigNorm.points.map(p => ({
+              nx: Math.round(Math.max(0, Math.min(1, p.nx + dnx)) * 10000) / 10000,
+              ny: Math.round(Math.max(0, Math.min(1, p.ny + dny)) * 10000) / 10000
+            }));
+          } else {
+            const snapped = applySaSmartGuidesSnap(saActiveItem, saDragOrigNorm.nx + dnx, saDragOrigNorm.ny + dny, e.altKey);
+            saActiveItem.nx = snapped.nx;
+            saActiveItem.ny = snapped.ny;
+          }
+          renderScreenAnnotateAll();
+          broadcastScreenAnnotateState('upsert', { item: saActiveItem });
+          return;
+        }
+
+        if (saIsResizingItem && saActiveItem && saDragStartNorm && saDragOrigNorm) {
+          const dnx = pt.nx - saDragStartNorm.nx;
+          const dny = pt.ny - saDragStartNorm.ny;
+          if (saActiveItem.type === 'text') {
+            const nextFs = Math.max(0.018, Math.min(0.18, (saDragOrigNorm.fontSizeNorm || 0.038) + (dnx + dny) * 0.25));
+            saActiveItem.fontSizeNorm = Math.round(nextFs * 10000) / 10000;
+          } else if (saActiveItem.type === 'shape') {
+            saActiveItem.nw = Math.round(Math.max(0.015, (saDragOrigNorm.nw || 0.08) + dnx) * 10000) / 10000;
+            saActiveItem.nh = Math.round(Math.max(0.015, (saDragOrigNorm.nh || 0.08) + dny) * 10000) / 10000;
+          }
+          renderScreenAnnotateAll();
+          broadcastScreenAnnotateState('upsert', { item: saActiveItem });
+        }
+      });
+
+      window.addEventListener('mouseup', () => {
+        if (!saIsDrawing && !saIsDraggingItem && !saIsResizingItem && !saIsErasing) return;
+        clearSaSmartGuides();
+        if (saIsDrawing && saActiveItem) {
+          broadcastScreenAnnotateState('upsert', { item: saActiveItem });
+          if (saActiveItem.type === 'shape') {
+            saSelectedId = saActiveItem.id;
+            renderScreenAnnotateAll();
+          }
+        }
+        saIsDrawing = false;
+        saIsDraggingItem = false;
+        saIsResizingItem = false;
+        saIsErasing = false;
+        saActiveItem = null;
+      });
+
+      updateShareSystemAudioToggleUI();
+    })();
+
+
     function setupWhiteboardChannelListeners(channel) {
+      setupScreenAnnotateChannelListeners(channel);
       channel.on('broadcast', { event: 'WB_ITEM_UPSERT' }, ({ payload }) => {
         if (!payload || payload.senderId === wbClientId || !payload.item) return;
         upsertWbItemLocal(payload.item);
@@ -7915,7 +9386,6 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
     let isConnectingLiveKit = false;
 
     let p2pLocalStream = null;
-    let screenStream = null;
     let originalCamTrack = null;
     let originalMicTrack = null;
 
@@ -7923,7 +9393,6 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
     const webrtcMyPeerId = wbClientId;
     let webrtcAudioEnabled = false;
     let webrtcVideoEnabled = false;
-    let isSharingScreen = false;
     const webrtcPeers = {}; // peerId -> { pc, name, role, stream, isSharingScreen, audioEnabled, videoEnabled, videoSender, audioSender }
 
     const webrtcLocalVideoEl = document.getElementById('webrtcLocalVideo');
@@ -9897,17 +11366,22 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
         return;
       }
       try {
-        screenStream = await navigator.mediaDevices.getDisplayMedia({
-          video: { cursor: 'always' },
-          audio: true
-        });
+        screenStream = await acquireScreenDisplayStream();
       } catch (err) {
         return;
       }
+      if (!screenStream) return;
 
       const screenVideoTrack = screenStream.getVideoTracks()[0];
       if (!screenVideoTrack) return;
+      screenAudioTrack = screenStream.getAudioTracks()[0] || null;
       isSharingScreen = true;
+      try {
+        window.electronAPI?.showShareBorder?.({
+          sourceId: selectedSourceId,
+          isScreen: selectedSourceIsScreen
+        });
+      } catch (e) {}
 
       screenVideoTrack.onended = () => {
         stopP2PScreenShare();
@@ -9915,11 +11389,22 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
 
       for (const remotePeerId of Object.keys(webrtcPeers)) {
         const peerObj = webrtcPeers[remotePeerId];
-        if (peerObj && peerObj.videoSender) {
+        if (!peerObj) continue;
+        if (peerObj.videoSender) {
           try { await peerObj.videoSender.replaceTrack(screenVideoTrack); } catch (e) {}
+        }
+        if (screenAudioTrack && peerObj.pc) {
+          if (peerObj.screenAudioSender) {
+            try { await peerObj.screenAudioSender.replaceTrack(screenAudioTrack); } catch (e) {}
+          } else {
+            try { peerObj.screenAudioSender = peerObj.pc.addTrack(screenAudioTrack, screenStream); } catch (e) {}
+          }
         }
       }
       try { await refreshAllP2PBitrateProfiles(); } catch (e) {}
+      if (typeof syncP2PTracksToAllPeers === 'function') {
+        try { await syncP2PTracksToAllPeers(); } catch (e) {}
+      }
 
       updateShareButtonUI();
       syncHostScreenShareStage();
@@ -9927,22 +11412,34 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
     }
 
     async function stopP2PScreenShare() {
+      try { window.electronAPI?.hideShareBorder?.(); } catch (e) {}
       if (!isSharingScreen && !screenStream) return;
       isSharingScreen = false;
 
+      if (screenAudioTrack) {
+        try { screenAudioTrack.stop(); } catch (e) {}
+        screenAudioTrack = null;
+      }
       if (screenStream) {
-        screenStream.getTracks().forEach(t => t.stop());
+        screenStream.getTracks().forEach(t => { try { t.stop(); } catch (e) {} });
         screenStream = null;
       }
 
       const restoreTrack = (webrtcVideoEnabled && p2pLocalStream && p2pLocalStream.getVideoTracks()[0]) || null;
       for (const remotePeerId of Object.keys(webrtcPeers)) {
         const peerObj = webrtcPeers[remotePeerId];
-        if (peerObj && peerObj.videoSender) {
+        if (!peerObj) continue;
+        if (peerObj.videoSender) {
           try { await peerObj.videoSender.replaceTrack(restoreTrack); } catch (e) {}
+        }
+        if (peerObj.screenAudioSender) {
+          try { await peerObj.screenAudioSender.replaceTrack(null); } catch (e) {}
         }
       }
       try { await refreshAllP2PBitrateProfiles(); } catch (e) {}
+      if (typeof syncP2PTracksToAllPeers === 'function') {
+        try { await syncP2PTracksToAllPeers(); } catch (e) {}
+      }
 
       updateShareButtonUI();
       syncHostScreenShareStage();
@@ -10111,22 +11608,35 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
         if (!livekitRoom) return;
         try {
           if (isSharingScreen) {
+            try { window.electronAPI?.hideShareBorder?.(); } catch (e) {}
             await livekitRoom.localParticipant.setScreenShareEnabled(false);
             isSharingScreen = false;
             const screenVideo = document.getElementById('remoteScreenShareVideo');
             if (screenVideo) screenVideo.srcObject = null;
           } else {
-            const pub = await livekitRoom.localParticipant.setScreenShareEnabled(true, { audio: true });
+            if (window.electronAPI && typeof window.electronAPI.getDesktopSources === 'function') {
+              const choice = await openZoomStyleScreenPickerModal();
+              if (!choice || !choice.confirmed) return;
+            }
+            const pub = await livekitRoom.localParticipant.setScreenShareEnabled(true, {
+              audio: Boolean(includeSystemAudio),
+              selfBrowserSurface: 'exclude',
+              surfaceSwitching: 'include'
+            });
             isSharingScreen = true;
+            try {
+              window.electronAPI?.showShareBorder?.({
+                sourceId: selectedSourceId,
+                isScreen: selectedSourceIsScreen
+              });
+            } catch (e) {}
             if (pub && pub.track) {
-              const screenVideo = document.getElementById('remoteScreenShareVideo');
-              if (screenVideo) {
-                pub.track.attach(screenVideo);
-                screenVideo.muted = true;
-              }
               if (pub.track.mediaStreamTrack) {
+                screenStream = new MediaStream([pub.track.mediaStreamTrack]);
                 pub.track.mediaStreamTrack.onended = () => {
+                  try { window.electronAPI?.hideShareBorder?.(); } catch (e) {}
                   isSharingScreen = false;
+                  screenStream = null;
                   updateShareButtonUI();
                   syncHostScreenShareStage();
                   broadcastScreenShareState(false);
@@ -10135,6 +11645,7 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
             }
           }
         } catch (err) {
+          try { window.electronAPI?.hideShareBorder?.(); } catch (e) {}
           isSharingScreen = false;
         }
       } else {
@@ -10182,24 +11693,38 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
 
       const isMinStage = screenOverlay.classList.contains('hidden') && restoreStageBtn && !restoreStageBtn.classList.contains('hidden');
 
+      updateLocalScreenShareBannerUI();
+
       if (isSharingScreen) {
-        screenVideo.muted = true;
-        if (screenStream && screenVideo.srcObject !== screenStream) {
-          screenVideo.srcObject = screenStream;
-        }
-        screenVideo.play().catch(() => {});
-        if (screenLabel) {
-          screenLabel.textContent = '🖥️ Estás compartiendo tu pantalla en vivo';
-        }
-        if (stopStageBtn) {
-          stopStageBtn.classList.remove('hidden');
-          stopStageBtn.classList.add('inline-flex');
-        }
-        if (!isMinStage) {
-          screenOverlay.classList.remove('hidden');
-          screenOverlay.classList.add('flex');
+        const showLocalWindowPreview = Boolean(!selectedSourceIsScreen || forceLocalScreenPreview);
+        if (showLocalWindowPreview && screenStream) {
+          screenVideo.muted = true;
+          if (screenVideo.srcObject !== screenStream) {
+            screenVideo.srcObject = screenStream;
+          }
+          screenVideo.play().catch(() => {});
+          if (screenLabel) {
+            screenLabel.textContent = (!selectedSourceIsScreen && selectedSourceName)
+              ? `🪟 Vista previa interactiva: ${selectedSourceName}`
+              : '🖥️ Vista previa de tu pantalla compartida';
+          }
+          if (stopStageBtn) {
+            stopStageBtn.classList.remove('hidden');
+            stopStageBtn.classList.add('inline-flex');
+          }
+          if (!isMinStage) {
+            screenOverlay.classList.remove('hidden');
+            screenOverlay.classList.add('flex');
+            if (restoreStageBtn) restoreStageBtn.classList.add('hidden');
+          }
+        } else {
+          // Pantalla completa: ocultar video local por defecto para evitar espejo infinito
+          if (screenVideo.srcObject) screenVideo.srcObject = null;
+          screenOverlay.classList.add('hidden');
+          screenOverlay.classList.remove('flex');
           if (restoreStageBtn) restoreStageBtn.classList.add('hidden');
         }
+        syncScreenAnnotateStageGeometry();
         return;
       }
 

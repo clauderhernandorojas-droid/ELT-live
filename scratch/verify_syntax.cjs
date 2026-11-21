@@ -23,6 +23,7 @@ function checkFileScripts(filePath) {
 }
 
 checkFileScripts('c:/Users/User/Documents/ANTIGRAVITY PROJECTS/ELT LIVE/host.html');
+checkFileScripts('c:/Users/User/Documents/ANTIGRAVITY PROJECTS/ELT LIVE/agenda.html');
 checkFileScripts('c:/Users/User/Documents/ANTIGRAVITY PROJECTS/ELT LIVE/ELT LIVE WEB/student.html');
 checkFileScripts('c:/Users/User/Documents/ANTIGRAVITY PROJECTS/ELT LIVE/ELT LIVE WEB/index.html');
 checkFileScripts('c:/Users/User/Documents/ANTIGRAVITY PROJECTS/ELT LIVE/student.html');

@@ -45,5 +45,8 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
     }
+  },
+  "dependencies": {
+    "@mediapipe/tasks-vision": "^1.2.3"
   }
 }

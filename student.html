@@ -13,6 +13,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="vendor/mediapipe/vision_bundle.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <style>
     html, body {
@@ -967,66 +968,32 @@
             </div>
 
             <!-- Zona Central: Audio, Video, Chat -->
-            <div class="relative flex items-center gap-2 sm:gap-4 md:gap-5 shrink-0">
-                   <!-- Selector Popover de Dispositivos de Audio y Video -->
-              <div id="mediaDevicesPopover" class="hidden absolute bottom-14 left-1/2 -translate-x-1/2 z-50 bg-[#1a1d21] border border-slate-700/80 rounded-xl shadow-2xl p-3.5 text-xs text-slate-200 w-80 max-w-[92vw] space-y-3 backdrop-blur-md">
-                <div class="flex items-center justify-between pb-1.5 border-b border-slate-700/60">
-                  <span class="font-semibold text-slate-100 flex items-center gap-1.5">
-                    <i class="fa-solid fa-sliders text-sky-400"></i> Dispositivos de Audio y Video
-                  </span>
-                  <button type="button" id="closeMediaDevicesPopoverBtn" class="text-slate-400 hover:text-white px-1">✕</button>
-                </div>
-
-                <!-- Micrófono -->
-                <div class="space-y-1">
-                  <label class="block text-[11px] font-medium text-slate-400 flex items-center gap-1.5">
-                    <i class="fa-solid fa-microphone text-emerald-400"></i> Micrófono:
-                  </label>
-                  <select id="popoverMicSelect" class="w-full bg-[#26292e] border border-slate-600 rounded-lg px-2 py-1.5 text-slate-200 focus:outline-none focus:border-sky-500 text-[11px]">
-                    <option value="">Cargando micrófonos...</option>
-                  </select>
-                </div>
-
-                <!-- Altavoz / Audífonos -->
-                <div id="popoverSpeakerGroup" class="space-y-1">
-                  <label class="block text-[11px] font-medium text-slate-400 flex items-center gap-1.5">
-                    <i class="fa-solid fa-volume-high text-cyan-400"></i> Altavoz / Audífonos:
-                  </label>
-                  <select id="popoverSpeakerSelect" class="w-full bg-[#26292e] border border-slate-600 rounded-lg px-2 py-1.5 text-slate-200 focus:outline-none focus:border-sky-500 text-[11px]">
-                    <option value="">Cargando altavoces...</option>
-                  </select>
-                </div>
-
-                <!-- Cámara -->
-                <div class="space-y-1">
-                  <label class="block text-[11px] font-medium text-slate-400 flex items-center gap-1.5">
-                    <i class="fa-solid fa-video text-rose-400"></i> Cámara:
-                  </label>
-                  <select id="popoverCamSelect" class="w-full bg-[#26292e] border border-slate-600 rounded-lg px-2 py-1.5 text-slate-200 focus:outline-none focus:border-sky-500 text-[11px]">
-                    <option value="">Cargando cámaras...</option>
-                  </select>
-                </div>
+            <div class="flex items-center gap-2 sm:gap-3 shrink-0">
+              <!-- Audio Group -->
+              <div class="inline-flex items-center bg-white/5 rounded-lg border border-slate-700/60 p-0.5">
+                <button id="bottomAudioBtn" type="button" class="group flex flex-col items-center justify-center px-2.5 py-1 rounded-lg hover:bg-white/10 transition" title="Activar / Silenciar micrófono propio">
+                  <i id="bottomAudioIcon" class="fa-solid fa-microphone text-sm text-slate-100"></i>
+                  <span id="bottomAudioLabel" class="text-[10px] text-slate-300 font-medium mt-0.5">Audio</span>
+                </button>
+                <button id="bottomAudioArrowBtn" type="button" class="px-2 py-2 rounded-lg hover:bg-white/15 transition text-slate-300 hover:text-white text-xs font-bold leading-none cursor-pointer" title="Configurar dispositivos de audio">^</button>
               </div>
 
-              <!-- Audio -->
-              <button id="bottomAudioBtn" type="button" class="group flex flex-col items-center justify-center px-2.5 py-1 rounded-lg hover:bg-white/10 transition relative" title="Activar / Silenciar micrófono propio">
-                <div class="flex items-center gap-1">
-                  <i id="bottomAudioIcon" class="fa-solid fa-microphone text-sm text-slate-100"></i>
-                  <span id="bottomAudioArrowBtn" class="text-[9px] text-slate-400 hover:text-white px-0.5 rounded hover:bg-white/20 transition cursor-pointer" title="Configurar dispositivos de audio">^</span>
-                </div>
-                <span id="bottomAudioLabel" class="text-[10px] text-slate-300 font-medium mt-0.5">Audio</span>
-              </button>
-
-              <!-- Video -->
-              <button id="bottomVideoBtn" type="button" class="group flex flex-col items-center justify-center px-2.5 py-1 rounded-lg hover:bg-white/10 transition relative" title="Encender / Apagar cámara web propia">
-                <div class="flex items-center gap-1">
+              <!-- Video Group -->
+              <div class="inline-flex items-center bg-white/5 rounded-lg border border-slate-700/60 p-0.5">
+                <button id="bottomVideoBtn" type="button" class="group flex flex-col items-center justify-center px-2.5 py-1 rounded-lg hover:bg-white/10 transition" title="Encender / Apagar cámara web propia">
                   <i id="bottomVideoIcon" class="fa-solid fa-video text-sm text-slate-100"></i>
-                  <span id="bottomVideoArrowBtn" class="text-[9px] text-slate-400 hover:text-white px-0.5 rounded hover:bg-white/20 transition cursor-pointer" title="Configurar cámara">^</span>
+                  <span id="bottomVideoLabel" class="text-[10px] text-slate-300 font-medium mt-0.5">Video</span>
+                </button>
+                <button id="bottomVideoArrowBtn" type="button" class="px-2 py-2 rounded-lg hover:bg-white/15 transition text-slate-300 hover:text-white text-xs font-bold leading-none cursor-pointer" title="Configurar cámara">^</button>
+              </div>
+
+              <!-- Fondo Blur Virtual -->
+              <button id="bottomVideoBlurBtn" type="button" class="group flex flex-col items-center justify-center px-2.5 py-1.5 rounded-lg bg-white/5 border border-slate-700/60 hover:bg-white/15 transition relative" title="Activar / Desactivar fondo desenfocado">
+                <div class="flex items-center gap-1">
+                  <span id="bottomVideoBlurIcon" class="text-sm">🪄</span>
                 </div>
-                <span id="bottomVideoLabel" class="text-[10px] text-slate-300 font-medium mt-0.5">Video</span>
-              </button></button>
-
-
+                <span id="bottomVideoBlurLabel" class="text-[10px] text-slate-300 font-medium mt-0.5">Fondo</span>
+              </button>
 
               <button id="bottomChatToggleBtn" type="button" class="group flex flex-col items-center justify-center px-2.5 py-1 rounded-lg hover:bg-white/10 transition relative" title="Mostrar / Ocultar el panel de chat">
                 <div class="flex items-center gap-1 relative">
@@ -7453,16 +7420,52 @@
         // ==================== GESTOR DE DISPOSITIVOS DE AUDIO Y VIDEO ====================
     let isRefreshingDevices = false;
 
-    async function refreshMediaDeviceLists() {
+    function ensureMediaDevicesPopoverInBody() {
+      const pop = document.getElementById('mediaDevicesPopover');
+      if (pop && pop.parentElement !== document.body) {
+        document.body.appendChild(pop);
+        pop.style.position = 'fixed';
+        pop.style.zIndex = '999999';
+      }
+    }
+
+    async function ensureMediaPermissionsBeforeEnumeration() {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+      try {
+        const testDevices = await navigator.mediaDevices.enumerateDevices();
+        const hasLabels = testDevices.some(d => (d.label && d.label.trim().length > 0));
+        if (!hasLabels && navigator.mediaDevices.getUserMedia) {
+          const isMicLive = Boolean(p2pLocalStream && p2pLocalStream.getAudioTracks().some(t => t.readyState === 'live'));
+          if (!isMicLive) {
+            try {
+              const tempStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+              tempStream.getTracks().forEach(t => { try { t.stop(); } catch (e) {} });
+            } catch (errGUM) {
+              console.warn('[ELT Live Devices] Permiso de audio inicial denegado o no disponible:', errGUM);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[ELT Live Devices] Error en verificación previa de permisos:', err);
+      }
+    }
+
+    async function refreshMediaDeviceLists(forcePermissionProbe = false) {
       if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
       if (isRefreshingDevices) return;
       isRefreshingDevices = true;
 
       try {
+        if (forcePermissionProbe) {
+          await ensureMediaPermissionsBeforeEnumeration();
+        }
+
         const devices = await navigator.mediaDevices.enumerateDevices();
         const mics = devices.filter(d => d.kind === 'audioinput');
         const speakers = devices.filter(d => d.kind === 'audiooutput');
         const cams = devices.filter(d => d.kind === 'videoinput');
+
+        console.log(`[ELT Live Devices] Encontrados: ${mics.length} mics, ${speakers.length} speakers, ${cams.length} cams`);
 
         const micSelect = document.getElementById('popoverMicSelect');
         const speakerSelect = document.getElementById('popoverSpeakerSelect');
@@ -7473,17 +7476,18 @@
         const savedSpeakerId = localStorage.getItem('elt_pref_speaker_id') || '';
         const savedCamId = localStorage.getItem('elt_pref_cam_id') || '';
 
-        // 1. Selector de Micrófonos
+        // 1. 🎙️ Micrófono (audioinput)
         if (micSelect) {
           micSelect.innerHTML = '';
           if (mics.length === 0) {
-            micSelect.innerHTML = '<option value="">(No se detectaron micrófonos)</option>';
+            micSelect.innerHTML = '<option value="default">🎙️ Micrófono predeterminado</option>';
           } else {
             mics.forEach((m, idx) => {
               const opt = document.createElement('option');
-              opt.value = m.deviceId;
-              opt.textContent = m.label || `Micrófono ${idx + 1}`;
-              if (m.deviceId === savedMicId || (!savedMicId && idx === 0)) {
+              opt.value = m.deviceId || (idx === 0 ? 'default' : `mic_${idx}`);
+              const cleanLabel = (m.label && m.label.trim()) || (m.deviceId === 'default' ? 'Micrófono predeterminado' : (m.deviceId === 'communications' ? 'Micrófono de comunicaciones' : `Micrófono ${idx + 1}`));
+              opt.textContent = `🎙️ ${cleanLabel}`;
+              if (m.deviceId === savedMicId || (!savedMicId && (m.deviceId === 'default' || idx === 0))) {
                 opt.selected = true;
               }
               micSelect.appendChild(opt);
@@ -7491,40 +7495,38 @@
           }
         }
 
-        // 2. Selector de Altavoces / Salida de Audio
+        // 2. 🔊 Altavoz / Audífonos (audiooutput)
         if (speakerSelect) {
-          if (typeof HTMLMediaElement.prototype.setSinkId !== 'function') {
-            if (speakerGroup) speakerGroup.style.display = 'none';
+          if (speakerGroup) speakerGroup.style.display = '';
+          speakerSelect.innerHTML = '';
+          if (speakers.length === 0) {
+            speakerSelect.innerHTML = '<option value="default">🔊 Altavoz predeterminado del sistema</option>';
           } else {
-            if (speakerGroup) speakerGroup.style.display = '';
-            speakerSelect.innerHTML = '';
-            if (speakers.length === 0) {
-              speakerSelect.innerHTML = '<option value="">Predeterminado del sistema</option>';
-            } else {
-              speakers.forEach((s, idx) => {
-                const opt = document.createElement('option');
-                opt.value = s.deviceId;
-                opt.textContent = s.label || `Altavoz / Salida ${idx + 1}`;
-                if (s.deviceId === savedSpeakerId || (!savedSpeakerId && (s.deviceId === 'default' || idx === 0))) {
-                  opt.selected = true;
-                }
-                speakerSelect.appendChild(opt);
-              });
-            }
+            speakers.forEach((s, idx) => {
+              const opt = document.createElement('option');
+              opt.value = s.deviceId || (idx === 0 ? 'default' : `speaker_${idx}`);
+              const cleanLabel = (s.label && s.label.trim()) || (s.deviceId === 'default' ? 'Altavoz predeterminado' : (s.deviceId === 'communications' ? 'Altavoz de comunicaciones' : `Altavoz / Salida ${idx + 1}`));
+              opt.textContent = `🔊 ${cleanLabel}`;
+              if (s.deviceId === savedSpeakerId || (!savedSpeakerId && (s.deviceId === 'default' || idx === 0))) {
+                opt.selected = true;
+              }
+              speakerSelect.appendChild(opt);
+            });
           }
         }
 
-        // 3. Selector de Cámaras
+        // 3. 📷 Cámara (videoinput)
         if (camSelect) {
           camSelect.innerHTML = '';
           if (cams.length === 0) {
-            camSelect.innerHTML = '<option value="">(No se detectaron cámaras)</option>';
+            camSelect.innerHTML = '<option value="">📷 Cámara frontal / predeterminada</option>';
           } else {
             cams.forEach((c, idx) => {
               const opt = document.createElement('option');
-              opt.value = c.deviceId;
-              opt.textContent = c.label || `Cámara ${idx + 1}`;
-              if (c.deviceId === savedCamId || (!savedCamId && idx === 0)) {
+              opt.value = c.deviceId || (idx === 0 ? 'default' : `cam_${idx}`);
+              const cleanLabel = (c.label && c.label.trim()) || (c.deviceId === 'default' ? 'Cámara predeterminada' : `Cámara ${idx + 1}`);
+              opt.textContent = `📷 ${cleanLabel}`;
+              if (c.deviceId === savedCamId || (!savedCamId && (c.deviceId === 'default' || idx === 0))) {
                 opt.selected = true;
               }
               camSelect.appendChild(opt);
@@ -7631,8 +7633,10 @@
       try {
         if (p2pLocalStream) {
           p2pLocalStream.getVideoTracks().forEach(oldTrack => {
-            try { oldTrack.stop(); } catch (e) {}
-            try { p2pLocalStream.removeTrack(oldTrack); } catch (e) {}
+            if (oldTrack !== blurredVideoTrack) {
+              try { oldTrack.stop(); } catch (e) {}
+              try { p2pLocalStream.removeTrack(oldTrack); } catch (e) {}
+            }
           });
         }
 
@@ -7650,29 +7654,35 @@
         const newVideoTrack = newCamStream.getVideoTracks()[0];
         if (!newVideoTrack) return;
         newVideoTrack.enabled = true;
+        rawVideoTrack = newVideoTrack;
 
-        if (p2pLocalStream) {
-          p2pLocalStream.addTrack(newVideoTrack);
+        if (isVideoBlurEnabled && blurSourceVideoEl) {
+          blurSourceVideoEl.srcObject = new MediaStream([rawVideoTrack]);
+          blurSourceVideoEl.play().catch(() => {});
         } else {
-          p2pLocalStream = newCamStream;
-        }
+          if (p2pLocalStream) {
+            p2pLocalStream.addTrack(newVideoTrack);
+          } else {
+            p2pLocalStream = newCamStream;
+          }
 
-        if (typeof webrtcPeers !== 'undefined') {
-          for (const peerId of Object.keys(webrtcPeers)) {
-            const peer = webrtcPeers[peerId];
-            if (peer && peer.videoSender) {
-              try { await peer.videoSender.replaceTrack(newVideoTrack); } catch (e) {}
+          if (typeof webrtcPeers !== 'undefined') {
+            for (const peerId of Object.keys(webrtcPeers)) {
+              const peer = webrtcPeers[peerId];
+              if (peer && peer.videoSender) {
+                try { await peer.videoSender.replaceTrack(newVideoTrack); } catch (e) {}
+              }
             }
           }
-        }
 
-        if (typeof handleP2PLocalVideoUI === 'function') handleP2PLocalVideoUI();
+          if (typeof handleP2PLocalVideoUI === 'function') handleP2PLocalVideoUI();
 
-        if (typeof currentVideoMode !== 'undefined' && currentVideoMode === 'livekit' && typeof livekitRoom !== 'undefined' && livekitRoom) {
-          try {
-            await livekitRoom.switchActiveDevice('videoinput', deviceId);
-          } catch (lkErr) {
-            console.warn('[LiveKit] Error cambiando cámara:', lkErr);
+          if (typeof currentVideoMode !== 'undefined' && currentVideoMode === 'livekit' && typeof livekitRoom !== 'undefined' && livekitRoom) {
+            try {
+              await livekitRoom.switchActiveDevice('videoinput', deviceId);
+            } catch (lkErr) {
+              console.warn('[LiveKit] Error cambiando cámara:', lkErr);
+            }
           }
         }
         console.log('[MediaDevices] Cámara cambiada en caliente:', newVideoTrack.label);
@@ -7698,13 +7708,53 @@
       }
     }
 
-    function toggleMediaDevicesPopover(focusSection) {
+    let lastMediaDevicesTriggerBtn = null;
+
+    function positionMediaDevicesPopover(pop, triggerBtn) {
+      if (!pop || !triggerBtn) return;
+      const btnRect = triggerBtn.getBoundingClientRect();
+      const popRect = pop.getBoundingClientRect();
+      const popWidth = popRect.width || pop.offsetWidth || 320;
+      const popHeight = popRect.height || pop.offsetHeight || 260;
+
+      let top;
+      if (btnRect.top >= popHeight + 16) {
+        // Hay espacio arriba (barra inferior, ej. student.html): abrir hacia arriba
+        top = btnRect.top - popHeight - 8;
+      } else {
+        // Sin espacio arriba (barra superior, ej. host.html): abrir hacia abajo
+        top = btnRect.bottom + 8;
+      }
+      top = Math.max(8, Math.min(window.innerHeight - popHeight - 8, top));
+
+      let left = btnRect.left + (btnRect.width / 2) - (popWidth / 2);
+      left = Math.max(12, Math.min(window.innerWidth - popWidth - 12, left));
+
+      pop.style.position = 'fixed';
+      pop.style.zIndex = '999999';
+      pop.style.top = `${Math.round(top)}px`;
+      pop.style.bottom = 'auto';
+      pop.style.left = `${Math.round(left)}px`;
+      pop.style.right = 'auto';
+      pop.style.transform = 'none';
+    }
+
+    async function toggleMediaDevicesPopover(focusSection, triggerBtn) {
       const pop = document.getElementById('mediaDevicesPopover');
       if (!pop) return;
+      ensureMediaDevicesPopoverInBody();
+
       const isHidden = pop.classList.contains('hidden');
       if (isHidden) {
-        refreshMediaDeviceLists();
         pop.classList.remove('hidden');
+        pop.style.display = 'block';
+        lastMediaDevicesTriggerBtn = triggerBtn || lastMediaDevicesTriggerBtn;
+        positionMediaDevicesPopover(pop, lastMediaDevicesTriggerBtn);
+
+        await refreshMediaDeviceLists(true);
+        // Reajustar tras poblar las listas (la altura real puede cambiar)
+        positionMediaDevicesPopover(pop, lastMediaDevicesTriggerBtn);
+
         if (focusSection === 'audio') {
           document.getElementById('popoverMicSelect')?.focus();
         } else if (focusSection === 'video') {
@@ -7712,16 +7762,411 @@
         }
       } else {
         pop.classList.add('hidden');
+        pop.style.display = 'none';
       }
     }
 
+    window.addEventListener('resize', () => {
+      const pop = document.getElementById('mediaDevicesPopover');
+      if (pop && !pop.classList.contains('hidden') && lastMediaDevicesTriggerBtn) {
+        positionMediaDevicesPopover(pop, lastMediaDevicesTriggerBtn);
+      }
+    });
+
     function closeMediaDevicesPopover() {
       const pop = document.getElementById('mediaDevicesPopover');
-      if (pop) pop.classList.add('hidden');
+      if (pop) {
+        pop.classList.add('hidden');
+        pop.style.display = 'none';
+      }
+    }
+
+    // ==================== FONDO DESENFOCADO VIRTUAL (BLUR 100% LOCAL Y ANTI-CONGELAMIENTO) ====================
+    let isVideoBlurEnabled = false;
+    let isInitializingBlur = false;
+    let imageSegmenter = null;
+    let blurSourceVideoEl = null;
+    let blurCanvasEl = null;
+    let blurPersonCanvasEl = null;
+    let blurMaskCanvasEl = null;
+    let blurIntervalId = null;
+    let blurredVideoStream = null;
+    let blurredVideoTrack = null;
+    let rawVideoTrack = null;
+    let maskImageData = null;
+    let isSegmentingFrame = false;
+
+    let blurSegInputCanvasEl = null;
+    let blurMaskPersonIsHigh = null;   // null = aún sin decidir; true/false = polaridad bloqueada
+    let blurPolarityVotesHigh = 0;
+    let blurPolarityVotesLow = 0;
+    const BLUR_SEG_MAX_WIDTH = 256;
+    const BLUR_POLARITY_LOCK_FRAMES = 15;
+
+    function ensureBlurElements() {
+      if (!blurSourceVideoEl) {
+        blurSourceVideoEl = document.createElement('video');
+        blurSourceVideoEl.setAttribute('playsinline', '');
+        blurSourceVideoEl.setAttribute('webkit-playsinline', '');
+        blurSourceVideoEl.muted = true;
+        blurSourceVideoEl.autoplay = true;
+      }
+      if (!blurCanvasEl) blurCanvasEl = document.createElement('canvas');
+      if (!blurPersonCanvasEl) blurPersonCanvasEl = document.createElement('canvas');
+      if (!blurMaskCanvasEl) blurMaskCanvasEl = document.createElement('canvas');
+      if (!blurSegInputCanvasEl) blurSegInputCanvasEl = document.createElement('canvas');
+    }
+
+    // Decide qué valor de la máscara es "persona" comparando el centro del encuadre
+    // (donde está el rostro) contra las esquinas superiores (casi siempre fondo).
+    // Se vota durante los primeros frames y luego se bloquea para evitar inversiones/titileo.
+    function resolveBlurMaskPolarity(maskData, w, h) {
+      if (blurMaskPersonIsHigh !== null) return blurMaskPersonIsHigh;
+
+      const fracHigh = (x0, y0, x1, y1) => {
+        let hi = 0, total = 0;
+        for (let y = y0; y < y1; y += 2) {
+          const row = y * w;
+          for (let x = x0; x < x1; x += 2) {
+            if (maskData[row + x] > 127) hi++;
+            total++;
+          }
+        }
+        return total ? hi / total : 0;
+      };
+
+      const cx0 = Math.floor(w * 0.35), cx1 = Math.ceil(w * 0.65);
+      const cy0 = Math.floor(h * 0.30), cy1 = Math.ceil(h * 0.70);
+      const centerHigh = fracHigh(cx0, cy0, cx1, cy1);
+      const cornerW = Math.max(2, Math.floor(w * 0.12)), cornerH = Math.max(2, Math.floor(h * 0.15));
+      const cornersHigh = (fracHigh(0, 0, cornerW, cornerH) + fracHigh(w - cornerW, 0, w, cornerH)) / 2;
+
+      const frameSaysHigh = centerHigh >= cornersHigh;
+      if (Math.abs(centerHigh - cornersHigh) > 0.2) {
+        if (frameSaysHigh) blurPolarityVotesHigh++; else blurPolarityVotesLow++;
+      }
+      if (blurPolarityVotesHigh + blurPolarityVotesLow >= BLUR_POLARITY_LOCK_FRAMES) {
+        blurMaskPersonIsHigh = blurPolarityVotesHigh >= blurPolarityVotesLow;
+        console.log('[VideoBlur] Polaridad de máscara bloqueada: persona =', blurMaskPersonIsHigh ? 'valores > 127' : 'valor 0');
+        return blurMaskPersonIsHigh;
+      }
+      return frameSaysHigh;
+    }
+
+    function renderBlurFrame() {
+      if (!isVideoBlurEnabled) return;
+      if (!blurSourceVideoEl || blurSourceVideoEl.readyState < 2 || blurSourceVideoEl.paused) return;
+
+      // Proporción nativa exacta del video
+      const vw = blurSourceVideoEl.videoWidth || 640;
+      const vh = blurSourceVideoEl.videoHeight || 480;
+      if (blurCanvasEl.width !== vw || blurCanvasEl.height !== vh) {
+        blurCanvasEl.width = vw;
+        blurCanvasEl.height = vh;
+        blurPersonCanvasEl.width = vw;
+        blurPersonCanvasEl.height = vh;
+      }
+
+      // Entrada reducida para el segmentador (ancho máx. 256px, misma proporción): 256x192 en 4:3
+      const segW = Math.min(BLUR_SEG_MAX_WIDTH, vw);
+      const segH = Math.max(1, Math.round(segW * vh / vw));
+      if (blurSegInputCanvasEl.width !== segW || blurSegInputCanvasEl.height !== segH) {
+        blurSegInputCanvasEl.width = segW;
+        blurSegInputCanvasEl.height = segH;
+      }
+
+      const ctx = blurCanvasEl.getContext('2d');
+
+      if (!imageSegmenter) {
+        // Segmentador aún cargando: video limpio para que el stream nunca se congele
+        ctx.filter = 'none';
+        ctx.drawImage(blurSourceVideoEl, 0, 0, vw, vh);
+        return;
+      }
+
+      if (isSegmentingFrame) return;
+      isSegmentingFrame = true;
+
+      try {
+        const segCtx = blurSegInputCanvasEl.getContext('2d');
+        segCtx.drawImage(blurSourceVideoEl, 0, 0, segW, segH);
+
+        imageSegmenter.segmentForVideo(blurSegInputCanvasEl, performance.now(), (result) => {
+          try {
+            const mask = result && result.categoryMask;
+            if (!mask) return;
+            const maskW = mask.width;
+            const maskH = mask.height;
+            const maskData = mask.getAsUint8Array();
+
+            const maskCtx = blurMaskCanvasEl.getContext('2d');
+            if (blurMaskCanvasEl.width !== maskW || blurMaskCanvasEl.height !== maskH) {
+              blurMaskCanvasEl.width = maskW;
+              blurMaskCanvasEl.height = maskH;
+              maskImageData = null;
+            }
+            if (!maskImageData || maskImageData.width !== maskW || maskImageData.height !== maskH) {
+              maskImageData = maskCtx.createImageData(maskW, maskH);
+            }
+
+            // Persona -> alpha 255, fondo -> alpha 0 (escritura de 32 bits por píxel)
+            const personIsHigh = resolveBlurMaskPolarity(maskData, maskW, maskH);
+            const px = new Uint32Array(maskImageData.data.buffer);
+            const OPAQUE = 0xFF000000 >>> 0;
+            const len = maskData.length;
+            if (personIsHigh) {
+              for (let i = 0; i < len; i++) px[i] = maskData[i] > 127 ? OPAQUE : 0;
+            } else {
+              for (let i = 0; i < len; i++) px[i] = maskData[i] === 0 ? OPAQUE : 0;
+            }
+            maskCtx.putImageData(maskImageData, 0, 0);
+
+            // personCanvas (nativo): video recortado por la máscara escalada (bordes suavizados por interpolación bilineal)
+            const personCtx = blurPersonCanvasEl.getContext('2d');
+            personCtx.globalCompositeOperation = 'source-over';
+            personCtx.clearRect(0, 0, vw, vh);
+            personCtx.drawImage(blurSourceVideoEl, 0, 0, vw, vh);
+            personCtx.globalCompositeOperation = 'destination-in';
+            personCtx.imageSmoothingEnabled = true;
+            personCtx.drawImage(blurMaskCanvasEl, 0, 0, vw, vh);
+            personCtx.globalCompositeOperation = 'source-over';
+
+            // blurCanvas: fondo desenfocado (1.04x centrado) + persona nítida encima, en una sola pasada
+            const scale = 1.04;
+            const ox = (vw * (scale - 1)) / 2;
+            const oy = (vh * (scale - 1)) / 2;
+            ctx.filter = 'blur(12px)';
+            ctx.drawImage(blurSourceVideoEl, -ox, -oy, vw * scale, vh * scale);
+            ctx.filter = 'none';
+            ctx.drawImage(blurPersonCanvasEl, 0, 0, vw, vh);
+
+            if (typeof mask.close === 'function') mask.close();
+          } finally {
+            isSegmentingFrame = false;
+          }
+        });
+      } catch (segErr) {
+        isSegmentingFrame = false;
+        // Frame fallido: video limpio, nunca un frame congelado
+        ctx.filter = 'none';
+        ctx.drawImage(blurSourceVideoEl, 0, 0, vw, vh);
+      }
+    }
+
+    function updateVideoBlurBtnUI() {
+      const btn = document.getElementById('bottomVideoBlurBtn');
+      const label = document.getElementById('bottomVideoBlurLabel');
+      if (!btn) return;
+      if (isVideoBlurEnabled) {
+        btn.classList.add('bg-sky-600/30', 'text-sky-300');
+        btn.style.boxShadow = '0 0 0 2px #0284c7';
+        if (label) label.textContent = 'Fondo: ON';
+      } else {
+        btn.classList.remove('bg-sky-600/30', 'text-sky-300');
+        btn.style.boxShadow = '';
+        if (label) label.textContent = 'Fondo';
+      }
+    }
+
+    let imageSegmenterPromise = null;
+
+    async function getImageSegmenter() {
+      if (imageSegmenter) return imageSegmenter;
+      if (imageSegmenterPromise) return imageSegmenterPromise;
+
+      imageSegmenterPromise = (async () => {
+        try {
+          const resolveNamespace = () => {
+            if (window.FilesetResolver && window.ImageSegmenter) {
+              return { FilesetResolver: window.FilesetResolver, ImageSegmenter: window.ImageSegmenter };
+            }
+            const ns = window.mpTasksVision || window.Vision || (typeof Vision !== 'undefined' ? Vision : null);
+            if (ns && ns.FilesetResolver && ns.ImageSegmenter) return ns;
+            return null;
+          };
+
+          let ns = resolveNamespace();
+          if (!ns) {
+            await new Promise((resolve, reject) => {
+              const s = document.createElement('script');
+              s.src = 'vendor/mediapipe/vision_bundle.js';
+              s.onload = () => resolve();
+              s.onerror = (e) => reject(e);
+              document.head.appendChild(s);
+            });
+            ns = resolveNamespace();
+          }
+
+          if (!ns || !ns.FilesetResolver || !ns.ImageSegmenter) {
+            console.warn('[VideoBlur] MediaPipe Tasks Vision no disponible');
+            return null;
+          }
+
+          const vision = await ns.FilesetResolver.forVisionTasks('vendor/mediapipe/wasm');
+          try {
+            imageSegmenter = await ns.ImageSegmenter.createFromOptions(vision, {
+              baseOptions: {
+                modelAssetPath: 'vendor/mediapipe/selfie_segmenter.tflite',
+                delegate: 'GPU'
+              },
+              runningMode: 'VIDEO',
+              outputCategoryMask: true,
+              outputConfidenceMasks: false
+            });
+            console.log('[VideoBlur] ImageSegmenter inicializado (delegate: GPU)');
+          } catch (gpuErr) {
+            console.warn('[VideoBlur] Falló delegate GPU, usando fallback CPU:', gpuErr);
+            imageSegmenter = await ns.ImageSegmenter.createFromOptions(vision, {
+              baseOptions: {
+                modelAssetPath: 'vendor/mediapipe/selfie_segmenter.tflite',
+                delegate: 'CPU'
+              },
+              runningMode: 'VIDEO',
+              outputCategoryMask: true,
+              outputConfidenceMasks: false
+            });
+            console.log('[VideoBlur] ImageSegmenter inicializado (delegate: CPU)');
+          }
+          return imageSegmenter;
+        } catch (err) {
+          console.error('[VideoBlur] Error inicializando ImageSegmenter:', err);
+          return null;
+        } finally {
+          imageSegmenterPromise = null;
+        }
+      })();
+
+      return imageSegmenterPromise;
+    }
+
+    async function toggleVideoBlur(forceState) {
+      const targetState = typeof forceState === 'boolean' ? forceState : !isVideoBlurEnabled;
+      if (targetState === isVideoBlurEnabled) return;
+
+      if (targetState) {
+        if (!webrtcVideoEnabled) {
+          const msg = 'Enciende primero tu cámara para activar el fondo desenfocado.';
+          if (typeof showMediaAlert === 'function') showMediaAlert(msg);
+          else alert(msg);
+          return;
+        }
+
+        rawVideoTrack = p2pLocalStream?.getVideoTracks().find(t => t.readyState === 'live');
+        if (!rawVideoTrack) {
+          const msg = 'No hay señal de cámara activa para desenfocar.';
+          if (typeof showMediaAlert === 'function') showMediaAlert(msg);
+          else alert(msg);
+          return;
+        }
+
+        isVideoBlurEnabled = true;
+        updateVideoBlurBtnUI();
+        ensureBlurElements();
+
+        blurSourceVideoEl.srcObject = new MediaStream([rawVideoTrack]);
+        await blurSourceVideoEl.play().catch(() => {});
+
+        // Proporción nativa exacta
+        const vw = blurSourceVideoEl.videoWidth || 640;
+        const vh = blurSourceVideoEl.videoHeight || 480;
+        blurCanvasEl.width = vw;
+        blurCanvasEl.height = vh;
+        blurPersonCanvasEl.width = vw;
+        blurPersonCanvasEl.height = vh;
+
+        if (!blurredVideoStream) {
+          blurredVideoStream = blurCanvasEl.captureStream(25);
+        }
+        blurredVideoTrack = blurredVideoStream.getVideoTracks()[0];
+        if (blurredVideoTrack) blurredVideoTrack.enabled = true;
+
+        // Anti-congelamiento en segundo plano: setInterval a 40ms (~25 FPS)
+        if (blurIntervalId) clearInterval(blurIntervalId);
+        blurIntervalId = setInterval(renderBlurFrame, 40);
+
+        if (!imageSegmenter && !isInitializingBlur) {
+          isInitializingBlur = true;
+          getImageSegmenter().finally(() => { isInitializingBlur = false; });
+        }
+
+        if (p2pLocalStream && blurredVideoTrack) {
+          p2pLocalStream.removeTrack(rawVideoTrack);
+          p2pLocalStream.addTrack(blurredVideoTrack);
+        }
+
+        if (typeof webrtcPeers !== 'undefined') {
+          for (const peerId of Object.keys(webrtcPeers)) {
+            const peer = webrtcPeers[peerId];
+            if (peer && peer.videoSender) {
+              try { await peer.videoSender.replaceTrack(blurredVideoTrack); } catch (e) {}
+            }
+          }
+        }
+
+        if (typeof livekitRoom !== 'undefined' && livekitRoom && livekitRoom.localParticipant) {
+          try {
+            const trackPub = Array.from(livekitRoom.localParticipant.videoTrackPublications.values())[0];
+            if (trackPub && trackPub.track) {
+              await trackPub.track.replaceTrack(blurredVideoTrack);
+            }
+          } catch (e) {}
+        }
+
+        if (typeof handleP2PLocalVideoUI === 'function') handleP2PLocalVideoUI();
+        console.log('[VideoBlur] Fondo desenfocado activado.');
+      } else {
+        isVideoBlurEnabled = false;
+        updateVideoBlurBtnUI();
+
+        if (blurIntervalId) {
+          clearInterval(blurIntervalId);
+          blurIntervalId = null;
+        }
+        isSegmentingFrame = false;
+
+        if (blurSourceVideoEl) {
+          try { blurSourceVideoEl.pause(); } catch (e) {}
+          blurSourceVideoEl.srcObject = null;
+        }
+
+        if (rawVideoTrack && rawVideoTrack.readyState === 'live') {
+          if (p2pLocalStream) {
+            if (blurredVideoTrack) {
+              try { p2pLocalStream.removeTrack(blurredVideoTrack); } catch (e) {}
+            }
+            if (!p2pLocalStream.getVideoTracks().some(t => t.id === rawVideoTrack.id)) {
+              p2pLocalStream.addTrack(rawVideoTrack);
+            }
+          }
+
+          if (typeof webrtcPeers !== 'undefined') {
+            for (const peerId of Object.keys(webrtcPeers)) {
+              const peer = webrtcPeers[peerId];
+              if (peer && peer.videoSender) {
+                try { await peer.videoSender.replaceTrack(rawVideoTrack); } catch (e) {}
+              }
+            }
+          }
+
+          if (typeof livekitRoom !== 'undefined' && livekitRoom && livekitRoom.localParticipant) {
+            try {
+              const trackPub = Array.from(livekitRoom.localParticipant.videoTrackPublications.values())[0];
+              if (trackPub && trackPub.track) {
+                await trackPub.track.replaceTrack(rawVideoTrack);
+              }
+            } catch (e) {}
+          }
+        }
+
+        if (typeof handleP2PLocalVideoUI === 'function') handleP2PLocalVideoUI();
+        console.log('[VideoBlur] Fondo desenfocado desactivado.');
+      }
     }
 
     function initMediaDeviceManager() {
+      ensureMediaDevicesPopoverInBody();
       refreshMediaDeviceLists();
+      updateVideoBlurBtnUI();
 
       if (navigator.mediaDevices && typeof navigator.mediaDevices.addEventListener === 'function') {
         navigator.mediaDevices.addEventListener('devicechange', () => {
@@ -7732,12 +8177,16 @@
 
       document.getElementById('bottomAudioArrowBtn')?.addEventListener('click', (e) => {
         e.stopPropagation();
-        toggleMediaDevicesPopover('audio');
+        toggleMediaDevicesPopover('audio', e.currentTarget);
       });
 
       document.getElementById('bottomVideoArrowBtn')?.addEventListener('click', (e) => {
         e.stopPropagation();
-        toggleMediaDevicesPopover('video');
+        toggleMediaDevicesPopover('video', e.currentTarget);
+      });
+
+      document.getElementById('bottomVideoBlurBtn')?.addEventListener('click', () => {
+        toggleVideoBlur();
       });
 
       document.getElementById('closeMediaDevicesPopoverBtn')?.addEventListener('click', (e) => {
@@ -10660,13 +11109,11 @@ window.setVideoStripMinimized = function(minimized) {
       e.stopPropagation();
     });
 
-    document.getElementById('bottomAudioBtn')?.addEventListener('click', (e) => {
-      if (e && e.target && e.target.closest('#bottomAudioArrowBtn')) return;
+    document.getElementById('bottomAudioBtn')?.addEventListener('click', () => {
       toggleLocalAudio();
     });
 
-    document.getElementById('bottomVideoBtn')?.addEventListener('click', (e) => {
-      if (e && e.target && e.target.closest('#bottomVideoArrowBtn')) return;
+    document.getElementById('bottomVideoBtn')?.addEventListener('click', () => {
       toggleLocalVideo();
     });
 
@@ -11166,5 +11613,45 @@ window.setVideoStripMinimized = function(minimized) {
       }
     })();
   </script>
+  <!-- Selector Popover de Dispositivos de Audio y Video (Fixed en body) -->
+  <div id="mediaDevicesPopover" class="hidden fixed z-[999999] bg-[#1a1d21] border border-slate-700/80 rounded-xl shadow-2xl p-3.5 text-xs text-slate-200 w-80 max-w-[92vw] space-y-3 backdrop-blur-md">
+    <div class="flex items-center justify-between pb-1.5 border-b border-slate-700/60">
+      <span class="font-semibold text-slate-100 flex items-center gap-1.5">
+        <i class="fa-solid fa-sliders text-sky-400"></i> Dispositivos de Audio y Video
+      </span>
+      <button type="button" id="closeMediaDevicesPopoverBtn" class="text-slate-400 hover:text-white px-1 cursor-pointer">✕</button>
+    </div>
+
+    <!-- Micrófono -->
+    <div class="space-y-1">
+      <label class="block text-[11px] font-medium text-slate-400 flex items-center gap-1.5">
+        <i class="fa-solid fa-microphone text-emerald-400"></i> Micrófono:
+      </label>
+      <select id="popoverMicSelect" class="w-full bg-[#26292e] border border-slate-600 rounded-lg px-2 py-1.5 text-slate-200 focus:outline-none focus:border-sky-500 text-[11px] cursor-pointer">
+        <option value="">Cargando micrófonos...</option>
+      </select>
+    </div>
+
+    <!-- Altavoz / Audífonos -->
+    <div id="popoverSpeakerGroup" class="space-y-1">
+      <label class="block text-[11px] font-medium text-slate-400 flex items-center gap-1.5">
+        <i class="fa-solid fa-volume-high text-cyan-400"></i> Altavoz / Audífonos:
+      </label>
+      <select id="popoverSpeakerSelect" class="w-full bg-[#26292e] border border-slate-600 rounded-lg px-2 py-1.5 text-slate-200 focus:outline-none focus:border-sky-500 text-[11px] cursor-pointer">
+        <option value="">Cargando altavoces...</option>
+      </select>
+    </div>
+
+    <!-- Cámara -->
+    <div class="space-y-1">
+      <label class="block text-[11px] font-medium text-slate-400 flex items-center gap-1.5">
+        <i class="fa-solid fa-video text-rose-400"></i> Cámara:
+      </label>
+      <select id="popoverCamSelect" class="w-full bg-[#26292e] border border-slate-600 rounded-lg px-2 py-1.5 text-slate-200 focus:outline-none focus:border-sky-500 text-[11px] cursor-pointer">
+        <option value="">Cargando cámaras...</option>
+      </select>
+    </div>
+  </div>
+
 </body>
 </html>

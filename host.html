@@ -1264,12 +1264,53 @@
           </div>
 
           <!-- Zona Central: Audio, Video, Chat -->
-          <div class="flex items-center gap-5">
+          <div class="relative flex items-center gap-5">
+            <!-- Audio -->
+               <!-- Selector Popover de Dispositivos de Audio y Video -->
+            <div id="mediaDevicesPopover" class="hidden absolute bottom-14 left-1/2 -translate-x-1/2 z-50 bg-[#1a1d21] border border-slate-700/80 rounded-xl shadow-2xl p-3.5 text-xs text-slate-200 w-80 max-w-[92vw] space-y-3 backdrop-blur-md">
+              <div class="flex items-center justify-between pb-1.5 border-b border-slate-700/60">
+                <span class="font-semibold text-slate-100 flex items-center gap-1.5">
+                  <i class="fa-solid fa-sliders text-sky-400"></i> Dispositivos de Audio y Video
+                </span>
+                <button type="button" id="closeMediaDevicesPopoverBtn" class="text-slate-400 hover:text-white px-1">✕</button>
+              </div>
+
+              <!-- Micrófono -->
+              <div class="space-y-1">
+                <label class="block text-[11px] font-medium text-slate-400 flex items-center gap-1.5">
+                  <i class="fa-solid fa-microphone text-emerald-400"></i> Micrófono:
+                </label>
+                <select id="popoverMicSelect" class="w-full bg-[#26292e] border border-slate-600 rounded-lg px-2 py-1.5 text-slate-200 focus:outline-none focus:border-sky-500 text-[11px]">
+                  <option value="">Cargando micrófonos...</option>
+                </select>
+              </div>
+
+              <!-- Altavoz / Audífonos -->
+              <div id="popoverSpeakerGroup" class="space-y-1">
+                <label class="block text-[11px] font-medium text-slate-400 flex items-center gap-1.5">
+                  <i class="fa-solid fa-volume-high text-cyan-400"></i> Altavoz / Audífonos:
+                </label>
+                <select id="popoverSpeakerSelect" class="w-full bg-[#26292e] border border-slate-600 rounded-lg px-2 py-1.5 text-slate-200 focus:outline-none focus:border-sky-500 text-[11px]">
+                  <option value="">Cargando altavoces...</option>
+                </select>
+              </div>
+
+              <!-- Cámara -->
+              <div class="space-y-1">
+                <label class="block text-[11px] font-medium text-slate-400 flex items-center gap-1.5">
+                  <i class="fa-solid fa-video text-rose-400"></i> Cámara:
+                </label>
+                <select id="popoverCamSelect" class="w-full bg-[#26292e] border border-slate-600 rounded-lg px-2 py-1.5 text-slate-200 focus:outline-none focus:border-sky-500 text-[11px]">
+                  <option value="">Cargando cámaras...</option>
+                </select>
+              </div>
+            </div>
+
             <!-- Audio -->
             <button id="bottomAudioBtn" type="button" class="group flex flex-col items-center justify-center px-2.5 py-1 rounded-lg hover:bg-white/10 transition relative" title="Activar / Silenciar micrófono propio">
               <div class="flex items-center gap-1">
                 <i id="bottomAudioIcon" class="fa-solid fa-microphone text-sm text-slate-100"></i>
-                <span class="text-[9px] text-slate-400 group-hover:text-slate-200">^</span>
+                <span id="bottomAudioArrowBtn" class="text-[9px] text-slate-400 hover:text-white px-0.5 rounded hover:bg-white/20 transition cursor-pointer" title="Configurar dispositivos de audio">^</span>
               </div>
               <span id="bottomAudioLabel" class="text-[10px] text-slate-300 font-medium mt-0.5">Audio</span>
             </button>
@@ -1278,10 +1319,10 @@
             <button id="bottomVideoBtn" type="button" class="group flex flex-col items-center justify-center px-2.5 py-1 rounded-lg hover:bg-white/10 transition relative" title="Encender / Apagar cámara web propia">
               <div class="flex items-center gap-1">
                 <i id="bottomVideoIcon" class="fa-solid fa-video text-sm text-slate-100"></i>
-                <span class="text-[9px] text-slate-400 group-hover:text-slate-200">^</span>
+                <span id="bottomVideoArrowBtn" class="text-[9px] text-slate-400 hover:text-white px-0.5 rounded hover:bg-white/20 transition cursor-pointer" title="Configurar cámara">^</span>
               </div>
               <span id="bottomVideoLabel" class="text-[10px] text-slate-300 font-medium mt-0.5">Video</span>
-            </button>
+            </button></button>
 
 
 
@@ -7723,6 +7764,329 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
       }
     }
 
+        // ==================== GESTOR DE DISPOSITIVOS DE AUDIO Y VIDEO ====================
+    let isRefreshingDevices = false;
+
+    async function refreshMediaDeviceLists() {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+      if (isRefreshingDevices) return;
+      isRefreshingDevices = true;
+
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const mics = devices.filter(d => d.kind === 'audioinput');
+        const speakers = devices.filter(d => d.kind === 'audiooutput');
+        const cams = devices.filter(d => d.kind === 'videoinput');
+
+        const micSelect = document.getElementById('popoverMicSelect');
+        const speakerSelect = document.getElementById('popoverSpeakerSelect');
+        const camSelect = document.getElementById('popoverCamSelect');
+        const speakerGroup = document.getElementById('popoverSpeakerGroup');
+
+        const savedMicId = localStorage.getItem('elt_pref_mic_id') || '';
+        const savedSpeakerId = localStorage.getItem('elt_pref_speaker_id') || '';
+        const savedCamId = localStorage.getItem('elt_pref_cam_id') || '';
+
+        // 1. Selector de Micrófonos
+        if (micSelect) {
+          micSelect.innerHTML = '';
+          if (mics.length === 0) {
+            micSelect.innerHTML = '<option value="">(No se detectaron micrófonos)</option>';
+          } else {
+            mics.forEach((m, idx) => {
+              const opt = document.createElement('option');
+              opt.value = m.deviceId;
+              opt.textContent = m.label || `Micrófono ${idx + 1}`;
+              if (m.deviceId === savedMicId || (!savedMicId && idx === 0)) {
+                opt.selected = true;
+              }
+              micSelect.appendChild(opt);
+            });
+          }
+        }
+
+        // 2. Selector de Altavoces / Salida de Audio
+        if (speakerSelect) {
+          if (typeof HTMLMediaElement.prototype.setSinkId !== 'function') {
+            if (speakerGroup) speakerGroup.style.display = 'none';
+          } else {
+            if (speakerGroup) speakerGroup.style.display = '';
+            speakerSelect.innerHTML = '';
+            if (speakers.length === 0) {
+              speakerSelect.innerHTML = '<option value="">Predeterminado del sistema</option>';
+            } else {
+              speakers.forEach((s, idx) => {
+                const opt = document.createElement('option');
+                opt.value = s.deviceId;
+                opt.textContent = s.label || `Altavoz / Salida ${idx + 1}`;
+                if (s.deviceId === savedSpeakerId || (!savedSpeakerId && (s.deviceId === 'default' || idx === 0))) {
+                  opt.selected = true;
+                }
+                speakerSelect.appendChild(opt);
+              });
+            }
+          }
+        }
+
+        // 3. Selector de Cámaras
+        if (camSelect) {
+          camSelect.innerHTML = '';
+          if (cams.length === 0) {
+            camSelect.innerHTML = '<option value="">(No se detectaron cámaras)</option>';
+          } else {
+            cams.forEach((c, idx) => {
+              const opt = document.createElement('option');
+              opt.value = c.deviceId;
+              opt.textContent = c.label || `Cámara ${idx + 1}`;
+              if (c.deviceId === savedCamId || (!savedCamId && idx === 0)) {
+                opt.selected = true;
+              }
+              camSelect.appendChild(opt);
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('[MediaDevices] Error enumerando dispositivos:', err);
+      } finally {
+        isRefreshingDevices = false;
+      }
+    }
+
+    async function changeActiveMicrophone(deviceId) {
+      if (!deviceId) return;
+      localStorage.setItem('elt_pref_mic_id', deviceId);
+
+      if (!webrtcAudioEnabled && (!p2pLocalStream || !p2pLocalStream.getAudioTracks().length)) {
+        return;
+      }
+
+      try {
+        const newStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            deviceId: { ideal: deviceId },
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            channelCount: 1
+          },
+          video: false
+        });
+
+        const processedStream = createVoiceNoiseGateStream(newStream);
+        const newAudioTrack = processedStream.getAudioTracks()[0];
+        if (!newAudioTrack) return;
+        newAudioTrack.enabled = Boolean(webrtcAudioEnabled);
+
+        if (p2pLocalStream) {
+          p2pLocalStream.getAudioTracks().forEach(oldTrack => {
+            try { oldTrack.stop(); } catch (e) {}
+            try { p2pLocalStream.removeTrack(oldTrack); } catch (e) {}
+          });
+          p2pLocalStream.addTrack(newAudioTrack);
+        } else {
+          p2pLocalStream = processedStream;
+        }
+
+        if (typeof webrtcPeers !== 'undefined') {
+          for (const peerId of Object.keys(webrtcPeers)) {
+            const peer = webrtcPeers[peerId];
+            if (peer && peer.audioSender) {
+              try { await peer.audioSender.replaceTrack(newAudioTrack); } catch (e) {}
+            }
+          }
+        }
+
+        if (typeof currentVideoMode !== 'undefined' && currentVideoMode === 'livekit' && typeof livekitRoom !== 'undefined' && livekitRoom) {
+          try {
+            await livekitRoom.switchActiveDevice('audioinput', deviceId);
+          } catch (lkErr) {
+            console.warn('[LiveKit] Error cambiando micrófono:', lkErr);
+          }
+        }
+        console.log('[MediaDevices] Micrófono cambiado en caliente:', newAudioTrack.label);
+      } catch (err) {
+        console.error('[MediaDevices] Error al cambiar micrófono:', err);
+      }
+    }
+
+    async function changeActiveSpeaker(deviceId) {
+      if (typeof HTMLMediaElement.prototype.setSinkId !== 'function') return;
+      localStorage.setItem('elt_pref_speaker_id', deviceId);
+      applyAudioOutputToAllElements(deviceId);
+      console.log('[MediaDevices] Salida de audio cambiada a:', deviceId);
+    }
+
+    function applyAudioOutputDevice(mediaEl, deviceId) {
+      if (!mediaEl || typeof mediaEl.setSinkId !== 'function') return;
+      const targetId = deviceId || localStorage.getItem('elt_pref_speaker_id') || '';
+      if (targetId) {
+        mediaEl.setSinkId(targetId).catch(err => {
+          console.warn('[AudioOutput] Error al aplicar setSinkId:', err);
+        });
+      }
+    }
+
+    function applyAudioOutputToAllElements(deviceId) {
+      const targetId = deviceId || localStorage.getItem('elt_pref_speaker_id') || '';
+      if (!targetId || typeof HTMLMediaElement.prototype.setSinkId !== 'function') return;
+      const elements = document.querySelectorAll('audio, video');
+      elements.forEach(el => {
+        if (el.id === 'webrtcLocalVideo') return;
+        el.setSinkId(targetId).catch(() => {});
+      });
+    }
+
+    async function changeActiveCamera(deviceId) {
+      if (!deviceId) return;
+      localStorage.setItem('elt_pref_cam_id', deviceId);
+
+      if (!webrtcVideoEnabled) return;
+
+      try {
+        if (p2pLocalStream) {
+          p2pLocalStream.getVideoTracks().forEach(oldTrack => {
+            try { oldTrack.stop(); } catch (e) {}
+            try { p2pLocalStream.removeTrack(oldTrack); } catch (e) {}
+          });
+        }
+
+        const participantCount = typeof getActiveP2PParticipantsCount === 'function' ? getActiveP2PParticipantsCount() : (Object.keys(webrtcPeers).length + 1);
+        const idealW = participantCount >= 4 ? 320 : (participantCount === 3 ? 480 : 640);
+        const idealH = participantCount >= 4 ? 240 : (participantCount === 3 ? 360 : 480);
+
+        const newCamStream = await requestCameraStreamWithRetry({
+          deviceId: { ideal: deviceId },
+          width: { ideal: idealW },
+          height: { ideal: idealH },
+          frameRate: { max: 24 }
+        });
+
+        const newVideoTrack = newCamStream.getVideoTracks()[0];
+        if (!newVideoTrack) return;
+        newVideoTrack.enabled = true;
+
+        if (p2pLocalStream) {
+          p2pLocalStream.addTrack(newVideoTrack);
+        } else {
+          p2pLocalStream = newCamStream;
+        }
+
+        if (typeof webrtcPeers !== 'undefined') {
+          for (const peerId of Object.keys(webrtcPeers)) {
+            const peer = webrtcPeers[peerId];
+            if (peer && peer.videoSender) {
+              try { await peer.videoSender.replaceTrack(newVideoTrack); } catch (e) {}
+            }
+          }
+        }
+
+        if (typeof handleP2PLocalVideoUI === 'function') handleP2PLocalVideoUI();
+
+        if (typeof currentVideoMode !== 'undefined' && currentVideoMode === 'livekit' && typeof livekitRoom !== 'undefined' && livekitRoom) {
+          try {
+            await livekitRoom.switchActiveDevice('videoinput', deviceId);
+          } catch (lkErr) {
+            console.warn('[LiveKit] Error cambiando cámara:', lkErr);
+          }
+        }
+        console.log('[MediaDevices] Cámara cambiada en caliente:', newVideoTrack.label);
+      } catch (err) {
+        console.error('[MediaDevices] Error al cambiar cámara:', err);
+      }
+    }
+
+    async function requestCameraStreamWithRetry(videoConstraints, isRetry = false) {
+      try {
+        return await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: videoConstraints
+        });
+      } catch (err) {
+        const isBusy = err.name === 'NotReadableError' || err.name === 'TrackStartError' || err.name === 'AbortError' || (err.message && /could not start video source|concurrent|in use/i.test(err.message));
+        if (isBusy && !isRetry) {
+          console.warn('[Camera] Cámara ocupada por otra app (ej. Zoom). Esperando 600ms para reintento automático...');
+          await new Promise(r => setTimeout(r, 600));
+          return await requestCameraStreamWithRetry(videoConstraints, true);
+        }
+        throw err;
+      }
+    }
+
+    function toggleMediaDevicesPopover(focusSection) {
+      const pop = document.getElementById('mediaDevicesPopover');
+      if (!pop) return;
+      const isHidden = pop.classList.contains('hidden');
+      if (isHidden) {
+        refreshMediaDeviceLists();
+        pop.classList.remove('hidden');
+        if (focusSection === 'audio') {
+          document.getElementById('popoverMicSelect')?.focus();
+        } else if (focusSection === 'video') {
+          document.getElementById('popoverCamSelect')?.focus();
+        }
+      } else {
+        pop.classList.add('hidden');
+      }
+    }
+
+    function closeMediaDevicesPopover() {
+      const pop = document.getElementById('mediaDevicesPopover');
+      if (pop) pop.classList.add('hidden');
+    }
+
+    function initMediaDeviceManager() {
+      refreshMediaDeviceLists();
+
+      if (navigator.mediaDevices && typeof navigator.mediaDevices.addEventListener === 'function') {
+        navigator.mediaDevices.addEventListener('devicechange', () => {
+          console.log('[MediaDevices] Cambio de hardware detectado (USB/Bluetooth). Actualizando listas...');
+          refreshMediaDeviceLists();
+        });
+      }
+
+      document.getElementById('bottomAudioArrowBtn')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleMediaDevicesPopover('audio');
+      });
+
+      document.getElementById('bottomVideoArrowBtn')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleMediaDevicesPopover('video');
+      });
+
+      document.getElementById('closeMediaDevicesPopoverBtn')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        closeMediaDevicesPopover();
+      });
+
+      document.addEventListener('click', (e) => {
+        const pop = document.getElementById('mediaDevicesPopover');
+        if (!pop || pop.classList.contains('hidden')) return;
+        if (!pop.contains(e.target) && !e.target.closest('#bottomAudioArrowBtn') && !e.target.closest('#bottomVideoArrowBtn')) {
+          closeMediaDevicesPopover();
+        }
+      });
+
+      document.getElementById('popoverMicSelect')?.addEventListener('change', (e) => {
+        changeActiveMicrophone(e.target.value);
+      });
+
+      document.getElementById('popoverSpeakerSelect')?.addEventListener('change', (e) => {
+        changeActiveSpeaker(e.target.value);
+      });
+
+      document.getElementById('popoverCamSelect')?.addEventListener('change', (e) => {
+        changeActiveCamera(e.target.value);
+      });
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initMediaDeviceManager);
+    } else {
+      initMediaDeviceManager();
+    }
+
+
     function createVoiceNoiseGateStream(rawStream) {
       if (!rawStream) return rawStream;
       try {
@@ -7870,11 +8234,18 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
       }
       try {
         const participantCount = typeof getActiveP2PParticipantsCount === 'function' ? getActiveP2PParticipantsCount() : (Object.keys(webrtcPeers).length + 1);
+        const savedCamId = localStorage.getItem('elt_pref_cam_id') || '';
+        const savedMicId = localStorage.getItem('elt_pref_mic_id') || '';
+
         const videoConstraints = participantCount >= 4
           ? { facingMode: 'user', width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 15, max: 15 } }
           : (participantCount === 3
             ? { facingMode: 'user', width: { ideal: 480 }, height: { ideal: 360 }, frameRate: { ideal: 20, max: 20 } }
             : { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { max: 24 } });
+
+        if (savedCamId) {
+          videoConstraints.deviceId = { ideal: savedCamId };
+        }
 
         const audioConstraints = {
           echoCancellation: true,
@@ -7882,33 +8253,63 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
           autoGainControl: true,
           channelCount: 1
         };
+        if (savedMicId) {
+          audioConstraints.deviceId = { ideal: savedMicId };
+        }
+
+        // Limpieza previa de tracks terminados o huérfanos antes de pedir cámara
+        if (p2pLocalStream) {
+          p2pLocalStream.getVideoTracks().forEach(t => {
+            if (t.readyState === 'ended' || (wantVideo && !t.enabled)) {
+              try { t.stop(); } catch (e) {}
+              try { p2pLocalStream.removeTrack(t); } catch (e) {}
+            }
+          });
+        }
 
         if (!p2pLocalStream) {
           try {
-            p2pLocalStream = await navigator.mediaDevices.getUserMedia({
-              audio: wantAudio ? audioConstraints : false,
-              video: videoConstraints
-            });
-          } catch (camErr) {
-            try {
+            if (wantVideo) {
+              const camStream = await requestCameraStreamWithRetry(videoConstraints);
+              let micStream = null;
+              if (wantAudio) {
+                try {
+                  micStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: false });
+                } catch (micErr) {
+                  micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                }
+              }
+              const combinedStream = new MediaStream();
+              camStream.getVideoTracks().forEach(t => combinedStream.addTrack(t));
+              if (micStream) {
+                micStream.getAudioTracks().forEach(t => combinedStream.addTrack(t));
+              }
+              p2pLocalStream = combinedStream;
+            } else if (wantAudio) {
               p2pLocalStream = await navigator.mediaDevices.getUserMedia({
-                audio: wantAudio ? audioConstraints : false,
-                video: { facingMode: 'user' }
+                audio: audioConstraints,
+                video: false
               });
-            } catch (errFallback1) {
+            } else {
+              p2pLocalStream = new MediaStream();
+            }
+          } catch (camErr) {
+            console.warn('[P2P] Error pidiendo cámara con retry, intentando fallback de audio:', camErr);
+            if (wantAudio) {
               try {
                 p2pLocalStream = await navigator.mediaDevices.getUserMedia({
-                  audio: wantAudio ? true : false,
-                  video: { facingMode: 'user' }
-                });
-              } catch (errFallback2) {
-                p2pLocalStream = await navigator.mediaDevices.getUserMedia({
-                  audio: wantAudio ? true : false,
+                  audio: audioConstraints,
                   video: false
                 });
+              } catch (audioFallbackErr) {
+                p2pLocalStream = new MediaStream();
               }
+            } else {
+              p2pLocalStream = new MediaStream();
             }
+            throw camErr;
           }
+
           if (p2pLocalStream) {
             p2pLocalStream = applyVoiceNoiseReduction(p2pLocalStream);
             p2pLocalStream.getAudioTracks().forEach(t => {
@@ -7923,10 +8324,10 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
           if (wantAudio && p2pLocalStream.getAudioTracks().length === 0) {
             let aStream = null;
             try {
-              aStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+              aStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: false });
             } catch (errA1) {
               try {
-                aStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                aStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
               } catch (errA2) {}
             }
             if (aStream) {
@@ -7940,16 +8341,7 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
             }
           }
           if (wantVideo && (!p2pLocalStream.getVideoTracks().length || !p2pLocalStream.getVideoTracks().some(t => t.readyState === 'live'))) {
-            let vStream = null;
-            try {
-              vStream = await navigator.mediaDevices.getUserMedia({
-                video: videoConstraints
-              });
-            } catch (errFallback) {
-              vStream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: 'user' }
-              });
-            }
+            const vStream = await requestCameraStreamWithRetry(videoConstraints);
             vStream.getVideoTracks().forEach(t => {
               t.enabled = true;
               p2pLocalStream.addTrack(t);
@@ -7969,12 +8361,13 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
           } catch (e) {}
         }
 
+        refreshMediaDeviceLists();
         handleP2PLocalVideoUI();
         await syncP2PTracksToAllPeers();
         return p2pLocalStream;
       } catch (err) {
-        console.warn('[P2P] No se pudo acceder a cámara/micrófono:', err);
-        return null;
+        console.error('[P2P] Error en ensureP2PLocalStream:', err);
+        throw err;
       }
     }
 
@@ -8648,28 +9041,53 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
       unlockAllHostRemoteAudio();
     }
 
+    let isTogglingCamera = false;
+
     async function toggleLocalVideo() {
-      webrtcVideoEnabled = !webrtcVideoEnabled;
-      if (currentVideoMode === 'livekit' && livekitRoom) {
-        try {
-          await livekitRoom.localParticipant.setCameraEnabled(webrtcVideoEnabled);
-          handleLocalCameraTrack();
-        } catch (err) {
-          console.warn('[LiveKit] Error alternando cámara:', err);
-          webrtcVideoEnabled = !webrtcVideoEnabled;
+      if (isTogglingCamera) return;
+      isTogglingCamera = true;
+      try {
+        const nextState = !webrtcVideoEnabled;
+        if (currentVideoMode === 'livekit' && livekitRoom) {
+          try {
+            await livekitRoom.localParticipant.setCameraEnabled(nextState);
+            handleLocalCameraTrack();
+            webrtcVideoEnabled = nextState;
+          } catch (err) {
+            console.warn('[LiveKit] Error alternando cámara:', err);
+            throw err;
+          }
+        } else if (currentVideoMode === 'p2p') {
+          if (nextState) {
+            if (!p2pLocalStream || (!p2pLocalStream.getVideoTracks().length || !p2pLocalStream.getVideoTracks().some(t => t.readyState === 'live'))) {
+              await ensureP2PLocalStream(webrtcAudioEnabled, true);
+            }
+            if (p2pLocalStream) {
+              p2pLocalStream.getVideoTracks().forEach(t => { t.enabled = true; });
+            }
+            webrtcVideoEnabled = true;
+          } else {
+            if (p2pLocalStream) {
+              p2pLocalStream.getVideoTracks().forEach(t => { t.enabled = false; });
+            }
+            webrtcVideoEnabled = false;
+          }
+          handleP2PLocalVideoUI();
+          await syncP2PTracksToAllPeers();
         }
-      } else if (currentVideoMode === 'p2p') {
-        if (!p2pLocalStream || (webrtcVideoEnabled && (!p2pLocalStream.getVideoTracks().length || !p2pLocalStream.getVideoTracks().some(t => t.readyState === 'live')))) {
-          await ensureP2PLocalStream(webrtcAudioEnabled, webrtcVideoEnabled);
-        }
-        if (p2pLocalStream) {
-          p2pLocalStream.getVideoTracks().forEach(t => { t.enabled = webrtcVideoEnabled; });
-        }
-        handleP2PLocalVideoUI();
-        await syncP2PTracksToAllPeers();
+      } catch (err) {
+        console.error('[toggleLocalVideo] Error al alternar video:', err);
+        webrtcVideoEnabled = false;
+        const isBusy = err.name === 'NotReadableError' || err.name === 'TrackStartError' || err.name === 'AbortError' || (err.message && /could not start video source|concurrent|in use/i.test(err.message));
+        const userMsg = isBusy
+          ? 'La cámara está siendo usada por otra aplicación (ej. Zoom). Ciérrala y vuelve a hacer clic en Video.'
+          : ('No se pudo acceder a la cámara: ' + (err.message || err.name || err));
+        alert(userMsg);
+      } finally {
+        isTogglingCamera = false;
+        updateLocalMediaButtonsUI();
+        broadcastWebRTCMediaState();
       }
-      updateLocalMediaButtonsUI();
-      broadcastWebRTCMediaState();
     }
 
     async function toggleScreenShare() {
@@ -9104,6 +9522,9 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
         if (currentVideoMode === 'p2p' && peerObj.stream && vidEl.srcObject !== peerObj.stream) {
           vidEl.srcObject = peerObj.stream;
           vidEl.muted = false;
+          if (typeof applyAudioOutputDevice === 'function') {
+            applyAudioOutputDevice(vidEl);
+          }
         }
 
         if (!vidEl.__frameDetectionAttached) {
@@ -10415,11 +10836,13 @@ btnMinimizeVideoStrip?.addEventListener('click', (e) => {
       });
     }
 
-    document.getElementById('bottomAudioBtn').addEventListener('click', () => {
+    document.getElementById('bottomAudioBtn').addEventListener('click', (e) => {
+      if (e && e.target && e.target.closest('#bottomAudioArrowBtn')) return;
       toggleLocalAudio();
     });
 
-    document.getElementById('bottomVideoBtn').addEventListener('click', () => {
+    document.getElementById('bottomVideoBtn').addEventListener('click', (e) => {
+      if (e && e.target && e.target.closest('#bottomVideoArrowBtn')) return;
       toggleLocalVideo();
     });
 

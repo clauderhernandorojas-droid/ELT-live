@@ -2475,6 +2475,376 @@
 
         setTimeout(() => scrapeStudentAnswersAndReport(false), 300);
       }, true);
+
+      initStudentLiveMirror(targetDoc);
+    }
+
+    // ==================== TELEMETRÍA DOM LIGERA PARA MODO OBSERVADOR EN VIVO (STUDENT_LIVE_MIRROR) ====================
+    function emitStudentLiveMirror(kind, data) {
+      if (!myChannel || !isAdmittedToClass || window.isSyntheticTeacherAction) return;
+      try {
+        myChannel.send({
+          type: 'broadcast',
+          event: 'STUDENT_LIVE_MIRROR',
+          payload: {
+            studentId: myStudentId,
+            studentName: myName,
+            kind: kind,
+            slide: getStudentSlideNumber() || assignedSlide || 1,
+            payload: data,
+            ts: Date.now()
+          }
+        });
+      } catch (e) {}
+    }
+
+    function getMirrorScrollableElements(doc) {
+      if (!doc) return [];
+      const list = [];
+      try {
+        const win = doc.defaultView || window;
+        const all = doc.querySelectorAll('*');
+        for (let i = 0; i < all.length; i++) {
+          const el = all[i];
+          if (!el || el.nodeType !== 1) continue;
+          if ((el.scrollHeight - el.clientHeight) <= 2) continue;
+          try {
+            const st = win.getComputedStyle(el);
+            if (st.display === 'none' || st.visibility === 'hidden') continue;
+            const oy = st.overflowY;
+            if (oy === 'auto' || oy === 'scroll' || oy === 'overlay' || el.scrollTop > 0) {
+              list.push(el);
+            }
+          } catch (e) {}
+        }
+      } catch (e) {}
+      const rootEl = doc.scrollingElement || doc.documentElement || doc.body;
+      if (rootEl && (rootEl.scrollHeight - rootEl.clientHeight) > 2 && !list.includes(rootEl)) {
+        list.push(rootEl);
+      }
+      return list;
+    }
+
+    function initStudentLiveMirror(targetDoc) {
+      if (!targetDoc) return;
+
+      // Vincular también cualquier sub-iframe interno (ej. iframe#viewer) presente o futuro
+      try {
+        const subFrames = targetDoc.querySelectorAll ? targetDoc.querySelectorAll('iframe#viewer, iframe') : [];
+        subFrames.forEach(frame => {
+          try {
+            const subDoc = frame.contentDocument || (frame.contentWindow && frame.contentWindow.document);
+            if (subDoc && subDoc !== targetDoc) initStudentLiveMirror(subDoc);
+          } catch (e) {}
+          if (!frame.__mirrorSubLoadBound) {
+            frame.__mirrorSubLoadBound = true;
+            frame.addEventListener('load', () => {
+              try {
+                const subDoc = frame.contentDocument || (frame.contentWindow && frame.contentWindow.document);
+                if (subDoc) initStudentLiveMirror(subDoc);
+              } catch (e) {}
+            });
+          }
+        });
+      } catch (e) {}
+
+      if (targetDoc.__studentLiveMirrorBound) return;
+      targetDoc.__studentLiveMirrorBound = true;
+
+      const getIsInSubIframe = () => {
+        const rootLessonDoc = studentFrame?.contentDocument || (studentFrame?.contentWindow && studentFrame.contentWindow.document);
+        return Boolean(rootLessonDoc && targetDoc !== rootLessonDoc);
+      };
+
+      // 1. pointermove / mousemove con throttle de 80 ms y calibración 1:1 con TEACHER_LASER
+      let lastCursorEmitTime = 0;
+      const onPointerMove = (e) => {
+        if (window.isSyntheticTeacherAction || !isAdmittedToClass) return;
+        const now = Date.now();
+        if (now - lastCursorEmitTime < 80) return;
+        lastCursorEmitTime = now;
+
+        try {
+          const allEls = Array.from(targetDoc.querySelectorAll('*'));
+          let targetEl = (typeof targetDoc.elementFromPoint === 'function')
+            ? targetDoc.elementFromPoint(e.clientX, e.clientY)
+            : e.target;
+          if (!targetEl || targetEl.nodeType !== 1) targetEl = e.target;
+
+          let elIndex = -1;
+          let tagName = null;
+          let tagIndex = -1;
+          let elRx = 0.5;
+          let elRy = 0.5;
+
+          if (targetEl && targetEl.nodeType === 1 && targetEl !== targetDoc.documentElement && targetEl !== targetDoc.body) {
+            elIndex = allEls.indexOf(targetEl);
+            tagName = targetEl.tagName.toLowerCase();
+            const sameTagEls = Array.from(targetDoc.querySelectorAll(tagName));
+            tagIndex = sameTagEls.indexOf(targetEl);
+            const rect = targetEl.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) {
+              elRx = Math.max(0, Math.min(1, (e.clientX - rect.left) / Math.max(1, rect.width)));
+              elRy = Math.max(0, Math.min(1, (e.clientY - rect.top) / Math.max(1, rect.height)));
+            }
+          }
+
+          const inSubIframe = getIsInSubIframe();
+          const contentBox = typeof getLessonContentBounds === 'function'
+            ? getLessonContentBounds(targetDoc, studentFrame)
+            : { left: 0, top: 0, width: Math.max(1, targetDoc.documentElement?.clientWidth || 1), height: Math.max(1, targetDoc.documentElement?.clientHeight || 1) };
+          const rx = Math.max(0, Math.min(1, (e.clientX - contentBox.left) / Math.max(1, contentBox.width)));
+          const ry = Math.max(0, Math.min(1, (e.clientY - contentBox.top) / Math.max(1, contentBox.height)));
+
+          emitStudentLiveMirror('cursor', {
+            inSubIframe,
+            isInnerViewer: inSubIframe,
+            elIndex,
+            tagName,
+            tagIndex,
+            elRx,
+            elRy,
+            rx,
+            ry
+          });
+        } catch (err) {}
+      };
+      targetDoc.addEventListener('pointermove', onPointerMove, { passive: true });
+      targetDoc.addEventListener('mousemove', onPointerMove, { passive: true });
+
+      // 2. input y change sobre campos interactivos
+      const onFieldEvent = (e) => {
+        if (window.isSyntheticTeacherAction || !e.isTrusted) return;
+        const el = e.target;
+        if (!el || el.nodeType !== 1) return;
+        const tagName = (el.tagName || '').toLowerCase();
+        const isEditable = Boolean(el.isContentEditable || el.getAttribute?.('contenteditable') === 'true');
+        if (tagName !== 'input' && tagName !== 'textarea' && tagName !== 'select' && !isEditable) return;
+
+        try {
+          const allEls = Array.from(targetDoc.querySelectorAll('*'));
+          const elIndex = allEls.indexOf(el);
+          const formEls = Array.from(targetDoc.querySelectorAll('input, textarea, select, [contenteditable="true"]'));
+          const formIndex = formEls.indexOf(el);
+          const sameTagEls = Array.from(targetDoc.querySelectorAll(tagName));
+          const tagIndex = sameTagEls.indexOf(el);
+          const type = (el.type || tagName).toLowerCase();
+          const value = isEditable ? (el.textContent || '') : (el.value !== undefined ? el.value : '');
+          const checked = (type === 'checkbox' || type === 'radio') ? Boolean(el.checked) : undefined;
+          const selectedIndex = (tagName === 'select') ? el.selectedIndex : undefined;
+          const inSubIframe = getIsInSubIframe();
+
+          emitStudentLiveMirror('field', {
+            inSubIframe,
+            isInnerViewer: inSubIframe,
+            elIndex,
+            formIndex,
+            tagIndex,
+            id: el.id || null,
+            name: el.name || null,
+            tagName,
+            type,
+            value,
+            checked,
+            selectedIndex,
+            isEditable
+          });
+        } catch (err) {}
+      };
+      targetDoc.addEventListener('input', onFieldEvent, true);
+      targetDoc.addEventListener('change', onFieldEvent, true);
+
+      // 3. click sobre elementos interactivos
+      targetDoc.addEventListener('click', (e) => {
+        if (window.isSyntheticTeacherAction || !e.isTrusted) return;
+        const rawTarget = e.target;
+        if (!rawTarget || rawTarget.nodeType !== 1) return;
+        try {
+          const el = (typeof rawTarget.closest === 'function')
+            ? (rawTarget.closest('input, textarea, select, [contenteditable="true"], button, [data-option], .option, .option-btn, label, [role="button"]') || rawTarget)
+            : rawTarget;
+
+          const allEls = Array.from(targetDoc.querySelectorAll('*'));
+          const elIndex = allEls.indexOf(el);
+          const tagName = (el.tagName || '').toLowerCase();
+          const sameTagEls = tagName ? Array.from(targetDoc.querySelectorAll(tagName)) : [];
+          const tagIndex = sameTagEls.indexOf(el);
+          const type = (el.type || tagName).toLowerCase();
+          const rect = el.getBoundingClientRect();
+          const elRx = rect.width > 0 ? Math.max(0, Math.min(1, (e.clientX - rect.left) / Math.max(1, rect.width))) : 0.5;
+          const elRy = rect.height > 0 ? Math.max(0, Math.min(1, (e.clientY - rect.top) / Math.max(1, rect.height))) : 0.5;
+          const inSubIframe = getIsInSubIframe();
+
+          emitStudentLiveMirror('click', {
+            inSubIframe,
+            isInnerViewer: inSubIframe,
+            elIndex,
+            tagName,
+            tagIndex,
+            id: el.id || null,
+            name: el.name || null,
+            type,
+            value: el.value !== undefined ? el.value : undefined,
+            checked: (type === 'checkbox' || type === 'radio') ? Boolean(el.checked) : undefined,
+            selectedIndex: tagName === 'select' ? el.selectedIndex : undefined,
+            text: (el.textContent || '').trim().slice(0, 80),
+            elRx,
+            elRy
+          });
+        } catch (err) {}
+      }, true);
+
+      // 4. scroll en fase de captura en targetDoc y targetWin (throttle 60 ms)
+      let lastScrollEmitTime = 0;
+      const onMirrorScroll = (e) => {
+        if (window.isSyntheticTeacherAction || !isAdmittedToClass) return;
+        const now = Date.now();
+        if (now - lastScrollEmitTime < 60) return;
+        lastScrollEmitTime = now;
+
+        try {
+          const scrollables = getMirrorScrollableElements(targetDoc);
+          const allEls = Array.from(targetDoc.querySelectorAll('*'));
+          let scrollEl = null;
+          const rawTarget = e ? e.target : null;
+
+          if (rawTarget && rawTarget.nodeType === 1 && (rawTarget.scrollHeight > rawTarget.clientHeight + 1)) {
+            scrollEl = rawTarget;
+          } else if (rawTarget === targetDoc || rawTarget === targetDoc.defaultView || rawTarget === targetDoc.documentElement || rawTarget === targetDoc.body) {
+            const rootScroll = targetDoc.scrollingElement || targetDoc.documentElement || targetDoc.body;
+            if (rootScroll && (rootScroll.scrollHeight > rootScroll.clientHeight + 1)) {
+              scrollEl = rootScroll;
+            }
+          }
+
+          if (!scrollEl) {
+            scrollEl = scrollables.find(c => c.scrollTop > 0) || scrollables[0] || targetDoc.scrollingElement || targetDoc.documentElement || targetDoc.body;
+          }
+          if (!scrollEl) return;
+
+          const scrollableIndex = scrollables.indexOf(scrollEl);
+          const elIndex = allEls.indexOf(scrollEl);
+          const scrollTop = scrollEl.scrollTop || 0;
+          const scrollHeight = scrollEl.scrollHeight || 1;
+          const clientHeight = scrollEl.clientHeight || 1;
+          const maxScroll = Math.max(1, scrollHeight - clientHeight);
+          const ratioY = Math.max(0, Math.min(1, scrollTop / maxScroll));
+          const inSubIframe = getIsInSubIframe();
+          const slideIndex = getStudentSlideNumber() || assignedSlide || 1;
+
+          emitStudentLiveMirror('scroll', {
+            inSubIframe,
+            isInnerViewer: inSubIframe,
+            scrollableIndex,
+            elIndex,
+            scrollTop,
+            scrollHeight,
+            clientHeight,
+            ratioY,
+            slideIndex,
+            slide: slideIndex
+          });
+        } catch (err) {}
+      };
+      targetDoc.addEventListener('scroll', onMirrorScroll, true);
+      if (targetDoc.defaultView) {
+        targetDoc.defaultView.addEventListener('scroll', onMirrorScroll, true);
+      }
+    }
+
+    function sendStudentLiveMirrorSnapshot() {
+      if (!myChannel || !isAdmittedToClass) return;
+      try {
+        const docs = getAccessibleLessonDocs();
+        const rootDoc = studentFrame?.contentDocument || (studentFrame?.contentWindow && studentFrame.contentWindow.document);
+        const fields = [];
+        const buttons = [];
+        let activeScroll = null;
+
+        docs.forEach((doc, docIdx) => {
+          if (!doc) return;
+          initStudentLiveMirror(doc);
+          const isInnerViewer = Boolean(rootDoc && doc !== rootDoc);
+          const allEls = Array.from(doc.querySelectorAll('*'));
+          const formEls = Array.from(doc.querySelectorAll('input, textarea, select, [contenteditable="true"]'));
+
+          formEls.forEach((el, formIndex) => {
+            const tagName = (el.tagName || '').toLowerCase();
+            const type = (el.type || tagName).toLowerCase();
+            if (type === 'hidden' || type === 'submit' || type === 'button' || type === 'reset') return;
+            const isEditable = Boolean(el.isContentEditable || el.getAttribute?.('contenteditable') === 'true');
+            const sameTagEls = Array.from(doc.querySelectorAll(tagName));
+
+            fields.push({
+              docIdx,
+              isInnerViewer,
+              elIndex: allEls.indexOf(el),
+              formIndex,
+              tagIndex: sameTagEls.indexOf(el),
+              id: el.id || null,
+              name: el.name || null,
+              tagName,
+              type,
+              value: isEditable ? (el.textContent || '') : (el.value !== undefined ? el.value : ''),
+              checked: (type === 'checkbox' || type === 'radio') ? Boolean(el.checked) : undefined,
+              selectedIndex: tagName === 'select' ? el.selectedIndex : undefined,
+              isEditable
+            });
+          });
+
+          const optEls = doc.querySelectorAll('.option-btn, .option, [data-option], button.choice, button[class*="option"], [aria-pressed="true"]');
+          optEls.forEach((btn) => {
+            const cls = (btn.className || '').toString().toLowerCase();
+            const isSelected = btn.getAttribute('data-elt-picked') === '1' ||
+                               btn.getAttribute('aria-pressed') === 'true' ||
+                               cls.includes('selected') || cls.includes('active') ||
+                               cls.includes('bg-indigo-600') || cls.includes('ring-2');
+            if (isSelected) {
+              const tagName = (btn.tagName || '').toLowerCase();
+              const sameTagEls = tagName ? Array.from(doc.querySelectorAll(tagName)) : [];
+              buttons.push({
+                docIdx,
+                isInnerViewer,
+                elIndex: allEls.indexOf(btn),
+                tagName,
+                tagIndex: sameTagEls.indexOf(btn),
+                id: btn.id || null,
+                text: (btn.textContent || '').trim().slice(0, 80),
+                selected: true
+              });
+            }
+          });
+
+          const scrollables = getMirrorScrollableElements(doc);
+          const scrollEl = scrollables.find(c => c.scrollTop > 0) || scrollables[0] || doc.scrollingElement || doc.documentElement || doc.body;
+          if (scrollEl && (!activeScroll || scrollEl.scrollTop > 0 || isInnerViewer)) {
+            const scrollTop = scrollEl.scrollTop || 0;
+            const scrollHeight = scrollEl.scrollHeight || 1;
+            const clientHeight = scrollEl.clientHeight || 1;
+            const maxScroll = Math.max(1, scrollHeight - clientHeight);
+            const curSlideIdx = getStudentSlideNumber() || assignedSlide || 1;
+            activeScroll = {
+              inSubIframe: isInnerViewer,
+              isInnerViewer,
+              scrollableIndex: scrollables.indexOf(scrollEl),
+              elIndex: allEls.indexOf(scrollEl),
+              scrollTop,
+              scrollHeight,
+              clientHeight,
+              ratioY: Math.max(0, Math.min(1, scrollTop / maxScroll)),
+              slideIndex: curSlideIdx,
+              slide: curSlideIdx
+            };
+          }
+        });
+
+        emitStudentLiveMirror('snapshot', {
+          slide: getStudentSlideNumber() || assignedSlide || 1,
+          fields,
+          buttons,
+          scroll: activeScroll
+        });
+      } catch (err) {}
     }
 
     function injectLiveAnalytics(doc) {
@@ -3500,6 +3870,15 @@
 
       myChannel.on('broadcast', { event: 'TEACHER_LASER' }, ({ payload }) => {
         handleStudentTeacherLaserEvent(payload);
+      });
+
+      myChannel.on('broadcast', { event: 'REQUEST_STUDENT_SNAPSHOT' }, ({ payload }) => {
+        if (!isAdmittedToClass || !payload) return;
+        const matchId = payload.studentId && payload.studentId === myStudentId;
+        const matchName = payload.studentName && myName && String(payload.studentName).trim().toLowerCase() === String(myName).trim().toLowerCase();
+        if (matchId || matchName) {
+          sendStudentLiveMirrorSnapshot();
+        }
       });
 
       setupWhiteboardChannelListeners(myChannel);
@@ -10964,6 +11343,33 @@ window.setVideoStripMinimized = function(minimized) {
       let dragOffsetX = 0;
       let dragOffsetY = 0;
 
+      function setAllStudentIframesPointerEvents(val) {
+        try {
+          document.querySelectorAll('iframe').forEach(f => {
+            f.style.pointerEvents = val;
+          });
+        } catch (e) {}
+      }
+
+      function stopDragging() {
+        touchCanDrag = false;
+        if (!isDragging) {
+          setAllStudentIframesPointerEvents('');
+          return;
+        }
+        isDragging = false;
+        setAllStudentIframesPointerEvents('');
+        document.body.style.userSelect = '';
+        strip.classList.remove('ring-2', 'ring-indigo-500/60', 'shadow-indigo-950/60');
+      }
+
+      strip.addEventListener('pointerdown', (e) => {
+        if (e.pointerType === 'touch') return;
+        if (e.button !== 0 || isGalleryModeActive) return;
+        if (e.target.closest('button, #webrtcLocalControls, #btnMinimizeVideoStrip, #btnRestoreVideoStrip')) return;
+        try { strip.setPointerCapture?.(e.pointerId); } catch (err) {}
+      });
+
       strip.addEventListener('mousedown', (e) => {
         if (e.button !== 0 || isGalleryModeActive) return;
         if (e.target.closest('button, #webrtcLocalControls, #btnMinimizeVideoStrip, #btnRestoreVideoStrip')) return;
@@ -10980,12 +11386,18 @@ window.setVideoStripMinimized = function(minimized) {
         isDragging = true;
         dragOffsetX = e.clientX - sRect.left;
         dragOffsetY = e.clientY - sRect.top;
+        setAllStudentIframesPointerEvents('none');
+        document.body.style.userSelect = 'none';
         strip.classList.add('ring-2', 'ring-indigo-500/60', 'shadow-indigo-950/60');
         e.preventDefault();
       });
 
       window.addEventListener('mousemove', (e) => {
         if (!isDragging) return;
+        if (typeof e.buttons === 'number' && e.buttons === 0) {
+          stopDragging();
+          return;
+        }
         const cRect = container.getBoundingClientRect();
         const sRect = strip.getBoundingClientRect();
 
@@ -11003,10 +11415,13 @@ window.setVideoStripMinimized = function(minimized) {
         strip.style.top = `${Math.round(nextTop)}px`;
       });
 
-      window.addEventListener('mouseup', () => {
-        if (!isDragging) return;
-        isDragging = false;
-        strip.classList.remove('ring-2', 'ring-indigo-500/60', 'shadow-indigo-950/60');
+      window.addEventListener('mouseup', stopDragging, true);
+      window.addEventListener('pointerup', stopDragging, true);
+      window.addEventListener('pointercancel', stopDragging, true);
+      window.addEventListener('blur', stopDragging);
+      document.addEventListener('mouseleave', stopDragging);
+      window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') stopDragging();
       });
 
       // Soporte táctil móvil con umbral de arrastre para proteger toques en botones

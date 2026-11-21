@@ -922,6 +922,20 @@
       <!-- Área Didáctica Unificada (Lecciones Interactivas + Lienzo de Pizarra Colaborativa) -->
       <div id="hostFrameContainer" class="flex-1 min-h-0 w-full bg-white flex flex-col relative overflow-hidden">
         <div id="hostTeacherLaserHalo" class="pointer-events-none absolute opacity-0" style="z-index: 45; width: 16px; height: 16px; border-radius: 9999px; border: 2px solid rgba(255, 42, 85, 0.85); box-shadow: 0 0 10px 2px rgba(255, 42, 85, 0.55); transform: translate(-50%, -50%); transition: left 40ms linear, top 40ms linear, opacity 150ms ease;"></div>
+        <div id="studentMirrorBanner" class="hidden absolute top-2.5 left-1/2 -translate-x-1/2 z-40 bg-cyan-950/95 border border-cyan-400/80 text-cyan-100 text-xs font-semibold px-3.5 py-1.5 rounded-full shadow-xl flex items-center gap-2.5 backdrop-blur-xs transition-all">
+          <span class="flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
+            <span>👁️ Observando en vivo: <strong id="studentMirrorBannerName" class="text-white font-bold"></strong></span>
+          </span>
+          <button type="button" onclick="window.stopObservingStudent()" class="bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-bold text-[11px] px-2.5 py-0.5 rounded-full transition cursor-pointer">✕ Salir</button>
+        </div>
+        <div id="studentMirrorCursor" class="pointer-events-none absolute opacity-0" style="z-index: 46; left: 0px; top: 0px; transition: left 65ms linear, top 65ms linear, opacity 180ms ease;">
+          <svg width="18" height="22" viewBox="0 0 18 22" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 2px 4px rgba(0,0,0,0.45));">
+            <path d="M1.5 1.5L16 10.5L9.5 12L13 19.5L10 21L6.5 13.5L1.5 17.5V1.5Z" fill="#06b6d4" stroke="#ffffff" stroke-width="1.6" stroke-linejoin="round"/>
+          </svg>
+          <span id="studentMirrorCursorLabel" class="ml-3 -mt-1 inline-block bg-cyan-500 text-slate-950 text-[10px] font-extrabold px-1.5 py-0.5 rounded-md shadow-md whitespace-nowrap border border-white/60">Alumno</span>
+        </div>
+        <div id="studentMirrorClickRipple" class="pointer-events-none absolute opacity-0 rounded-full border-2 border-cyan-400 bg-cyan-400/25" style="z-index: 45; width: 28px; height: 28px; transform: translate(-50%, -50%) scale(0.5); transition: transform 260ms ease-out, opacity 260ms ease-out;"></div>
         <div id="teacherGuidedBanner" class="hidden absolute top-2.5 left-1/2 -translate-x-1/2 z-40 bg-amber-950/95 border border-amber-500/80 text-amber-100 text-xs font-semibold px-3.5 py-1.5 rounded-full shadow-xl flex items-center gap-2.5 backdrop-blur-xs transition-all"><span id="teacherGuidedBannerText">🔒 Guiando pantalla de alumnos</span><button type="button" onclick="window.toggleTeacherGuidedMode(false)" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[11px] px-2.5 py-0.5 rounded-full transition cursor-pointer">Pasar a Práctica Libre</button></div>
         <iframe id="hostFrame" class="w-full h-full border-0 bg-white"></iframe>
         
@@ -3193,17 +3207,31 @@
           }
         }
 
+        const isObservingThis = Boolean(
+          (observedStudentName && String(observedStudentName).trim().toLowerCase() === String(name).trim().toLowerCase()) ||
+          (observedStudentId && st.studentId && observedStudentId === st.studentId)
+        );
+        const safeNameAttr = String(name).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        const safeIdAttr = String(st.studentId || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        const observeBtnClass = isObservingThis
+          ? 'bg-cyan-500/20 text-cyan-300 border-cyan-400/80 ring-1 ring-cyan-400/50 shadow-xs'
+          : 'bg-slate-800/90 hover:bg-cyan-950/70 text-slate-300 hover:text-cyan-300 border-slate-700';
+
         return `
-          <div class="rounded-xl border ${isExpanded ? 'border-indigo-600/50 bg-slate-800' : 'border-slate-800 bg-slate-900'} p-3 shadow-sm transition-colors cursor-pointer hover:bg-slate-800" onclick="toggleStudentView('${name}')">
+          <div class="rounded-xl border ${isObservingThis ? 'border-cyan-500/70 bg-slate-800/90 ring-1 ring-cyan-500/30' : (isExpanded ? 'border-indigo-600/50 bg-slate-800' : 'border-slate-800 bg-slate-900')} p-3 shadow-sm transition-colors cursor-pointer hover:bg-slate-800" onclick="toggleStudentView('${safeNameAttr}')">
             <div class="flex items-start justify-between">
               <div class="w-full">
-                <div class="flex items-center justify-between mb-1">
-                  <div class="flex items-center gap-2">
-                    <p class="text-xs font-bold text-white">${name}</p>
-                    <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                <div class="flex items-center justify-between mb-1 gap-1">
+                  <div class="flex items-center gap-2 min-w-0">
+                    <p class="text-xs font-bold text-white truncate">${name}</p>
+                    <span class="w-2 h-2 rounded-full ${isObservingThis ? 'bg-cyan-400 animate-ping' : 'bg-emerald-500 animate-pulse'} flex-shrink-0"></span>
                   </div>
-                  <div class="flex items-center gap-1.5">
-                    <button type="button" onclick="event.stopPropagation(); kickStudent('${name}')" title="Expulsar de la clase" class="text-slate-400 hover:text-rose-400 p-1 rounded hover:bg-rose-500/10 transition-colors">
+                  <div class="flex items-center gap-1.5 flex-shrink-0">
+                    <button type="button" onclick="event.stopPropagation(); toggleObserveStudent('${safeNameAttr}', '${safeIdAttr}')" title="${isObservingThis ? 'Dejar de observar pantalla del alumno' : 'Observar pantalla del alumno en vivo'}" class="text-[10px] font-bold px-2 py-0.5 rounded-md border transition cursor-pointer flex items-center gap-1 ${observeBtnClass}">
+                      <span>👁️</span>
+                      <span>${isObservingThis ? 'Observando' : 'Observar'}</span>
+                    </button>
+                    <button type="button" onclick="event.stopPropagation(); kickStudent('${safeNameAttr}')" title="Expulsar de la clase" class="text-slate-400 hover:text-rose-400 p-1 rounded hover:bg-rose-500/10 transition-colors">
                       <i class="fa-solid fa-user-xmark text-xs"></i>
                     </button>
                     <span class="text-slate-500 text-[10px]">${toggleIcon}</span>
@@ -3223,6 +3251,541 @@
     }
 
     setInterval(renderStudentsDashboard, 1000);
+
+    // ==================== MODO OBSERVADOR EN VIVO POR ESTUDIANTE (STUDENT_LIVE_MIRROR) ====================
+    let observedStudentId = null;
+    let observedStudentName = null;
+    let studentMirrorCursorFadeTimer = null;
+
+    function isObservedStudentMatch(payload) {
+      if (!payload || (!observedStudentId && !observedStudentName)) return false;
+      if (observedStudentId && payload.studentId && payload.studentId === observedStudentId) return true;
+      if (observedStudentName && payload.studentName) {
+        if (String(payload.studentName).trim().toLowerCase() === String(observedStudentName).trim().toLowerCase()) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function getHostMirrorScrollableElements(doc) {
+      if (!doc) return [];
+      const list = [];
+      try {
+        const win = doc.defaultView || window;
+        const all = doc.querySelectorAll('*');
+        for (let i = 0; i < all.length; i++) {
+          const el = all[i];
+          if (!el || el.nodeType !== 1) continue;
+          if ((el.scrollHeight - el.clientHeight) <= 2) continue;
+          try {
+            const st = win.getComputedStyle(el);
+            if (st.display === 'none' || st.visibility === 'hidden') continue;
+            const oy = st.overflowY;
+            if (oy === 'auto' || oy === 'scroll' || oy === 'overlay' || el.scrollTop > 0) {
+              list.push(el);
+            }
+          } catch (e) {}
+        }
+      } catch (e) {}
+      const rootEl = doc.scrollingElement || doc.documentElement || doc.body;
+      if (rootEl && (rootEl.scrollHeight - rootEl.clientHeight) > 2 && !list.includes(rootEl)) {
+        list.push(rootEl);
+      }
+      return list;
+    }
+
+    function getHostMirrorTargetDoc(inSubIframe) {
+      const hostFrameEl = document.getElementById('hostFrame') || hostFrame;
+      if (!hostFrameEl) return null;
+      const rootDoc = hostFrameEl.contentDocument || (hostFrameEl.contentWindow && hostFrameEl.contentWindow.document);
+      if (!rootDoc) return null;
+      const viewerFrame = rootDoc.querySelector ? rootDoc.querySelector('iframe#viewer, iframe') : null;
+      if (viewerFrame) {
+        try {
+          const vDoc = viewerFrame.contentDocument || (viewerFrame.contentWindow && viewerFrame.contentWindow.document);
+          if (vDoc && (inSubIframe || vDoc.body)) {
+            return { rootDoc, targetDoc: vDoc, viewerFrame, hostFrameEl, inSubIframe: true };
+          }
+        } catch (e) {}
+      }
+      return { rootDoc, targetDoc: rootDoc, viewerFrame: null, hostFrameEl, inSubIframe: false };
+    }
+
+    function clearHostMirroredInputs() {
+      try {
+        const docs = typeof getAccessibleHostLessonDocs === 'function' ? getAccessibleHostLessonDocs() : [];
+        window.__isApplyingStudentMirror = true;
+        docs.forEach(doc => {
+          if (!doc) return;
+          const fields = doc.querySelectorAll('input, textarea, select, [contenteditable="true"]');
+          fields.forEach(el => {
+            const tag = (el.tagName || '').toLowerCase();
+            const type = (el.type || tag).toLowerCase();
+            if (type === 'hidden' || type === 'submit' || type === 'button' || type === 'reset') return;
+            const elClasses = (el.className || '').toLowerCase();
+            if (el.disabled && elClasses.includes('cursor-not-allowed')) return;
+            if (type === 'checkbox' || type === 'radio') {
+              el.checked = false;
+            } else if (tag === 'select') {
+              el.selectedIndex = 0;
+            } else if (el.isContentEditable || el.getAttribute?.('contenteditable') === 'true') {
+              el.textContent = '';
+            } else {
+              el.value = '';
+            }
+          });
+        });
+      } catch (e) {} finally {
+        window.__isApplyingStudentMirror = false;
+      }
+    }
+
+    function flashHostMirroredElement(el) {
+      if (!el || !el.style) return;
+      try {
+        el.classList.add('ring-2', 'ring-cyan-400');
+        const prevShadow = el.dataset.eltOrigBoxShadow !== undefined ? el.dataset.eltOrigBoxShadow : (el.style.boxShadow || '');
+        if (el.dataset.eltOrigBoxShadow === undefined) {
+          el.dataset.eltOrigBoxShadow = prevShadow;
+        }
+        el.style.transition = 'box-shadow 220ms ease, outline 220ms ease';
+        el.style.boxShadow = '0 0 0 3px rgba(34, 211, 238, 0.85)';
+        if (el.__eltMirrorFlashTimer) clearTimeout(el.__eltMirrorFlashTimer);
+        el.__eltMirrorFlashTimer = setTimeout(() => {
+          try {
+            el.classList.remove('ring-2', 'ring-cyan-400');
+            el.style.boxShadow = el.dataset.eltOrigBoxShadow || '';
+          } catch (e) {}
+        }, 850);
+      } catch (e) {}
+    }
+
+    function findHostMirrorElement(doc, item) {
+      if (!doc || !item) return null;
+      let targetEl = null;
+
+      // 1. Por elIndex en la lista ordenada de todos los elementos del documento
+      if (typeof item.elIndex === 'number' && item.elIndex >= 0) {
+        const allEls = doc.querySelectorAll('*');
+        const candidate = allEls[item.elIndex];
+        if (candidate) {
+          if (!item.tagName || candidate.tagName.toLowerCase() === String(item.tagName).toLowerCase()) {
+            targetEl = candidate;
+          }
+        }
+      }
+
+      // 2. Respaldo por ID único
+      if (!targetEl && item.id) {
+        try {
+          targetEl = doc.getElementById(item.id) || doc.querySelector('#' + CSS.escape(item.id));
+        } catch (e) {}
+      }
+
+      // 3. Respaldo por tagName + tagIndex
+      if (!targetEl && item.tagName && typeof item.tagIndex === 'number' && item.tagIndex >= 0) {
+        try {
+          const sameTag = doc.querySelectorAll(item.tagName);
+          if (sameTag[item.tagIndex]) targetEl = sameTag[item.tagIndex];
+        } catch (e) {}
+      }
+
+      // 4. Respaldo por formIndex en campos de formulario
+      if (!targetEl && typeof item.formIndex === 'number' && item.formIndex >= 0) {
+        const formEls = doc.querySelectorAll('input, textarea, select, [contenteditable="true"]');
+        if (formEls[item.formIndex]) targetEl = formEls[item.formIndex];
+      }
+
+      // 5. Respaldo por atributo name
+      if (!targetEl && item.name) {
+        try {
+          const byName = doc.querySelectorAll(`[name="${CSS.escape(item.name)}"]`);
+          if (byName.length === 1) {
+            targetEl = byName[0];
+          } else if (byName.length > 1 && item.value !== undefined) {
+            for (const c of byName) {
+              if (c.value === item.value) { targetEl = c; break; }
+            }
+            if (!targetEl) targetEl = byName[0];
+          }
+        } catch (e) {}
+      }
+
+      return targetEl;
+    }
+
+    function applySingleFieldToHostMirror(doc, item, shouldFlash = true) {
+      const el = findHostMirrorElement(doc, item);
+      if (!el) return null;
+
+      window.__isApplyingStudentMirror = true;
+      try {
+        const tag = (el.tagName || '').toLowerCase();
+        const type = (el.type || item.type || tag).toLowerCase();
+        const isEditable = Boolean(item.isEditable || el.isContentEditable || el.getAttribute?.('contenteditable') === 'true');
+
+        if (type === 'checkbox' || type === 'radio') {
+          if (typeof item.checked === 'boolean') {
+            el.checked = item.checked;
+          }
+        } else if (tag === 'select') {
+          if (item.value !== undefined) el.value = item.value;
+          if (typeof item.selectedIndex === 'number' && item.selectedIndex >= 0) {
+            el.selectedIndex = item.selectedIndex;
+          }
+        } else if (isEditable) {
+          if (item.value !== undefined) el.textContent = item.value;
+        } else if (item.value !== undefined) {
+          el.value = item.value;
+        }
+
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        if (shouldFlash) flashHostMirroredElement(el);
+      } catch (e) {} finally {
+        setTimeout(() => { window.__isApplyingStudentMirror = false; }, 30);
+      }
+      return el;
+    }
+
+    function computeHostContainerCoordsFromMirror(ctxInfo, data) {
+      const hostFrameContainer = document.getElementById('hostFrameContainer');
+      if (!ctxInfo || !hostFrameContainer) return null;
+      const { rootDoc, viewerFrame, hostFrameEl } = ctxInfo;
+
+      const hostFrameRect = hostFrameEl.getBoundingClientRect();
+      const hostContainerRect = hostFrameContainer.getBoundingClientRect();
+      const frameOffsetX = hostFrameRect.left - hostContainerRect.left;
+      const frameOffsetY = hostFrameRect.top - hostContainerRect.top;
+
+      let targetDoc = rootDoc;
+      let subFrameOffsetLeft = 0;
+      let subFrameOffsetTop = 0;
+
+      const useSubIframe = Boolean(data.inSubIframe || data.isInnerViewer);
+      if (viewerFrame) {
+        try {
+          const vDoc = viewerFrame.contentDocument || (viewerFrame.contentWindow && viewerFrame.contentWindow.document);
+          if (vDoc && (useSubIframe || !data.tagName || vDoc.body)) {
+            targetDoc = vDoc;
+            const subIframeRect = viewerFrame.getBoundingClientRect();
+            subFrameOffsetLeft = subIframeRect.left;
+            subFrameOffsetTop = subIframeRect.top;
+          }
+        } catch (e) {}
+      }
+
+      let targetEl = null;
+      let targetX = null;
+      let targetY = null;
+
+      // 1. Calibración milimétrica 1:1 idéntica a TEACHER_LASER (por tagName + tagIndex, o elIndex)
+      if (data.tagName && typeof data.tagIndex === 'number' && data.tagIndex >= 0) {
+        try {
+          const sameTagEls = targetDoc.querySelectorAll(data.tagName);
+          if (sameTagEls[data.tagIndex]) {
+            targetEl = sameTagEls[data.tagIndex];
+          }
+        } catch (e) {}
+      }
+      if (!targetEl) {
+        targetEl = findHostMirrorElement(targetDoc, data);
+      }
+
+      if (targetEl && typeof targetEl.getBoundingClientRect === 'function') {
+        const elRect = targetEl.getBoundingClientRect();
+        if (elRect.width > 0 && elRect.height > 0) {
+          const elRx = typeof data.elRx === 'number' ? data.elRx : 0.5;
+          const elRy = typeof data.elRy === 'number' ? data.elRy : 0.5;
+          targetX = frameOffsetX + subFrameOffsetLeft + elRect.left + (elRx * elRect.width);
+          targetY = frameOffsetY + subFrameOffsetTop + elRect.top + (elRy * elRect.height);
+          return { x: targetX, y: targetY, targetEl };
+        }
+      }
+
+      // 2. Fallback: coordenadas normalizadas sobre el contenedor de contenido de la lección
+      if (typeof data.rx === 'number' && typeof data.ry === 'number') {
+        const contentBox = getLessonContentBounds(targetDoc, hostFrameEl);
+        targetX = frameOffsetX + contentBox.left + (Math.max(0, Math.min(1, data.rx)) * contentBox.width);
+        targetY = frameOffsetY + contentBox.top + (Math.max(0, Math.min(1, data.ry)) * contentBox.height);
+        return { x: targetX, y: targetY, targetEl };
+      }
+      return { x: null, y: null, targetEl };
+    }
+
+    function syncHostSlideToObservedStudent(targetSlideNum) {
+      if (!targetSlideNum || typeof targetSlideNum !== 'number' || targetSlideNum < 1) return;
+      if (isTeacherGuidedMode) return;
+      if (targetSlideNum === currentSlide) return;
+
+      const hostFrameEl = document.getElementById('hostFrame') || hostFrame;
+      if (!hostFrameEl) return;
+      try {
+        const win = hostFrameEl.contentWindow;
+        if (win) {
+          if (typeof win.show === 'function') win.show(targetSlideNum - 1);
+          else if (typeof win.goToSlide === 'function') win.goToSlide(targetSlideNum);
+          else if (typeof win.gotoSlide === 'function') win.gotoSlide(targetSlideNum);
+          else if (typeof win.setSlide === 'function') win.setSlide(targetSlideNum);
+          else if (win.Reveal && typeof win.Reveal.slide === 'function') win.Reveal.slide(targetSlideNum - 1);
+        }
+        currentSlide = targetSlideNum;
+        if (currentSlideLabel) currentSlideLabel.textContent = currentSlide;
+      } catch (e) {}
+    }
+
+    function applyStudentMirrorScroll(ctxInfo, scrollData) {
+      if (!ctxInfo || !scrollData) return;
+      const incomingSlide = scrollData.slideIndex || scrollData.slide;
+      if (incomingSlide && incomingSlide !== currentSlide && !isTeacherGuidedMode) {
+        syncHostSlideToObservedStudent(incomingSlide);
+      }
+
+      const useSub = Boolean(scrollData.inSubIframe || scrollData.isInnerViewer);
+      const { rootDoc, viewerFrame } = ctxInfo;
+      let doc = rootDoc;
+      if (viewerFrame) {
+        try {
+          const vDoc = viewerFrame.contentDocument || (viewerFrame.contentWindow && viewerFrame.contentWindow.document);
+          if (vDoc && (useSub || vDoc.body)) doc = vDoc;
+        } catch (e) {}
+      }
+      if (!doc) return;
+
+      const scrollables = getHostMirrorScrollableElements(doc);
+      const allEls = doc.querySelectorAll('*');
+      let targetEl = null;
+
+      // 1. Por scrollableIndex entre los elementos con scrollHeight > clientHeight
+      if (typeof scrollData.scrollableIndex === 'number' && scrollData.scrollableIndex >= 0 && scrollables[scrollData.scrollableIndex]) {
+        targetEl = scrollables[scrollData.scrollableIndex];
+      }
+
+      // 2. Por elIndex directo si es scrolleable
+      if (!targetEl && typeof scrollData.elIndex === 'number' && scrollData.elIndex >= 0 && allEls[scrollData.elIndex]) {
+        const candidate = allEls[scrollData.elIndex];
+        if (candidate && (candidate.scrollHeight > candidate.clientHeight)) {
+          targetEl = candidate;
+        }
+      }
+
+      // 3. Fallback a contenedor scrolleable principal o scrollingElement
+      if (!targetEl) {
+        targetEl = scrollables[0] || doc.scrollingElement || doc.documentElement || doc.body;
+      }
+
+      // 4. Si en doc actual no hay altura scrolleable y existe viewerFrame/rootDoc alternativo, buscar allí
+      if (targetEl && (targetEl.scrollHeight - targetEl.clientHeight) <= 2 && viewerFrame) {
+        try {
+          const altDoc = (doc === rootDoc)
+            ? (viewerFrame.contentDocument || viewerFrame.contentWindow?.document)
+            : rootDoc;
+          if (altDoc) {
+            const altScrollables = getHostMirrorScrollableElements(altDoc);
+            if (altScrollables.length > 0) {
+              doc = altDoc;
+              targetEl = (typeof scrollData.scrollableIndex === 'number' && altScrollables[scrollData.scrollableIndex])
+                ? altScrollables[scrollData.scrollableIndex]
+                : altScrollables[0];
+            }
+          }
+        } catch (e) {}
+      }
+
+      if (!targetEl) return;
+
+      const maxScroll = Math.max(0, targetEl.scrollHeight - targetEl.clientHeight);
+      const nextTop = (maxScroll > 0 && typeof scrollData.ratioY === 'number')
+        ? (scrollData.ratioY * maxScroll)
+        : (typeof scrollData.scrollTop === 'number' ? scrollData.scrollTop : 0);
+
+      targetEl.scrollTop = nextTop;
+      if (targetEl === doc.scrollingElement || targetEl === doc.documentElement || targetEl === doc.body) {
+        try { doc.defaultView?.scrollTo(0, nextTop); } catch (e) {}
+      }
+    }
+
+    function requestObservedStudentSnapshot() {
+      if (!roomChannel || (!observedStudentId && !observedStudentName)) return;
+      roomChannel.send({
+        type: 'broadcast',
+        event: 'REQUEST_STUDENT_SNAPSHOT',
+        payload: {
+          studentId: observedStudentId,
+          studentName: observedStudentName
+        }
+      });
+    }
+
+    window.toggleObserveStudent = function(studentName, studentId) {
+      if (!studentName) return;
+      const isSame = observedStudentName && String(observedStudentName).trim().toLowerCase() === String(studentName).trim().toLowerCase();
+      if (isSame) {
+        window.stopObservingStudent();
+        return;
+      }
+
+      const st = studentsState[studentName];
+      observedStudentName = studentName;
+      observedStudentId = studentId || (st && st.studentId) || studentName;
+
+      const banner = document.getElementById('studentMirrorBanner');
+      const bannerName = document.getElementById('studentMirrorBannerName');
+      const cursorLabel = document.getElementById('studentMirrorCursorLabel');
+      if (bannerName) bannerName.textContent = observedStudentName;
+      if (cursorLabel) cursorLabel.textContent = observedStudentName;
+      if (banner) banner.classList.remove('hidden');
+
+      clearHostMirroredInputs();
+
+      if (st && st.slide && st.slide !== currentSlide && !isTeacherGuidedMode) {
+        syncHostSlideToObservedStudent(st.slide);
+      }
+
+      requestObservedStudentSnapshot();
+      setTimeout(() => {
+        if (observedStudentName === studentName) requestObservedStudentSnapshot();
+      }, 300);
+
+      renderStudentsDashboard();
+    };
+
+    window.stopObservingStudent = function() {
+      observedStudentId = null;
+      observedStudentName = null;
+      const banner = document.getElementById('studentMirrorBanner');
+      const cursor = document.getElementById('studentMirrorCursor');
+      const ripple = document.getElementById('studentMirrorClickRipple');
+      if (banner) banner.classList.add('hidden');
+      if (cursor) cursor.style.opacity = '0';
+      if (ripple) ripple.style.opacity = '0';
+      renderStudentsDashboard();
+    };
+
+    function applyStudentLiveMirrorEvent(packet) {
+      if (!packet) return;
+      if (packet.studentName && studentsState[packet.studentName]) {
+        if (packet.studentId) studentsState[packet.studentName].studentId = packet.studentId;
+        if (packet.slide) studentsState[packet.studentName].slide = packet.slide;
+        studentsState[packet.studentName].lastActivityTime = Date.now();
+      }
+
+      if (!isObservedStudentMatch(packet)) return;
+
+      const kind = packet.kind;
+      const data = packet.payload || {};
+      const ctxInfo = getHostMirrorTargetDoc(Boolean(data.inSubIframe || data.isInnerViewer));
+      if (!ctxInfo) return;
+
+      if (kind === 'cursor') {
+        const cursor = document.getElementById('studentMirrorCursor');
+        const label = document.getElementById('studentMirrorCursorLabel');
+        if (!cursor) return;
+        if (label) label.textContent = packet.studentName || observedStudentName || 'Alumno';
+
+        const pos = computeHostContainerCoordsFromMirror(ctxInfo, data);
+        if (pos && pos.x !== null && pos.y !== null) {
+          cursor.style.left = pos.x + 'px';
+          cursor.style.top = pos.y + 'px';
+          cursor.style.opacity = '1';
+
+          if (studentMirrorCursorFadeTimer) clearTimeout(studentMirrorCursorFadeTimer);
+          studentMirrorCursorFadeTimer = setTimeout(() => {
+            if (cursor) cursor.style.opacity = '0';
+          }, 4000);
+        }
+      } else if (kind === 'field') {
+        applySingleFieldToHostMirror(ctxInfo.targetDoc, data, true);
+      } else if (kind === 'click') {
+        const pos = computeHostContainerCoordsFromMirror(ctxInfo, data);
+        const ripple = document.getElementById('studentMirrorClickRipple');
+        if (ripple && pos && pos.x !== null && pos.y !== null) {
+          ripple.style.left = pos.x + 'px';
+          ripple.style.top = pos.y + 'px';
+          ripple.style.opacity = '1';
+          ripple.style.transform = 'translate(-50%, -50%) scale(1.65)';
+          setTimeout(() => {
+            if (ripple) {
+              ripple.style.opacity = '0';
+              ripple.style.transform = 'translate(-50%, -50%) scale(0.5)';
+            }
+          }, 260);
+        }
+
+        const clickedEl = (pos && pos.targetEl) || findHostMirrorElement(ctxInfo.targetDoc, data);
+        if (clickedEl) {
+          flashHostMirroredElement(clickedEl);
+          const tag = (clickedEl.tagName || '').toLowerCase();
+          const type = (clickedEl.type || data.type || tag).toLowerCase();
+
+          window.__isApplyingStudentMirror = true;
+          try {
+            if (type === 'checkbox' || type === 'radio') {
+              if (typeof data.checked === 'boolean') {
+                clickedEl.checked = data.checked;
+              } else {
+                clickedEl.checked = !clickedEl.checked;
+              }
+              clickedEl.dispatchEvent(new Event('change', { bubbles: true }));
+            } else {
+              const id = (clickedEl.id || '').toLowerCase();
+              const cls = (clickedEl.className || '').toString().toLowerCase();
+              const txt = (clickedEl.textContent || '').trim().toLowerCase();
+              const isSlideNav = id.includes('next') || id.includes('prev') || cls.includes('next') || cls.includes('prev') ||
+                                 txt === 'next' || txt === 'prev' || txt === '>' || txt === '<';
+              const isSelectableOption = clickedEl.hasAttribute?.('data-option') ||
+                                         cls.includes('option') || cls.includes('choice') ||
+                                         tag === 'label' || tag === 'button' ||
+                                         clickedEl.getAttribute?.('role') === 'button';
+              if (isSelectableOption && !isSlideNav && typeof clickedEl.click === 'function') {
+                clickedEl.click();
+              }
+            }
+          } catch (e) {} finally {
+            setTimeout(() => { window.__isApplyingStudentMirror = false; }, 40);
+          }
+        }
+      } else if (kind === 'scroll') {
+        applyStudentMirrorScroll(ctxInfo, data);
+      } else if (kind === 'snapshot') {
+        if (data.slide && data.slide !== currentSlide && !isTeacherGuidedMode) {
+          syncHostSlideToObservedStudent(data.slide);
+        }
+        clearHostMirroredInputs();
+
+        const docs = typeof getAccessibleHostLessonDocs === 'function' ? getAccessibleHostLessonDocs() : [ctxInfo.targetDoc];
+        if (Array.isArray(data.fields)) {
+          data.fields.forEach(f => {
+            const targetD = (f.isInnerViewer && docs.length > 1) ? docs[docs.length - 1] : (docs[f.docIdx] || ctxInfo.targetDoc);
+            applySingleFieldToHostMirror(targetD, f, true);
+          });
+        }
+        if (Array.isArray(data.buttons)) {
+          window.__isApplyingStudentMirror = true;
+          try {
+            data.buttons.forEach(b => {
+              if (!b.selected) return;
+              const targetD = (b.isInnerViewer && docs.length > 1) ? docs[docs.length - 1] : (docs[b.docIdx] || ctxInfo.targetDoc);
+              const btnEl = findHostMirrorElement(targetD, b);
+              if (btnEl && typeof btnEl.click === 'function') {
+                const cls = (btnEl.className || '').toString().toLowerCase();
+                const alreadySelected = btnEl.getAttribute('data-elt-picked') === '1' ||
+                                        btnEl.getAttribute('aria-pressed') === 'true' ||
+                                        cls.includes('selected') || cls.includes('active');
+                if (!alreadySelected) btnEl.click();
+                flashHostMirroredElement(btnEl);
+              }
+            });
+          } catch (e) {} finally {
+            setTimeout(() => { window.__isApplyingStudentMirror = false; }, 40);
+          }
+        }
+        if (data.scroll) {
+          applyStudentMirrorScroll(ctxInfo, data.scroll);
+        }
+      }
+    }
 
     // ==================== EXPULSIÓN DE ESTUDIANTE EN VIVO (KICK) ====================
     window.kickStudent = function(studentName) {
@@ -3754,9 +4317,10 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
           renderHostWaitingRoom();
         }
         if (!studentsState[stName]) {
-          studentsState[stName] = { joined: true, slide: currentSlide, answers: [], slideHistory: {}, officialScoreHistory: {}, isReconnecting: false };
+          studentsState[stName] = { joined: true, studentId: payload.studentId || null, slide: currentSlide, answers: [], slideHistory: {}, officialScoreHistory: {}, isReconnecting: false };
         } else {
           studentsState[stName].isReconnecting = false;
+          if (payload.studentId) studentsState[stName].studentId = payload.studentId;
         }
         if (shouldPlayJoinSoundForStudent(payload.studentId || stName)) {
           playHostWaitingRoomBeep();
@@ -3843,6 +4407,10 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
           studentsState[stName].lastActivityTime = Date.now();
           renderStudentsDashboard();
         }
+      });
+
+      roomChannel.on('broadcast', { event: 'STUDENT_LIVE_MIRROR' }, ({ payload }) => {
+        applyStudentLiveMirrorEvent(payload);
       });
 
       roomChannel.subscribe(async (status) => {
@@ -11203,6 +11771,31 @@ btnMinimizeVideoStrip?.addEventListener('click', (e) => {
       setVideoStripMinimized(false);
     });
 
+    function setAllHostIframesPointerEvents(val) {
+      try {
+        document.querySelectorAll('iframe').forEach(f => {
+          f.style.pointerEvents = val;
+        });
+      } catch (e) {}
+    }
+
+    function stopDraggingVideoStrip() {
+      if (!isDraggingVideoStrip) {
+        setAllHostIframesPointerEvents('');
+        return;
+      }
+      isDraggingVideoStrip = false;
+      setAllHostIframesPointerEvents('');
+      document.body.style.userSelect = '';
+    }
+
+    webrtcVideoStripEl?.addEventListener('pointerdown', (e) => {
+      if (webrtcVideoStripEl?.classList.contains('gallery-mode')) return;
+      if (e.button !== 0) return;
+      if (e.target.closest('button')) return;
+      try { webrtcVideoStripEl.setPointerCapture?.(e.pointerId); } catch (err) {}
+    });
+
     webrtcVideoStripEl?.addEventListener('mousedown', (e) => {
       if (webrtcVideoStripEl?.classList.contains('gallery-mode')) return;
       if (e.button !== 0) return;
@@ -11221,6 +11814,9 @@ btnMinimizeVideoStrip?.addEventListener('click', (e) => {
       videoStripDragOffsetX = e.clientX - stripRect.left;
       videoStripDragOffsetY = e.clientY - stripRect.top;
 
+      // Desactivar pointer-events en todos los iframes para que no absorban mouseup/mousemove
+      setAllHostIframesPointerEvents('none');
+
       // Convertir posicionamiento inicial (bottom/right) a coordenadas explícitas (left/top) dentro del contenedor
       webrtcVideoStripEl.style.right = 'auto';
       webrtcVideoStripEl.style.bottom = 'auto';
@@ -11231,6 +11827,10 @@ btnMinimizeVideoStrip?.addEventListener('click', (e) => {
 
     window.addEventListener('mousemove', (e) => {
       if (!isDraggingVideoStrip || !webrtcVideoStripEl) return;
+      if (typeof e.buttons === 'number' && e.buttons === 0) {
+        stopDraggingVideoStrip();
+        return;
+      }
       const parentEl = document.getElementById('leftWorkspaceColumn');
       if (!parentEl) return;
 
@@ -11250,11 +11850,13 @@ btnMinimizeVideoStrip?.addEventListener('click', (e) => {
       webrtcVideoStripEl.style.top = `${Math.round(clampedTop)}px`;
     });
 
-    window.addEventListener('mouseup', () => {
-      if (isDraggingVideoStrip) {
-        isDraggingVideoStrip = false;
-        document.body.style.userSelect = '';
-      }
+    window.addEventListener('mouseup', stopDraggingVideoStrip, true);
+    window.addEventListener('pointerup', stopDraggingVideoStrip, true);
+    window.addEventListener('pointercancel', stopDraggingVideoStrip, true);
+    window.addEventListener('blur', stopDraggingVideoStrip);
+    document.addEventListener('mouseleave', stopDraggingVideoStrip);
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') stopDraggingVideoStrip();
     });
 
     window.addEventListener('resize', clampVideoStripIntoBounds);

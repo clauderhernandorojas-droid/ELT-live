@@ -726,28 +726,30 @@
           </button>
 
           <!-- Visor en Escenario Principal (Main Stage) cuando el Profesor o un compañero comparte su pantalla -->
-          <div id="remoteScreenShareOverlay" class="hidden absolute inset-0 z-40 bg-slate-950 flex flex-col items-center justify-center overflow-hidden" style="z-index: 38;">
-            <div class="absolute top-3 left-3 z-30 flex items-center gap-2 bg-slate-900/90 border border-emerald-500/40 text-emerald-300 px-3 py-1.5 rounded-xl text-xs font-bold shadow-lg">
-              <i class="fa-solid fa-display animate-pulse"></i>
-              <span id="remoteScreenShareLabel">Profesor compartiendo pantalla en vivo</span>
-            </div>
-            <div class="absolute top-3 right-3 z-30 flex items-center gap-2">
-              <!-- Control de Audio de la Pantalla Compartida (Silenciado por defecto para evitar acople acústico) -->
-              <div class="flex items-center gap-1.5 bg-slate-900/90 border border-white/15 px-2.5 py-1 rounded-xl shadow-lg">
-                <button id="btnToggleScreenShareAudio" type="button" class="text-slate-300 hover:text-white transition cursor-pointer flex items-center justify-center w-6 h-6" title="Activar / Silenciar sonido de la pantalla">
-                  <i id="screenShareAudioIcon" class="fa-solid fa-volume-xmark text-rose-400 text-xs"></i>
-                </button>
-                <input id="screenShareAudioVolume" type="range" min="0" max="1" step="0.05" value="0" class="w-16 h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-[#0e72ed]" title="Volumen de pantalla">
-                <span id="screenShareAudioPercent" class="text-[10px] text-slate-400 font-mono w-7 text-right">0%</span>
+          <div id="remoteScreenShareOverlay" class="hidden absolute inset-0 z-40 bg-slate-950 flex flex-col items-center justify-center overflow-hidden" style="z-index: 38; box-shadow: inset 0 0 0 3px #22c55e;">
+            <div class="z-30 flex flex-wrap items-center justify-between gap-2 pointer-events-none" style="position: absolute; top: 12px; left: 12px; right: 12px; width: auto; max-width: calc(100% - 24px); box-sizing: border-box; flex-wrap: wrap;">
+              <div class="flex items-center gap-2 bg-slate-900/90 border border-emerald-500/40 text-emerald-300 px-3 py-1.5 rounded-xl text-xs font-bold shadow-lg pointer-events-auto max-w-full">
+                <i class="fa-solid fa-display animate-pulse"></i>
+                <span id="remoteScreenShareLabel" class="truncate">Profesor compartiendo pantalla en vivo</span>
               </div>
-              <button id="btnStopScreenShareStage" type="button" onclick="if (typeof stopScreenShare === 'function') stopScreenShare();" class="hidden bg-rose-600 hover:bg-rose-500 text-white border border-rose-400/40 px-3 py-1.5 rounded-xl text-xs font-bold shadow-lg transition cursor-pointer items-center gap-1.5">
-                <i class="fa-solid fa-stop text-[10px]"></i>
-                <span>Dejar de compartir</span>
-              </button>
-              <button id="btnMinimizeScreenShareStage" type="button" onclick="minimizeStudentScreenShareStage()" class="bg-slate-900/90 hover:bg-slate-800 text-slate-200 border border-white/15 px-3 py-1.5 rounded-xl text-xs font-semibold shadow-lg transition cursor-pointer flex items-center gap-1.5">
-                <i class="fa-solid fa-compress text-[10px]"></i>
-                <span>Minimizar vista</span>
-              </button>
+              <div class="flex flex-wrap items-center justify-end gap-2 ml-auto pointer-events-auto" style="max-width: 100%; box-sizing: border-box; flex-wrap: wrap;">
+                <!-- Control de Audio de la Pantalla Compartida (Silenciado por defecto para evitar acople acústico) -->
+                <div class="flex items-center gap-1.5 bg-slate-900/90 border border-white/15 px-2.5 py-1 rounded-xl shadow-lg">
+                  <button id="btnToggleScreenShareAudio" type="button" class="text-slate-300 hover:text-white transition cursor-pointer flex items-center justify-center w-6 h-6" title="Activar / Silenciar sonido de la pantalla">
+                    <i id="screenShareAudioIcon" class="fa-solid fa-volume-xmark text-rose-400 text-xs"></i>
+                  </button>
+                  <input id="screenShareAudioVolume" type="range" min="0" max="1" step="0.05" value="0" class="w-16 h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-[#0e72ed]" title="Volumen de pantalla">
+                  <span id="screenShareAudioPercent" class="text-[10px] text-slate-400 font-mono w-7 text-right">0%</span>
+                </div>
+                <button id="btnStopScreenShareStage" type="button" onclick="if (typeof stopScreenShare === 'function') stopScreenShare();" class="hidden bg-rose-600 hover:bg-rose-500 text-white border border-rose-400/40 px-3 py-1.5 rounded-xl text-xs font-bold shadow-lg transition cursor-pointer items-center gap-1.5 whitespace-nowrap">
+                  <i class="fa-solid fa-stop text-[10px]"></i>
+                  <span>Dejar de compartir</span>
+                </button>
+                <button id="btnMinimizeScreenShareStage" type="button" onclick="minimizeStudentScreenShareStage()" class="bg-slate-900/90 hover:bg-slate-800 text-slate-200 border border-white/15 px-3 py-1.5 rounded-xl text-xs font-semibold shadow-lg transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap">
+                  <i class="fa-solid fa-compress text-[10px]"></i>
+                  <span>Minimizar vista</span>
+                </button>
+              </div>
             </div>
             <video id="remoteScreenShareVideo" autoplay playsinline webkit-playsinline class="w-full h-full object-contain bg-black"></video>
             <!-- Capa Vectorial Calibrada 1:1 sobre el rectángulo activo del video compartido -->
@@ -758,40 +760,42 @@
             </div>
           </div>
 
-          <!-- Lápiz Flotante Arrastrable y Paleta de Anotación sobre Pantalla Compartida -->
-          <button id="screenAnnotateFab" type="button" class="hidden absolute z-50 w-11 h-11 rounded-full bg-[#0e72ed] hover:bg-[#0b5ed7] text-white shadow-2xl border-2 border-white/80 flex items-center justify-center cursor-grab active:cursor-grabbing transition-transform hover:scale-105 select-none" style="bottom: 76px; left: 20px; z-index: 49;" title="Anotar sobre la pantalla compartida (Arrastra para mover)">
+          <!-- Lápiz Flotante Arrastrable y Paleta Vertical de Anotación sobre Pantalla Compartida -->
+          <button id="screenAnnotateFab" type="button" class="hidden absolute z-[99999] w-11 h-11 rounded-full bg-[#0e72ed] hover:bg-[#0b5ed7] text-white shadow-2xl border-2 border-white/80 flex items-center justify-center cursor-grab active:cursor-grabbing transition-transform hover:scale-105 select-none" style="bottom: 92px; left: 20px; z-index: 99999;" title="✏️ Anotar sobre la pantalla compartida (Arrastra para mover)">
             <i class="fa-solid fa-pen-nib text-sm pointer-events-none"></i>
           </button>
-          <div id="screenAnnotateToolbar" class="hidden absolute z-50 bg-[#181a1f]/95 border border-white/15 rounded-2xl shadow-2xl px-2.5 py-2 flex flex-wrap items-center gap-1.5 text-white backdrop-blur-md select-none" style="bottom: 76px; left: 78px; z-index: 49; max-width: calc(100% - 96px);">
-            <button type="button" data-sa-tool="cursor" class="sa-tool-btn px-2 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/10 transition flex items-center gap-1" title="Modo Ratón (Interactuar sin dibujar)">
-              <i class="fa-solid fa-arrow-pointer"></i>
-            </button>
-            <button type="button" data-sa-tool="select" class="sa-tool-btn px-2 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/10 transition flex items-center gap-1" title="Seleccionar, mover y redimensionar objetos (con guías de alineación)">
-              <i class="fa-solid fa-up-down-left-right"></i>
-            </button>
-            <button type="button" data-sa-tool="pen" class="sa-tool-btn active bg-[#0e72ed] text-white px-2 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/10 transition flex items-center gap-1" title="Lápiz libre">
-              <i class="fa-solid fa-pen"></i>
-            </button>
-            <button type="button" data-sa-tool="highlighter" class="sa-tool-btn px-2 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/10 transition flex items-center gap-1" title="Resaltador translúcido">
-              <i class="fa-solid fa-highlighter"></i>
-            </button>
-            <button type="button" data-sa-tool="text" class="sa-tool-btn px-2 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/10 transition flex items-center gap-1" title="Cuadro de Texto (doble clic para editar, esquina para redimensionar)">
-              <i class="fa-solid fa-font"></i>
-            </button>
-            <button type="button" data-sa-tool="rect" class="sa-tool-btn px-2 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/10 transition flex items-center gap-1" title="Rectángulo">
-              <i class="fa-regular fa-square"></i>
-            </button>
-            <button type="button" data-sa-tool="ellipse" class="sa-tool-btn px-2 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/10 transition flex items-center gap-1" title="Círculo / Elipse">
-              <i class="fa-regular fa-circle"></i>
-            </button>
-            <button type="button" data-sa-tool="arrow" class="sa-tool-btn px-2 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/10 transition flex items-center gap-1" title="Flecha direccional">
-              <i class="fa-solid fa-arrow-right-long"></i>
-            </button>
-            <button type="button" data-sa-tool="eraser" class="sa-tool-btn px-2 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/10 transition flex items-center gap-1" title="Borrador de trazos u objetos">
-              <i class="fa-solid fa-eraser"></i>
-            </button>
-            <div class="h-5 w-[1px] bg-white/15 mx-0.5"></div>
-            <div class="flex items-center gap-1">
+          <div id="screenAnnotateToolbar" class="hidden absolute z-[99999] bg-[#181a1f]/95 border border-white/15 rounded-2xl shadow-2xl p-2 flex flex-col items-center gap-1.5 text-white backdrop-blur-md select-none" style="position: absolute; bottom: 146px; left: 20px; z-index: 99999; flex-direction: column; max-height: 62vh; overflow-y: auto; width: 76px;">
+            <div class="grid grid-cols-2 gap-1 w-full">
+              <button type="button" data-sa-tool="cursor" class="sa-tool-btn p-1.5 rounded-lg text-xs font-semibold hover:bg-white/10 transition flex items-center justify-center" title="Modo Ratón (Interactuar sin dibujar)">
+                <i class="fa-solid fa-arrow-pointer"></i>
+              </button>
+              <button type="button" data-sa-tool="select" class="sa-tool-btn p-1.5 rounded-lg text-xs font-semibold hover:bg-white/10 transition flex items-center justify-center" title="Seleccionar, mover y redimensionar objetos (con guías de alineación)">
+                <i class="fa-solid fa-up-down-left-right"></i>
+              </button>
+              <button type="button" data-sa-tool="pen" class="sa-tool-btn active bg-[#0e72ed] text-white p-1.5 rounded-lg text-xs font-semibold hover:bg-white/10 transition flex items-center justify-center" title="Lápiz libre">
+                <i class="fa-solid fa-pen"></i>
+              </button>
+              <button type="button" data-sa-tool="highlighter" class="sa-tool-btn p-1.5 rounded-lg text-xs font-semibold hover:bg-white/10 transition flex items-center justify-center" title="Resaltador translúcido">
+                <i class="fa-solid fa-highlighter"></i>
+              </button>
+              <button type="button" data-sa-tool="text" class="sa-tool-btn p-1.5 rounded-lg text-xs font-semibold hover:bg-white/10 transition flex items-center justify-center" title="Cuadro de Texto (doble clic para editar, esquina para redimensionar)">
+                <i class="fa-solid fa-font"></i>
+              </button>
+              <button type="button" data-sa-tool="rect" class="sa-tool-btn p-1.5 rounded-lg text-xs font-semibold hover:bg-white/10 transition flex items-center justify-center" title="Rectángulo">
+                <i class="fa-regular fa-square"></i>
+              </button>
+              <button type="button" data-sa-tool="ellipse" class="sa-tool-btn p-1.5 rounded-lg text-xs font-semibold hover:bg-white/10 transition flex items-center justify-center" title="Círculo / Elipse">
+                <i class="fa-regular fa-circle"></i>
+              </button>
+              <button type="button" data-sa-tool="arrow" class="sa-tool-btn p-1.5 rounded-lg text-xs font-semibold hover:bg-white/10 transition flex items-center justify-center" title="Flecha direccional">
+                <i class="fa-solid fa-arrow-right-long"></i>
+              </button>
+              <button type="button" data-sa-tool="eraser" class="sa-tool-btn col-span-2 p-1.5 rounded-lg text-xs font-semibold hover:bg-white/10 transition flex items-center justify-center" title="Borrador de trazos u objetos">
+                <i class="fa-solid fa-eraser"></i>
+              </button>
+            </div>
+            <div class="w-full h-[1px] bg-white/15 my-0.5"></div>
+            <div class="grid grid-cols-2 gap-1.5 items-center justify-items-center w-full">
               <button type="button" data-sa-color="#ef4444" class="sa-color-btn w-4 h-4 rounded-full bg-[#ef4444] ring-2 ring-white scale-110 transition cursor-pointer"></button>
               <button type="button" data-sa-color="#0e72ed" class="sa-color-btn w-4 h-4 rounded-full bg-[#0e72ed] hover:scale-110 transition cursor-pointer"></button>
               <button type="button" data-sa-color="#10b981" class="sa-color-btn w-4 h-4 rounded-full bg-[#10b981] hover:scale-110 transition cursor-pointer"></button>
@@ -799,22 +803,24 @@
               <button type="button" data-sa-color="#ffffff" class="sa-color-btn w-4 h-4 rounded-full bg-white hover:scale-110 transition cursor-pointer"></button>
               <input id="screenAnnotateCustomColor" type="color" value="#ef4444" class="w-4 h-4 rounded cursor-pointer bg-transparent border-0 p-0" title="Color personalizado">
             </div>
-            <div class="h-5 w-[1px] bg-white/15 mx-0.5"></div>
-            <select id="screenAnnotateSizeSelect" class="bg-slate-800 border border-slate-600 text-white text-[10px] rounded px-1.5 py-1 cursor-pointer" title="Grosor / Tamaño">
+            <div class="w-full h-[1px] bg-white/15 my-0.5"></div>
+            <select id="screenAnnotateSizeSelect" class="w-full bg-slate-800 border border-slate-600 text-white text-[10px] rounded px-1 py-1 cursor-pointer" title="Grosor / Tamaño">
               <option value="3">Fino</option>
               <option value="5" selected>Medio</option>
               <option value="9">Grueso</option>
             </select>
-            <button type="button" id="screenAnnotateUndoBtn" class="px-2 py-1 rounded-lg text-xs hover:bg-white/10 text-slate-300 hover:text-white transition cursor-pointer" title="Deshacer">
-              <i class="fa-solid fa-rotate-left"></i>
-            </button>
-            <button type="button" id="screenAnnotateRedoBtn" class="px-2 py-1 rounded-lg text-xs hover:bg-white/10 text-slate-300 hover:text-white transition cursor-pointer" title="Rehacer">
-              <i class="fa-solid fa-rotate-right"></i>
-            </button>
-            <button type="button" id="screenAnnotateClearBtn" class="px-2 py-1 rounded-lg text-xs hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 transition cursor-pointer" title="Limpiar todas las anotaciones">
-              <i class="fa-solid fa-trash-can"></i>
-            </button>
-            <button type="button" id="screenAnnotateCloseBtn" class="px-1.5 py-1 rounded-lg text-xs hover:bg-white/10 text-slate-400 hover:text-white transition cursor-pointer" title="Ocultar paleta">✕</button>
+            <div class="grid grid-cols-2 gap-1 w-full">
+              <button type="button" id="screenAnnotateUndoBtn" class="p-1.5 rounded-lg text-xs hover:bg-white/10 text-slate-300 hover:text-white transition cursor-pointer flex items-center justify-center" title="Deshacer">
+                <i class="fa-solid fa-rotate-left"></i>
+              </button>
+              <button type="button" id="screenAnnotateRedoBtn" class="p-1.5 rounded-lg text-xs hover:bg-white/10 text-slate-300 hover:text-white transition cursor-pointer flex items-center justify-center" title="Rehacer">
+                <i class="fa-solid fa-rotate-right"></i>
+              </button>
+              <button type="button" id="screenAnnotateClearBtn" class="p-1.5 rounded-lg text-xs hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 transition cursor-pointer flex items-center justify-center" title="Limpiar todas las anotaciones">
+                <i class="fa-solid fa-trash-can"></i>
+              </button>
+              <button type="button" id="screenAnnotateCloseBtn" class="p-1.5 rounded-lg text-xs hover:bg-white/10 text-slate-400 hover:text-white transition cursor-pointer flex items-center justify-center" title="Ocultar paleta">✕</button>
+            </div>
           </div>
 
           <!-- ==================== PIZARRA COLABORATIVA (SOLO VISIBLE EN MODO PIZARRA BLANCA) ==================== -->
@@ -5296,8 +5302,182 @@
       updateShareSystemAudioToggleUI();
     };
 
+    let floatingParticipantsTimerId = null;
+    let floatingThumbCanvas = null;
+
+    function captureVideoThumbDataUrl(videoEl) {
+      if (!videoEl || videoEl.classList.contains('hidden')) return null;
+      if (!videoEl.videoWidth || !videoEl.videoHeight || videoEl.readyState < 2) return null;
+      try {
+        if (!floatingThumbCanvas) {
+          floatingThumbCanvas = document.createElement('canvas');
+          floatingThumbCanvas.width = 160;
+          floatingThumbCanvas.height = 100;
+        }
+        const ctx = floatingThumbCanvas.getContext('2d');
+        if (!ctx) return null;
+        ctx.drawImage(videoEl, 0, 0, floatingThumbCanvas.width, floatingThumbCanvas.height);
+        return floatingThumbCanvas.toDataURL('image/jpeg', 0.62);
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function collectFloatingParticipantsSnapshot() {
+      const list = [];
+      const localCard = document.getElementById('webrtcLocalCard');
+      const localVid = document.getElementById('webrtcLocalVideo');
+      const localName = (typeof myName !== 'undefined' && myName) ? myName : 'Profesor (Tú)';
+      list.push({
+        id: 'local',
+        name: localName,
+        audioEnabled: typeof webrtcAudioEnabled !== 'undefined' ? Boolean(webrtcAudioEnabled) : false,
+        videoEnabled: typeof webrtcVideoEnabled !== 'undefined' ? Boolean(webrtcVideoEnabled) : false,
+        frameDataUrl: (localCard && !localCard.classList.contains('hidden')) ? captureVideoThumbDataUrl(localVid) : null
+      });
+
+      const remoteContainer = document.getElementById('webrtcRemoteCards');
+      if (remoteContainer) {
+        const cards = Array.from(remoteContainer.children);
+        for (const card of cards) {
+          if (!card || card.classList.contains('hidden')) continue;
+          const pid = card.getAttribute('data-peer-id') || card.id || ('p_' + list.length);
+          const peerObj = (typeof webrtcPeers !== 'undefined' && webrtcPeers && webrtcPeers[pid]) ? webrtcPeers[pid] : null;
+          const labelEl = card.querySelector('.video-name-label, [data-peer-name], span.truncate');
+          const name = (peerObj && peerObj.name) || (labelEl && labelEl.textContent && labelEl.textContent.trim()) || 'Participante';
+          const audioEnabled = peerObj ? Boolean(peerObj.audioEnabled) : true;
+          const vidEl = card.querySelector('video');
+          const frameDataUrl = captureVideoThumbDataUrl(vidEl);
+          list.push({
+            id: pid,
+            name,
+            audioEnabled,
+            videoEnabled: Boolean(frameDataUrl),
+            frameDataUrl
+          });
+        }
+      }
+      return list;
+    }
+
+    function syncElectronFloatingShareState() {
+      try {
+        window.electronAPI?.updateFloatingShareState?.({
+          active: Boolean(isSharingScreen),
+          audioEnabled: typeof webrtcAudioEnabled !== 'undefined' ? Boolean(webrtcAudioEnabled) : false,
+          videoEnabled: typeof webrtcVideoEnabled !== 'undefined' ? Boolean(webrtcVideoEnabled) : false,
+          sourceName: selectedSourceName || '',
+          participants: isSharingScreen ? collectFloatingParticipantsSnapshot() : [],
+          saItems: Array.isArray(saItems) ? saItems : []
+        });
+      } catch (e) {}
+    }
+
+    function startFloatingParticipantsSyncLoop() {
+      if (floatingParticipantsTimerId) clearInterval(floatingParticipantsTimerId);
+      syncElectronFloatingShareState();
+      floatingParticipantsTimerId = setInterval(() => {
+        if (!isSharingScreen) {
+          stopFloatingParticipantsSyncLoop();
+          return;
+        }
+        syncElectronFloatingShareState();
+      }, 280);
+    }
+
+    function stopFloatingParticipantsSyncLoop() {
+      if (floatingParticipantsTimerId) {
+        clearInterval(floatingParticipantsTimerId);
+        floatingParticipantsTimerId = null;
+      }
+    }
+
+    function enterElectronFloatingShareSession() {
+      const payload = {
+        sourceId: selectedSourceId,
+        isScreen: selectedSourceIsScreen,
+        sourceName: selectedSourceName || '',
+        audioEnabled: typeof webrtcAudioEnabled !== 'undefined' ? Boolean(webrtcAudioEnabled) : false,
+        videoEnabled: typeof webrtcVideoEnabled !== 'undefined' ? Boolean(webrtcVideoEnabled) : false,
+        participants: collectFloatingParticipantsSnapshot()
+      };
+      try {
+        if (window.electronAPI?.enterFloatingShareMode) {
+          window.electronAPI.enterFloatingShareMode(payload);
+          startFloatingParticipantsSyncLoop();
+        } else {
+          window.electronAPI?.showShareBorder?.(payload);
+        }
+      } catch (e) {}
+    }
+
+    function exitElectronFloatingShareSession() {
+      stopFloatingParticipantsSyncLoop();
+      try {
+        if (window.electronAPI?.exitFloatingShareMode) {
+          window.electronAPI.exitFloatingShareMode();
+        } else {
+          window.electronAPI?.hideShareBorder?.();
+        }
+      } catch (e) {}
+    }
+
+    if (window.electronAPI?.onFloatingBarAction && !window.__eltFloatingBarBound) {
+      window.__eltFloatingBarBound = true;
+      window.electronAPI.onFloatingBarAction((action) => {
+        if (action === 'toggle-mic' && typeof toggleLocalAudio === 'function') {
+          Promise.resolve(toggleLocalAudio()).finally(syncElectronFloatingShareState);
+        } else if (action === 'toggle-cam' && typeof toggleLocalVideo === 'function') {
+          Promise.resolve(toggleLocalVideo()).finally(syncElectronFloatingShareState);
+        } else if (action === 'toggle-annotate') {
+          if (isSharingScreen && selectedSourceIsScreen && !forceLocalScreenPreview && typeof window.toggleLocalScreenPreview === 'function') {
+            window.toggleLocalScreenPreview();
+          }
+          const fab = document.getElementById('screenAnnotateFab');
+          const toolbar = document.getElementById('screenAnnotateToolbar');
+          if (fab && toolbar) {
+            saToolbarOpen = !saToolbarOpen;
+            toolbar.classList.toggle('hidden', !saToolbarOpen);
+            fab.classList.toggle('ring-4', saToolbarOpen);
+            fab.classList.toggle('ring-cyan-300', saToolbarOpen);
+            if (typeof syncScreenAnnotateStageGeometry === 'function') syncScreenAnnotateStageGeometry();
+          }
+        } else if (action && typeof action === 'object' && action.type === 'sa-overlay-sync') {
+          if (action.action === 'upsert' && action.item) {
+            upsertSaItemLocal(action.item);
+            renderScreenAnnotateAll();
+            broadcastScreenAnnotateState('upsert', { item: action.item });
+          } else if (action.action === 'delete' && action.id) {
+            deleteSaItemById(action.id, true);
+          } else if (action.action === 'clear') {
+            saItems = [];
+            saSelectedId = null;
+            saEditingTextId = null;
+            renderScreenAnnotateAll();
+            broadcastScreenAnnotateState('clear');
+          } else if (action.action === 'full_sync' && Array.isArray(action.items)) {
+            saItems = action.items;
+            renderScreenAnnotateAll();
+            broadcastScreenAnnotateState('full_sync', { items: saItems });
+          }
+          try { syncElectronFloatingShareState(); } catch (e) {}
+        } else if (typeof action === 'string' && action.startsWith('annotate:tool:')) {
+          const tool = action.slice('annotate:tool:'.length);
+          if (typeof setActiveSaTool === 'function') setActiveSaTool(tool);
+        } else if (typeof action === 'string' && action.startsWith('annotate:color:')) {
+          saColor = action.slice('annotate:color:'.length);
+        } else if (action === 'annotate:undo') {
+          document.getElementById('screenAnnotateUndoBtn')?.click();
+        } else if (action === 'annotate:clear') {
+          document.getElementById('screenAnnotateClearBtn')?.click();
+        } else if (action === 'stop-share') {
+          if (typeof window.stopScreenShare === 'function') window.stopScreenShare();
+        }
+      });
+    }
+
     window.stopScreenShare = function() {
-      try { window.electronAPI?.hideShareBorder?.(); } catch (e) {}
+      exitElectronFloatingShareSession();
       if (isSharingScreen && typeof toggleScreenShare === 'function') {
         toggleScreenShare();
       }
@@ -5503,14 +5683,11 @@
       }
       if (stream) {
         try {
-          window.electronAPI?.showShareBorder?.({
-            sourceId: selectedSourceId,
-            isScreen: selectedSourceIsScreen
-          });
+          enterElectronFloatingShareSession();
           const vt = stream.getVideoTracks()[0];
           if (vt) {
             vt.addEventListener('ended', () => {
-              try { window.electronAPI?.hideShareBorder?.(); } catch (e) {}
+              exitElectronFloatingShareSession();
             });
           }
         } catch (e) {}
@@ -5559,6 +5736,40 @@
     let saSize = 5;
     let saSelectedId = null;
     let saEditingTextId = null;
+    let saIsCommittingText = false;
+
+    function commitActiveTextEditor() {
+      if (!saEditingTextId || saIsCommittingText) return false;
+      saIsCommittingText = true;
+      try {
+        const targetId = saEditingTextId;
+        const activeEd = document.querySelector(`#screenAnnotateObjectsLayer [data-sa-id="${targetId}"] .sa-text-editable`);
+        const edItem = saItems.find(x => x.id === targetId);
+        // Leer el texto ANTES de desmontar o re-renderizar el editor
+        const rawText = activeEd
+          ? (activeEd.innerText || activeEd.textContent || '').replace(/\u00A0/g, ' ').trim()
+          : '';
+        saEditingTextId = null;
+        if (edItem) {
+          if (rawText) {
+            edItem.text = rawText;
+            renderScreenAnnotateAll();
+            broadcastScreenAnnotateState('upsert', { item: edItem });
+            broadcastScreenAnnotateState('full_sync', { items: saItems });
+          } else if (!edItem.text || !edItem.text.trim()) {
+            deleteSaItemById(edItem.id, true);
+            broadcastScreenAnnotateState('full_sync', { items: saItems });
+          } else {
+            renderScreenAnnotateAll();
+          }
+        } else {
+          renderScreenAnnotateAll();
+        }
+        return true;
+      } finally {
+        saIsCommittingText = false;
+      }
+    }
     let saToolbarOpen = false;
     let saIsDrawing = false;
     let saIsDraggingItem = false;
@@ -5601,8 +5812,22 @@
       const toolbar = document.getElementById('screenAnnotateToolbar');
 
       const activeShare = isAnyScreenShareActive();
+      const overlayVisibleNow = Boolean(overlay && !overlay.classList.contains('hidden'));
       if (fab) {
-        fab.classList.toggle('hidden', !activeShare);
+        fab.classList.toggle('hidden', !(activeShare || overlayVisibleNow));
+        fab.style.display = (activeShare || overlayVisibleNow) ? 'flex' : '';
+      }
+      const bottomVideoStrip = document.getElementById('webrtcVideoStrip');
+      if (bottomVideoStrip) {
+        if (overlayVisibleNow) {
+          if (bottomVideoStrip.dataset.hiddenByScreenShare !== '1') {
+            bottomVideoStrip.dataset.hiddenByScreenShare = '1';
+            bottomVideoStrip.style.display = 'none';
+          }
+        } else if (bottomVideoStrip.dataset.hiddenByScreenShare === '1') {
+          delete bottomVideoStrip.dataset.hiddenByScreenShare;
+          bottomVideoStrip.style.display = '';
+        }
       }
       if (!activeShare && toolbar) {
         saToolbarOpen = false;
@@ -5653,9 +5878,39 @@
         }
       }
 
+      if (overlay) {
+        overlay.style.boxShadow = activeShare ? 'inset 0 0 0 3px #22c55e' : '';
+        try {
+          const parentRect = (overlay.parentElement || document.body).getBoundingClientRect();
+          let rightReserve = 0;
+          const chatCandidates = [
+            document.getElementById('zmChatDockSlot'),
+            document.getElementById('zmChatFloatingWindow')
+          ];
+          for (const chatEl of chatCandidates) {
+            if (!chatEl || chatEl.classList.contains('hidden')) continue;
+            const cs = window.getComputedStyle(chatEl);
+            if (cs.display === 'none' || cs.visibility === 'hidden') continue;
+            const cr = chatEl.getBoundingClientRect();
+            if (cr.width > 40 && cr.left > parentRect.left + 180 && cr.left < parentRect.right) {
+              const overlap = Math.round(parentRect.right - cr.left);
+              if (overlap > rightReserve && overlap < parentRect.width - 180) {
+                rightReserve = overlap;
+              }
+            }
+          }
+          overlay.style.right = rightReserve + 'px';
+          overlay.style.width = rightReserve > 0 ? 'auto' : '';
+        } catch (e) {}
+      }
       const canInteract = activeShare && saToolbarOpen && saTool !== 'cursor';
       stage.style.pointerEvents = canInteract ? 'auto' : 'none';
-      stage.style.cursor = !canInteract ? 'default' : (saTool === 'select' ? 'default' : (saTool === 'text' ? 'text' : 'crosshair'));
+      const drawTools = ['pen', 'highlighter', 'rect', 'ellipse', 'arrow', 'text'];
+      const resolvedCursor = !canInteract
+        ? 'default'
+        : (saTool === 'select' ? 'default' : (drawTools.includes(saTool) ? 'crosshair' : 'default'));
+      stage.style.cursor = resolvedCursor;
+      canvas.style.cursor = resolvedCursor;
 
       renderScreenAnnotateAll();
       return rect;
@@ -5980,7 +6235,7 @@
         }
 
         if (item.type === 'text') {
-          const isEditing = saEditingTextId === item.id;
+          const isEditing = saEditingTextId === item.id && !item.locked;
           const wrap = document.createElement('div');
           wrap.dataset.saId = item.id;
           wrap.style.position = 'absolute';
@@ -5988,23 +6243,39 @@
           wrap.style.top = `${Math.round((item.ny || 0) * h)}px`;
           wrap.style.pointerEvents = (saToolbarOpen && saTool !== 'cursor') ? 'auto' : 'none';
           wrap.style.zIndex = isEditing ? '40' : (isSelected ? '35' : '25');
-          wrap.className = isSelected
-            ? 'rounded-lg outline outline-2 outline-cyan-400 bg-slate-950/35 backdrop-blur-[1px]'
-            : 'rounded-lg hover:outline hover:outline-1 hover:outline-cyan-400/60';
+          wrap.style.background = 'transparent';
+          wrap.style.border = isEditing
+            ? '1.5px dashed rgba(56, 189, 248, 0.9)'
+            : (isSelected ? '1px dashed rgba(56, 189, 248, 0.65)' : '1px solid transparent');
+          wrap.style.borderRadius = '6px';
+          wrap.style.display = 'inline-block';
+
+          if (item.reaction || item.locked) {
+            const reactBadge = document.createElement('div');
+            reactBadge.className = 'absolute -top-5 left-0 text-xs font-bold pointer-events-none select-none';
+            reactBadge.style.textShadow = '0 1px 3px rgba(0,0,0,0.85)';
+            reactBadge.textContent = ((item.locked ? '🔒 ' : '') + (item.reaction || '')).trim();
+            wrap.appendChild(reactBadge);
+          }
 
           const fontPx = Math.max(12, Math.round((item.fontSizeNorm || 0.038) * h));
           const textEl = document.createElement('div');
-          textEl.className = 'sa-text-editable outline-none whitespace-pre-wrap break-words px-2 py-1 min-w-[64px] min-h-[28px]';
+          textEl.className = 'sa-text-editable outline-none px-1.5 py-0.5';
+          textEl.style.background = 'transparent';
+          textEl.style.display = 'inline-block';
+          textEl.style.minWidth = '20px';
+          textEl.style.whiteSpace = 'pre';
           textEl.style.color = item.color || '#ffffff';
           textEl.style.fontSize = `${fontPx}px`;
           textEl.style.fontWeight = '700';
           textEl.style.lineHeight = '1.25';
           textEl.style.textShadow = '0 1px 4px rgba(0,0,0,0.85)';
-          textEl.style.cursor = isEditing ? 'text' : 'move';
+          textEl.style.cursor = item.locked ? 'default' : (isEditing ? 'text' : 'move');
           textEl.contentEditable = isEditing ? 'true' : 'false';
           textEl.innerText = (isEditing && activeTextVal !== null) ? activeTextVal : (item.text || 'Texto');
 
           textEl.addEventListener('dblclick', (e) => {
+            if (item.locked) return;
             e.stopPropagation();
             pushSaHistory();
             saSelectedId = item.id;
@@ -6012,19 +6283,39 @@
             renderScreenAnnotateAll();
             setTimeout(() => {
               const el = layer.querySelector(`[data-sa-id="${item.id}"] .sa-text-editable`);
-              if (el) el.focus();
+              if (el) {
+                el.focus();
+                try {
+                  const range = document.createRange();
+                  range.selectNodeContents(el);
+                  const sel = window.getSelection();
+                  sel.removeAllRanges();
+                  sel.addRange(range);
+                } catch (err) {}
+              }
             }, 15);
           });
 
+          textEl.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              commitActiveTextEditor();
+            } else if (e.key === 'Escape') {
+              e.preventDefault();
+              commitActiveTextEditor();
+            }
+          });
+
           textEl.addEventListener('input', () => {
-            item.text = textEl.innerText;
+            const liveVal = (textEl.innerText || textEl.textContent || '').replace(/\u00A0/g, ' ');
+            item.text = liveVal;
             broadcastScreenAnnotateState('upsert', { item });
           });
 
           textEl.addEventListener('blur', () => {
-            item.text = textEl.innerText;
-            if (saEditingTextId === item.id) saEditingTextId = null;
-            broadcastScreenAnnotateState('upsert', { item });
+            if (saEditingTextId === item.id) {
+              commitActiveTextEditor();
+            }
           });
 
           wrap.appendChild(textEl);
@@ -6035,6 +6326,7 @@
             e.stopPropagation();
 
             if (saTool === 'eraser') {
+              if (item.locked) return;
               pushSaHistory();
               deleteSaItemById(item.id, true);
               return;
@@ -6042,39 +6334,89 @@
 
             saSelectedId = item.id;
             saEditingTextId = null;
-            pushSaHistory();
-            saIsDraggingItem = true;
-            saActiveItem = item;
-            saDragStartNorm = clientToSaNormalized(e.clientX, e.clientY);
-            saDragOrigNorm = { nx: item.nx || 0, ny: item.ny || 0 };
+            if (!item.locked) {
+              pushSaHistory();
+              saIsDraggingItem = true;
+              saActiveItem = item;
+              saDragStartNorm = clientToSaNormalized(e.clientX, e.clientY);
+              saDragOrigNorm = { nx: item.nx || 0, ny: item.ny || 0 };
+            }
             renderScreenAnnotateAll();
           });
 
-          if (isSelected) {
-            const delBtn = document.createElement('button');
-            delBtn.type = 'button';
-            delBtn.textContent = '✕';
-            delBtn.title = 'Eliminar texto';
-            delBtn.className = 'absolute -top-6 right-0 w-5 h-5 rounded-full bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center shadow pointer-events-auto cursor-pointer';
-            delBtn.addEventListener('mousedown', (e) => {
-              e.stopPropagation();
-              pushSaHistory();
-              deleteSaItemById(item.id, true);
-            });
-            wrap.appendChild(delBtn);
+          if (isSelected || isEditing) {
+            const miniBar = document.createElement('div');
+            miniBar.className = 'absolute -top-8 left-0 flex items-center gap-1 bg-slate-900/95 border border-slate-600/70 rounded-full px-1.5 py-0.5 shadow-xl pointer-events-auto whitespace-nowrap';
 
-            const resizeHandle = document.createElement('div');
-            resizeHandle.title = 'Arrastrar para redimensionar tamaño de texto';
-            resizeHandle.className = 'absolute -bottom-2 -right-2 w-4 h-4 rounded-full bg-cyan-400 border-2 border-slate-950 cursor-nwse-resize shadow pointer-events-auto';
-            resizeHandle.addEventListener('mousedown', (e) => {
+            const canToggleLock = (!item.ownerId || item.ownerId === saClientId);
+            const lockBtn = document.createElement('button');
+            lockBtn.type = 'button';
+            lockBtn.textContent = item.locked ? '🔒' : '🔓';
+            lockBtn.title = canToggleLock
+              ? (item.locked ? 'Desbloquear texto' : 'Bloquear texto')
+              : 'Solo el profesor o el autor puede desbloquear';
+            lockBtn.className = 'text-[11px] px-1 py-0.5 rounded transition cursor-pointer ' + (item.locked ? 'bg-amber-500/40 ring-1 ring-amber-400 text-white' : 'hover:bg-white/15');
+            lockBtn.addEventListener('mousedown', (e) => {
+              e.preventDefault();
               e.stopPropagation();
+              if (!canToggleLock) return;
               pushSaHistory();
-              saIsResizingItem = true;
-              saActiveItem = item;
-              saDragStartNorm = clientToSaNormalized(e.clientX, e.clientY);
-              saDragOrigNorm = { fontSizeNorm: item.fontSizeNorm || 0.038 };
+              item.locked = !item.locked;
+              if (item.locked && saEditingTextId === item.id) saEditingTextId = null;
+              renderScreenAnnotateAll();
+              broadcastScreenAnnotateState('upsert', { item });
+              broadcastScreenAnnotateState('full_sync', { items: saItems });
             });
-            wrap.appendChild(resizeHandle);
+            miniBar.appendChild(lockBtn);
+
+            ['👍', '❤️', '✅', '❓'].forEach((emoji) => {
+              const rb = document.createElement('button');
+              rb.type = 'button';
+              rb.textContent = emoji;
+              rb.title = 'Reacción ' + emoji;
+              rb.className = 'text-[11px] px-1 py-0.5 rounded hover:bg-white/15 cursor-pointer' + (item.reaction === emoji ? ' bg-[#0e72ed]/60' : '');
+              rb.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                pushSaHistory();
+                item.reaction = item.reaction === emoji ? '' : emoji;
+                renderScreenAnnotateAll();
+                broadcastScreenAnnotateState('upsert', { item });
+              });
+              miniBar.appendChild(rb);
+            });
+
+            if (!item.locked) {
+              const delBtn = document.createElement('button');
+              delBtn.type = 'button';
+              delBtn.textContent = '✕';
+              delBtn.title = 'Eliminar texto';
+              delBtn.className = 'w-4 h-4 rounded-full bg-rose-600 hover:bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center cursor-pointer ml-0.5';
+              delBtn.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                pushSaHistory();
+                deleteSaItemById(item.id, true);
+              });
+              miniBar.appendChild(delBtn);
+            }
+            wrap.appendChild(miniBar);
+
+            if (!item.locked) {
+              const resizeHandle = document.createElement('div');
+              resizeHandle.title = 'Arrastrar para redimensionar tamaño de texto';
+              resizeHandle.className = 'absolute -bottom-2 -right-2 w-3.5 h-3.5 rounded-full bg-cyan-400 border-2 border-slate-950 cursor-nwse-resize shadow pointer-events-auto';
+              resizeHandle.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                pushSaHistory();
+                saIsResizingItem = true;
+                saActiveItem = item;
+                saDragStartNorm = clientToSaNormalized(e.clientX, e.clientY);
+                saDragOrigNorm = { fontSizeNorm: item.fontSizeNorm || 0.038 };
+              });
+              wrap.appendChild(resizeHandle);
+            }
           }
 
           layer.appendChild(wrap);
@@ -6179,14 +6521,52 @@
       }
       window.addEventListener('resize', () => syncScreenAnnotateStageGeometry());
 
-      // Lápiz flotante arrastrable (#screenAnnotateFab) con protección de iframes
+      // Lápiz flotante arrastrable (#screenAnnotateFab) con clamp seguro y paleta vertical hacia arriba
       if (fab) {
         let fabDragging = false;
         let fabMoved = false;
         let fabStartX = 0;
         let fabStartY = 0;
         let fabOrigLeft = 20;
-        let fabOrigBottom = 76;
+        let fabOrigTop = 0;
+
+        const syncVerticalToolbarPosition = () => {
+          if (!toolbar || !fab) return;
+          const parent = fab.parentElement || document.body;
+          const pRect = parent.getBoundingClientRect();
+          const fRect = fab.getBoundingClientRect();
+          const fabWidth = fRect.width || 44;
+          const fabHeight = fRect.height || 44;
+          const fabLeft = fRect.left - pRect.left;
+          const fabBottom = pRect.bottom - fRect.bottom;
+          const tbWidth = toolbar.offsetWidth || 76;
+          const clampedTbLeft = Math.max(12, Math.min((pRect.width || window.innerWidth) - tbWidth - 12, fabLeft + (fabWidth - tbWidth) / 2));
+          toolbar.style.left = Math.round(clampedTbLeft) + 'px';
+          toolbar.style.bottom = Math.round(fabBottom + fabHeight + 10) + 'px';
+          toolbar.style.top = 'auto';
+          toolbar.style.right = 'auto';
+        };
+
+        const clampFabPosition = (rawLeft, rawTop) => {
+          const parent = fab.parentElement || document.body;
+          const pRect = parent.getBoundingClientRect();
+          const fabWidth = fab.offsetWidth || 44;
+          const fabHeight = fab.offsetHeight || 44;
+          const maxW = pRect.width || window.innerWidth;
+          const maxH = pRect.height || window.innerHeight;
+          const minLeft = 12;
+          const maxLeft = Math.max(minLeft, maxW - fabWidth - 12);
+          const minTop = 64;
+          const maxTop = Math.max(minTop, maxH - 135);
+          const clampedLeft = Math.max(minLeft, Math.min(maxLeft, rawLeft));
+          const clampedTop = Math.max(minTop, Math.min(maxTop, rawTop));
+          const clampedBottom = Math.max(76, maxH - clampedTop - fabHeight);
+          fab.style.left = Math.round(clampedLeft) + 'px';
+          fab.style.bottom = Math.round(clampedBottom) + 'px';
+          fab.style.top = 'auto';
+          fab.style.right = 'auto';
+          syncVerticalToolbarPosition();
+        };
 
         const setIframesPe = (val) => {
           try { document.querySelectorAll('iframe').forEach(f => { f.style.pointerEvents = val; }); } catch (e) {}
@@ -6209,7 +6589,7 @@
           fabStartX = e.clientX;
           fabStartY = e.clientY;
           fabOrigLeft = fRect.left - pRect.left;
-          fabOrigBottom = pRect.bottom - fRect.bottom;
+          fabOrigTop = fRect.top - pRect.top;
           setIframesPe('none');
           document.body.style.userSelect = 'none';
           try { fab.setPointerCapture?.(e.pointerId); } catch (err) {}
@@ -6228,19 +6608,7 @@
           if (Math.hypot(dx, dy) > 5) fabMoved = true;
           if (!fabMoved) return;
 
-          const parent = fab.parentElement || document.body;
-          const pRect = parent.getBoundingClientRect();
-          const newLeft = Math.max(8, Math.min(pRect.width - 52, fabOrigLeft + dx));
-          const newBottom = Math.max(8, Math.min(pRect.height - 52, fabOrigBottom - dy));
-          fab.style.left = Math.round(newLeft) + 'px';
-          fab.style.bottom = Math.round(newBottom) + 'px';
-          fab.style.top = 'auto';
-          fab.style.right = 'auto';
-
-          if (toolbar) {
-            toolbar.style.left = Math.min(pRect.width - 260, Math.round(newLeft + 56)) + 'px';
-            toolbar.style.bottom = Math.round(newBottom) + 'px';
-          }
+          clampFabPosition(fabOrigLeft + dx, fabOrigTop + dy);
         });
 
         window.addEventListener('pointerup', (e) => {
@@ -6249,7 +6617,10 @@
           stopFabDrag();
           if (!wasMoved) {
             saToolbarOpen = !saToolbarOpen;
-            if (toolbar) toolbar.classList.toggle('hidden', !saToolbarOpen);
+            if (toolbar) {
+              toolbar.classList.toggle('hidden', !saToolbarOpen);
+              if (saToolbarOpen) syncVerticalToolbarPosition();
+            }
             fab.classList.toggle('ring-4', saToolbarOpen);
             fab.classList.toggle('ring-cyan-300', saToolbarOpen);
             syncScreenAnnotateStageGeometry();
@@ -6258,6 +6629,14 @@
 
         window.addEventListener('pointercancel', stopFabDrag, true);
         window.addEventListener('blur', stopFabDrag);
+        window.addEventListener('resize', () => {
+          const parent = fab.parentElement || document.body;
+          const pRect = parent.getBoundingClientRect();
+          const fRect = fab.getBoundingClientRect();
+          if (fRect.width > 0) {
+            clampFabPosition(fRect.left - pRect.left, fRect.top - pRect.top);
+          }
+        });
       }
 
       // Controles de la paleta de herramientas
@@ -6341,15 +6720,89 @@
 
       // Eventos de dibujo, selección, arrastre con guías y redimensionado sobre #screenAnnotateStage
       if (stage) {
+        stage.addEventListener('mouseenter', () => {
+          syncScreenAnnotateStageGeometry();
+        });
+        stage.addEventListener('mouseleave', () => {
+          stage.style.cursor = 'none';
+          const cEl = document.getElementById('screenAnnotateCanvas');
+          if (cEl) cEl.style.cursor = 'none';
+        });
+        stage.addEventListener('dblclick', (e) => {
+          if (!saToolbarOpen && !isAnyScreenShareActive()) return;
+          const rect = stage.getBoundingClientRect();
+          const canvasEl = document.getElementById('screenAnnotateCanvas');
+          const cw = (canvasEl && canvasEl.width) || Math.max(1, rect.width);
+          const ch = (canvasEl && canvasEl.height) || Math.max(1, rect.height);
+          const px = (e.clientX - rect.left) * (cw / Math.max(1, rect.width));
+          const py = (e.clientY - rect.top) * (ch / Math.max(1, rect.height));
+          const mCtx = canvasEl ? canvasEl.getContext('2d') : null;
+          let hitText = null;
+          for (let i = saItems.length - 1; i >= 0; i--) {
+            const it = saItems[i];
+            if (it.type !== 'text') continue;
+            const fsPx = Math.max(12, Math.round((it.fontSizeNorm || 0.038) * ch));
+            const lines = String(it.text || 'Texto').split(String.fromCharCode(10));
+            let maxW = 64;
+            if (mCtx) {
+              mCtx.save();
+              mCtx.font = '700 ' + fsPx + 'px system-ui, -apple-system, sans-serif';
+              for (const ln of lines) {
+                const wMeasured = mCtx.measureText(ln).width;
+                if (wMeasured > maxW) maxW = wMeasured;
+              }
+              mCtx.restore();
+            }
+            const tx = (it.nx || 0) * cw;
+            const ty = (it.ny || 0) * ch;
+            const th = Math.max(fsPx * 1.35, lines.length * fsPx * 1.3);
+            if (px >= tx - 12 && px <= tx + maxW + 16 && py >= ty - 12 && py <= ty + th + 12) {
+              hitText = it;
+              break;
+            }
+          }
+          if (!hitText || hitText.locked) return;
+          e.stopPropagation();
+          e.preventDefault();
+          pushSaHistory();
+          saSelectedId = hitText.id;
+          saEditingTextId = hitText.id;
+          renderScreenAnnotateAll();
+          setTimeout(() => {
+            const el = document.querySelector(`#screenAnnotateObjectsLayer [data-sa-id="${hitText.id}"] .sa-text-editable`);
+            if (el) {
+              el.focus();
+              try {
+                const range = document.createRange();
+                range.selectNodeContents(el);
+                const sel = window.getSelection();
+                sel.removeAllRanges();
+                sel.addRange(range);
+              } catch (err) {}
+            }
+          }, 15);
+        }, true);
+
+        stage.addEventListener('pointerdown', (e) => {
+          if (saEditingTextId && !(e.target && e.target.closest && e.target.closest('[data-sa-id="' + saEditingTextId + '"]'))) {
+            e.preventDefault();
+            e.stopPropagation();
+            commitActiveTextEditor();
+          }
+        }, true);
+
         stage.addEventListener('mousedown', (e) => {
           if (e.button !== 0 || !saToolbarOpen || saTool === 'cursor') return;
+          if (saEditingTextId) {
+            if (!(e.target && e.target.closest && e.target.closest('[data-sa-id="' + saEditingTextId + '"]'))) {
+              e.preventDefault();
+              e.stopPropagation();
+              commitActiveTextEditor();
+            }
+            return;
+          }
           const pt = clientToSaNormalized(e.clientX, e.clientY);
           const { w } = getSaStagePixelSize();
-
-          if (saEditingTextId) {
-            saEditingTextId = null;
-            renderScreenAnnotateAll();
-          }
 
           if (saTool === 'select') {
             let hit = null;
@@ -6361,14 +6814,16 @@
             }
             if (hit) {
               saSelectedId = hit.id;
-              pushSaHistory();
-              saIsDraggingItem = true;
-              saActiveItem = hit;
-              saDragStartNorm = pt;
-              if (hit.type === 'stroke') {
-                saDragOrigNorm = { points: hit.points.map(p => ({ nx: p.nx, ny: p.ny })) };
-              } else {
-                saDragOrigNorm = { nx: hit.nx || 0, ny: hit.ny || 0 };
+              if (!hit.locked) {
+                pushSaHistory();
+                saIsDraggingItem = true;
+                saActiveItem = hit;
+                saDragStartNorm = pt;
+                if (hit.type === 'stroke') {
+                  saDragOrigNorm = { points: hit.points.map(p => ({ nx: p.nx, ny: p.ny })) };
+                } else {
+                  saDragOrigNorm = { nx: hit.nx || 0, ny: hit.ny || 0 };
+                }
               }
             } else {
               saSelectedId = null;
@@ -6381,7 +6836,7 @@
             pushSaHistory();
             saIsErasing = true;
             for (let i = saItems.length - 1; i >= 0; i--) {
-              if (isPointNearSaItem(saItems[i], pt.nx, pt.ny)) {
+              if (!saItems[i].locked && isPointNearSaItem(saItems[i], pt.nx, pt.ny)) {
                 deleteSaItemById(saItems[i].id, true);
               }
             }
@@ -6431,6 +6886,7 @@
             const newText = {
               id: 'sa_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
               type: 'text',
+              ownerId: saClientId,
               nx: pt.nx,
               ny: Math.max(0, pt.ny - fsNorm / 2),
               fontSizeNorm: fsNorm,
@@ -6456,8 +6912,31 @@
         });
       }
 
+      const finishSaInteraction = () => {
+        if (!saIsDrawing && !saIsDraggingItem && !saIsResizingItem && !saIsErasing) return;
+        clearSaSmartGuides();
+        if (saIsDrawing && saActiveItem) {
+          broadcastScreenAnnotateState('upsert', { item: saActiveItem });
+          if (saActiveItem.type === 'shape') {
+            saSelectedId = saActiveItem.id;
+            renderScreenAnnotateAll();
+          }
+        }
+        saIsDrawing = false;
+        saIsDraggingItem = false;
+        saIsResizingItem = false;
+        saIsErasing = false;
+        saActiveItem = null;
+        saDragStartNorm = null;
+        saDragOrigNorm = null;
+      };
+
       window.addEventListener('mousemove', (e) => {
         if (!saIsDrawing && !saIsDraggingItem && !saIsResizingItem && !saIsErasing) return;
+        if (typeof e.buttons === 'number' && e.buttons === 0) {
+          finishSaInteraction();
+          return;
+        }
         const pt = clientToSaNormalized(e.clientX, e.clientY);
 
         if (saIsDrawing && saActiveItem) {
@@ -6474,7 +6953,7 @@
 
         if (saIsErasing) {
           for (let i = saItems.length - 1; i >= 0; i--) {
-            if (isPointNearSaItem(saItems[i], pt.nx, pt.ny)) {
+            if (!saItems[i].locked && isPointNearSaItem(saItems[i], pt.nx, pt.ny)) {
               deleteSaItemById(saItems[i].id, true);
             }
           }
@@ -6515,22 +6994,11 @@
         }
       });
 
-      window.addEventListener('mouseup', () => {
-        if (!saIsDrawing && !saIsDraggingItem && !saIsResizingItem && !saIsErasing) return;
-        clearSaSmartGuides();
-        if (saIsDrawing && saActiveItem) {
-          broadcastScreenAnnotateState('upsert', { item: saActiveItem });
-          if (saActiveItem.type === 'shape') {
-            saSelectedId = saActiveItem.id;
-            renderScreenAnnotateAll();
-          }
-        }
-        saIsDrawing = false;
-        saIsDraggingItem = false;
-        saIsResizingItem = false;
-        saIsErasing = false;
-        saActiveItem = null;
-      });
+      window.addEventListener('mouseup', finishSaInteraction, true);
+      window.addEventListener('pointerup', finishSaInteraction, true);
+      window.addEventListener('pointercancel', finishSaInteraction, true);
+      window.addEventListener('blur', finishSaInteraction);
+      document.addEventListener('mouseleave', finishSaInteraction);
 
       updateShareSystemAudioToggleUI();
     })();
@@ -11031,10 +11499,7 @@
       screenAudioTrack = screenStream.getAudioTracks()[0] || null;
       isSharingScreen = true;
       try {
-        window.electronAPI?.showShareBorder?.({
-          sourceId: selectedSourceId,
-          isScreen: selectedSourceIsScreen
-        });
+        enterElectronFloatingShareSession();
       } catch (e) {}
 
       screenVideoTrack.onended = () => {
@@ -11076,7 +11541,7 @@
     }
 
     async function stopP2PScreenShare() {
-      try { window.electronAPI?.hideShareBorder?.(); } catch (e) {}
+      exitElectronFloatingShareSession();
       if (!isSharingScreen && !screenStream) return;
       isSharingScreen = false;
 
@@ -11245,7 +11710,7 @@
         }
       }
       updateLocalMediaUI();
-      broadcastWebRTCMediaState();
+      broadcastWebRTCMediaState(); try { syncElectronFloatingShareState(); } catch (e) {}
       unlockAllP2PRemoteAudio();
     }
 
@@ -11308,7 +11773,7 @@
       } finally {
         isTogglingCamera = false;
         try { updateLocalMediaUI(); } catch (e) {}
-        try { broadcastWebRTCMediaState(); } catch (e) {}
+        try { broadcastWebRTCMediaState(); try { syncElectronFloatingShareState(); } catch (e) {} } catch (e) {}
       }
     }
 
@@ -11317,7 +11782,7 @@
         if (!livekitRoom) return;
         try {
           if (isSharingScreen) {
-            try { window.electronAPI?.hideShareBorder?.(); } catch (e) {}
+            exitElectronFloatingShareSession();
             await livekitRoom.localParticipant.setScreenShareEnabled(false);
             isSharingScreen = false;
             const stageVideo = document.getElementById('remoteScreenShareVideo');
@@ -11334,16 +11799,13 @@
             });
             isSharingScreen = true;
             try {
-              window.electronAPI?.showShareBorder?.({
-                sourceId: selectedSourceId,
-                isScreen: selectedSourceIsScreen
-              });
+              enterElectronFloatingShareSession();
             } catch (e) {}
             if (pub && pub.track) {
               if (pub.track.mediaStreamTrack) {
                 screenStream = new MediaStream([pub.track.mediaStreamTrack]);
                 pub.track.mediaStreamTrack.onended = () => {
-                  try { window.electronAPI?.hideShareBorder?.(); } catch (e) {}
+                  exitElectronFloatingShareSession();
                   isSharingScreen = false;
                   screenStream = null;
                   updateLocalMediaUI();
@@ -11354,7 +11816,7 @@
             }
           }
         } catch (err) {
-          try { window.electronAPI?.hideShareBorder?.(); } catch (e) {}
+          exitElectronFloatingShareSession();
           console.warn('[LiveKit] Error al compartir pantalla en Estudiante:', err);
           isSharingScreen = false;
           showMediaAlert('Error al compartir pantalla: ' + (err.message || err.name || err));
@@ -11370,7 +11832,7 @@
       updateLocalMediaUI();
       syncStudentRemoteScreenShareOverlay();
       broadcastScreenShareState(isSharingScreen);
-      broadcastWebRTCMediaState();
+      broadcastWebRTCMediaState(); try { syncElectronFloatingShareState(); } catch (e) {}
     }
 
     function broadcastScreenShareState(sharing) {
@@ -13242,7 +13704,7 @@ window.setVideoStripMinimized = function(minimized) {
       webrtcAudioEnabled = true;
       updateLocalMediaUI();
       setPushToTalkVisualState(true);
-      broadcastWebRTCMediaState();
+      broadcastWebRTCMediaState(); try { syncElectronFloatingShareState(); } catch (e) {}
     }
 
     function deactivateStudentPushToTalk() {
@@ -13264,7 +13726,7 @@ window.setVideoStripMinimized = function(minimized) {
       webrtcAudioEnabled = false;
       setPushToTalkVisualState(false);
       updateLocalMediaUI();
-      broadcastWebRTCMediaState();
+      broadcastWebRTCMediaState(); try { syncElectronFloatingShareState(); } catch (e) {}
     }
 
     // 1. Acceso con tecla Enter en Login de Estudiante (#studentNameInput y #roomPinInput)

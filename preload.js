@@ -16,6 +16,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getScreenSources: (opts) => ipcRenderer.invoke('screen:getSources', opts),
   showShareBorder: (opts) => ipcRenderer.invoke('show-share-border', opts),
   hideShareBorder: () => ipcRenderer.invoke('hide-share-border'),
+  enterFloatingShareMode: (opts) => ipcRenderer.invoke('enter-floating-share-mode', opts),
+  exitFloatingShareMode: () => ipcRenderer.invoke('exit-floating-share-mode'),
+  updateFloatingShareState: (state) => ipcRenderer.invoke('update-floating-share-state', state),
+  sendFloatingBarAction: (action) => ipcRenderer.invoke('floating-bar-action', action),
+  onFloatingBarAction: (callback) => {
+    ipcRenderer.on('floating-bar-action', (_event, action) => callback(action));
+  },
+  onFloatingShareStateUpdate: (callback) => {
+    ipcRenderer.on('floating-share-state-update', (_event, state) => callback(state));
+  },
 
   // Escuchar eventos desde el proceso principal
   onWindowStateChange: (callback) => {

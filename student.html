@@ -9865,13 +9865,15 @@
       }
 
       try {
+        const useBrowserNs = localStorage.getItem('elt_pref_noise_suppression') !== 'false';
         const newStream = await navigator.mediaDevices.getUserMedia({
           audio: {
             deviceId: { ideal: deviceId },
             echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-            channelCount: 1
+            noiseSuppression: useBrowserNs,
+            autoGainControl: false,
+            channelCount: 1,
+            sampleRate: { ideal: 48000 }
           },
           video: false
         });
@@ -10055,13 +10057,143 @@
       pop.style.transform = 'none';
     }
 
+    let popoverVuMeterRafId = null;
+
+    function stopPopoverVuMeter() {
+      if (popoverVuMeterRafId !== null) {
+        cancelAnimationFrame(popoverVuMeterRafId);
+        popoverVuMeterRafId = null;
+      }
+      const fill = document.getElementById('popoverVuMeterFill');
+      const pctEl = document.getElementById('popoverVuMeterPct');
+      if (fill) fill.style.width = '0%';
+      if (pctEl) pctEl.textContent = '0%';
+    }
+
+    function startPopoverVuMeter() {
+      stopPopoverVuMeter();
+      let smoothLevel = 0;
+      const tick = () => {
+        const pop = document.getElementById('mediaDevicesPopover');
+        const extras = document.getElementById('popoverAudioExtrasGroup');
+        if (!pop || pop.classList.contains('hidden') || !extras || extras.classList.contains('hidden')) {
+          stopPopoverVuMeter();
+          return;
+        }
+        const rawLevel = typeof window._eltGetVoiceLevel === 'function' ? window._eltGetVoiceLevel() : 0;
+        smoothLevel = smoothLevel * 0.65 + rawLevel * 0.35;
+        const pct = Math.min(100, Math.max(0, Math.round(smoothLevel * 100)));
+        const fill = document.getElementById('popoverVuMeterFill');
+        const pctEl = document.getElementById('popoverVuMeterPct');
+        if (fill) fill.style.width = pct + '%';
+        if (pctEl) pctEl.textContent = pct + '%';
+        popoverVuMeterRafId = requestAnimationFrame(tick);
+      };
+      popoverVuMeterRafId = requestAnimationFrame(tick);
+    }
+
+    function syncPopoverMicGainUI() {
+      const slider = document.getElementById('popoverMicGainSlider');
+      const valEl = document.getElementById('popoverMicGainValue');
+      const saved = parseFloat(localStorage.getItem('elt_pref_mic_gain') || '1.0');
+      const clamped = Number.isFinite(saved) ? Math.min(2.0, Math.max(0.8, saved)) : 1.0;
+      const pct = Math.round(clamped * 100);
+      if (slider) slider.value = String(pct);
+      if (valEl) valEl.textContent = pct + '%';
+      const nsToggle = document.getElementById('popoverNoiseSuppressionToggle');
+      if (nsToggle) {
+        nsToggle.checked = localStorage.getItem('elt_pref_noise_suppression') !== 'false';
+      }
+    }
+
+    async function playSpeakerTestChord() {
+      const btn = document.getElementById('popoverTestSpeakerBtn');
+      const speakerSelect = document.getElementById('popoverSpeakerSelect');
+      const targetSinkId = (speakerSelect && speakerSelect.value) || localStorage.getItem('elt_pref_speaker_id') || '';
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextClass) return;
+
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = '🔊 Reproduciendo...';
+      }
+
+      let testCtx = null;
+      let testAudioEl = null;
+      try {
+        testCtx = new AudioContextClass();
+        if (testCtx.state === 'suspended') {
+          await testCtx.resume();
+        }
+        const now = testCtx.currentTime;
+        const masterGain = testCtx.createGain();
+        masterGain.gain.setValueAtTime(0.001, now);
+        masterGain.gain.exponentialRampToValueAtTime(0.22, now + 0.04);
+        masterGain.gain.exponentialRampToValueAtTime(0.0008, now + 0.65);
+
+        // Acorde agradable (Do mayor: C5, E5, G5)
+        const freqs = [523.25, 659.25, 783.99];
+        freqs.forEach((f, idx) => {
+          const osc = testCtx.createOscillator();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(f, now + idx * 0.055);
+          osc.connect(masterGain);
+          osc.start(now + idx * 0.055);
+          osc.stop(now + 0.68);
+        });
+
+        // Enrutar al altavoz seleccionado usando setSinkId si el navegador lo soporta
+        if (typeof HTMLMediaElement.prototype.setSinkId === 'function' && targetSinkId) {
+          const dest = testCtx.createMediaStreamDestination();
+          masterGain.connect(dest);
+          testAudioEl = document.createElement('audio');
+          testAudioEl.srcObject = dest.stream;
+          testAudioEl.volume = 1.0;
+          try {
+            await testAudioEl.setSinkId(targetSinkId);
+          } catch (sinkErr) {
+            console.warn('[AudioTest] No se pudo aplicar setSinkId, usando salida por defecto:', sinkErr);
+          }
+          await testAudioEl.play().catch(() => {});
+        } else {
+          masterGain.connect(testCtx.destination);
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 750));
+      } catch (err) {
+        console.warn('[AudioTest] Error reproduciendo sonido de prueba:', err);
+      } finally {
+        if (testAudioEl) {
+          try { testAudioEl.pause(); testAudioEl.srcObject = null; } catch (e) {}
+        }
+        if (testCtx) {
+          try { await testCtx.close(); } catch (e) {}
+        }
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = '🔊 Probar altavoz';
+        }
+      }
+    }
+
     async function toggleMediaDevicesPopover(focusSection, triggerBtn) {
       const pop = document.getElementById('mediaDevicesPopover');
       if (!pop) return;
       ensureMediaDevicesPopoverInBody();
 
       const isHidden = pop.classList.contains('hidden');
+      const audioExtras = document.getElementById('popoverAudioExtrasGroup');
+
       if (isHidden) {
+        if (audioExtras) {
+          if (focusSection === 'audio') {
+            audioExtras.classList.remove('hidden');
+            syncPopoverMicGainUI();
+          } else {
+            audioExtras.classList.add('hidden');
+          }
+        }
+
         pop.classList.remove('hidden');
         pop.style.display = 'block';
         lastMediaDevicesTriggerBtn = triggerBtn || lastMediaDevicesTriggerBtn;
@@ -10072,11 +10204,16 @@
         positionMediaDevicesPopover(pop, lastMediaDevicesTriggerBtn);
 
         if (focusSection === 'audio') {
+          startPopoverVuMeter();
           document.getElementById('popoverMicSelect')?.focus();
-        } else if (focusSection === 'video') {
-          document.getElementById('popoverCamSelect')?.focus();
+        } else {
+          stopPopoverVuMeter();
+          if (focusSection === 'video') {
+            document.getElementById('popoverCamSelect')?.focus();
+          }
         }
       } else {
+        stopPopoverVuMeter();
         pop.classList.add('hidden');
         pop.style.display = 'none';
       }
@@ -10090,6 +10227,7 @@
     });
 
     function closeMediaDevicesPopover() {
+      stopPopoverVuMeter();
       const pop = document.getElementById('mediaDevicesPopover');
       if (pop) {
         pop.classList.add('hidden');
@@ -10529,6 +10667,39 @@
       document.getElementById('popoverCamSelect')?.addEventListener('change', (e) => {
         changeActiveCamera(e.target.value);
       });
+
+      const micGainSlider = document.getElementById('popoverMicGainSlider');
+      if (micGainSlider) {
+        syncPopoverMicGainUI();
+        const onGainInput = (e) => {
+          const pct = Math.min(200, Math.max(80, parseInt(e.target.value, 10) || 100));
+          const gainVal = pct / 100;
+          const valEl = document.getElementById('popoverMicGainValue');
+          if (valEl) valEl.textContent = pct + '%';
+          try { localStorage.setItem('elt_pref_mic_gain', gainVal.toFixed(2)); } catch (err) {}
+          if (typeof window._eltSetMicGain === 'function') {
+            window._eltSetMicGain(gainVal);
+          }
+        };
+        micGainSlider.addEventListener('input', onGainInput);
+        micGainSlider.addEventListener('change', onGainInput);
+      }
+
+      const nsToggle = document.getElementById('popoverNoiseSuppressionToggle');
+      if (nsToggle) {
+        nsToggle.checked = localStorage.getItem('elt_pref_noise_suppression') !== 'false';
+        nsToggle.addEventListener('change', (e) => {
+          const enabled = Boolean(e.target.checked);
+          try { localStorage.setItem('elt_pref_noise_suppression', enabled ? 'true' : 'false'); } catch (err) {}
+          const activeMicId = document.getElementById('popoverMicSelect')?.value || localStorage.getItem('elt_pref_mic_id') || 'default';
+          changeActiveMicrophone(activeMicId);
+        });
+      }
+
+      document.getElementById('popoverTestSpeakerBtn')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        playSpeakerTestChord();
+      });
     }
 
     if (document.readyState === 'loading') {
@@ -10537,6 +10708,19 @@
       initMediaDeviceManager();
     }
 
+
+    if (typeof window._eltSetMicGain !== 'function') {
+      window._eltSetMicGain = function(val) {
+        const n = parseFloat(val);
+        if (Number.isFinite(n)) {
+          const clamped = Math.min(2.0, Math.max(0.8, n));
+          try { localStorage.setItem('elt_pref_mic_gain', clamped.toFixed(2)); } catch (e) {}
+        }
+      };
+    }
+    if (typeof window._eltGetVoiceLevel !== 'function') {
+      window._eltGetVoiceLevel = function() { return 0; };
+    }
 
     function createVoiceNoiseGateStream(rawStream) {
       if (!rawStream) return rawStream;
@@ -10562,15 +10746,27 @@
           ctx.resume().catch(() => {});
         }
 
-        // 1. Highpass Filter (70 Hz, Q: 0.5): conserva el cuerpo natural de la voz y elimina zumbidos subsónicos
+        // 1. Pasa-banda vocal (100 Hz - 8,500 Hz, Q: 0.7): elimina zumbidos subsónicos y hiss eléctrico sin perder claridad
         const highpass = ctx.createBiquadFilter();
         highpass.type = 'highpass';
-        highpass.frequency.setValueAtTime(70, ctx.currentTime);
-        highpass.Q.setValueAtTime(0.5, ctx.currentTime);
+        highpass.frequency.setValueAtTime(100, ctx.currentTime);
+        highpass.Q.setValueAtTime(0.7, ctx.currentTime);
 
-        // 2. Compuerta de Ruido (Noise Gate) con GainNode y AnalyserNode (sin DynamicsCompressorNode para no sobre-comprimir)
+        const lowpass = ctx.createBiquadFilter();
+        lowpass.type = 'lowpass';
+        lowpass.frequency.setValueAtTime(8500, ctx.currentTime);
+        lowpass.Q.setValueAtTime(0.7, ctx.currentTime);
+
+        // 2. Ganancia constante configurable (sin modulación dinámica de compuerta para eliminar el bombeo/hiss residual)
+        const clampMicGain = (v) => {
+          const n = parseFloat(v);
+          return Number.isFinite(n) ? Math.min(2.0, Math.max(0.8, n)) : 1.0;
+        };
+        let micGain = clampMicGain(localStorage.getItem('elt_pref_mic_gain') || '1.0');
+        let currentVoiceLevel = 0;
+
         const gateGain = ctx.createGain();
-        gateGain.gain.setValueAtTime(0.12, ctx.currentTime); // Inicia en reposo suave (0.12) evitando sonido hueco o bombeo
+        gateGain.gain.value = micGain;
 
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 512;
@@ -10581,21 +10777,33 @@
         const destinationNode = ctx.createMediaStreamDestination();
 
         sourceNode.connect(highpass);
-        highpass.connect(gateGain);
-        highpass.connect(analyser);
+        highpass.connect(lowpass);
+        lowpass.connect(gateGain);
+        lowpass.connect(analyser);
         gateGain.connect(destinationNode);
 
-        // Algoritmo de detección RMS en banda de voz con retención suave y transparente
         const timeData = new Float32Array(analyser.fftSize);
-        const voiceThreshold = 0.008;
+        const voiceThreshold = 0.012;
         let holdUntil = 0;
         let isGateOpen = false;
 
+        window._eltSetMicGain = function(val) {
+          micGain = clampMicGain(val);
+          try { gateGain.gain.setTargetAtTime(micGain, ctx.currentTime, 0.02); } catch (e) {}
+        };
+
+        window._eltGetVoiceLevel = function() {
+          if (rawTrack.readyState === 'ended' || !rawTrack.enabled || (typeof webrtcAudioEnabled !== 'undefined' && !webrtcAudioEnabled)) {
+            return 0;
+          }
+          return currentVoiceLevel;
+        };
+
         const gateIntervalId = setInterval(() => {
           if (rawTrack.readyState === 'ended' || !rawTrack.enabled || (typeof webrtcAudioEnabled !== 'undefined' && !webrtcAudioEnabled)) {
+            currentVoiceLevel = 0;
             if (isGateOpen) {
               isGateOpen = false;
-              try { gateGain.gain.setTargetAtTime(0.12, ctx.currentTime, 0.04); } catch (e) {}
               updateVoiceGateVisualIndicator(false);
             }
             return;
@@ -10608,19 +10816,18 @@
             sumSquares += val * val;
           }
           const rms = Math.sqrt(sumSquares / timeData.length);
+          currentVoiceLevel = Math.min(1, Math.max(0, rms * 6.5));
           const now = performance.now();
 
           if (rms >= voiceThreshold) {
-            holdUntil = now + 450; // 450 ms de retención para no cortar respiraciones ni finales de palabra
+            holdUntil = now + 450;
             if (!isGateOpen) {
               isGateOpen = true;
-              try { gateGain.gain.setTargetAtTime(1.0, ctx.currentTime, 0.012); } catch (e) {} // 12 ms ataque rápido
               updateVoiceGateVisualIndicator(true);
             }
           } else if (now > holdUntil) {
             if (isGateOpen) {
               isGateOpen = false;
-              try { gateGain.gain.setTargetAtTime(0.12, ctx.currentTime, 0.18); } catch (e) {} // 180 ms caída suave
               updateVoiceGateVisualIndicator(false);
             }
           }
@@ -10635,9 +10842,11 @@
 
         function cleanupGate() {
           clearInterval(gateIntervalId);
+          currentVoiceLevel = 0;
           updateVoiceGateVisualIndicator(false);
           try { sourceNode.disconnect(); } catch (e) {}
           try { highpass.disconnect(); } catch (e) {}
+          try { lowpass.disconnect(); } catch (e) {}
           try { analyser.disconnect(); } catch (e) {}
           try { gateGain.disconnect(); } catch (e) {}
         }
@@ -10711,11 +10920,13 @@
           videoConstraints.deviceId = { ideal: savedCamId };
         }
 
+        const useBrowserNs = localStorage.getItem('elt_pref_noise_suppression') !== 'false';
         const audioConstraints = {
           echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-          channelCount: 1
+          noiseSuppression: useBrowserNs,
+          autoGainControl: false,
+          channelCount: 1,
+          sampleRate: { ideal: 48000 }
         };
         if (savedMicId) {
           audioConstraints.deviceId = { ideal: savedMicId };
@@ -11110,6 +11321,16 @@
             } else {
               fmtpParams = fmtpParams.replace(/useinbandfec=\d+/g, 'useinbandfec=1');
             }
+            if (!fmtpParams.includes('sprop-maxcapturerate=')) {
+              fmtpParams = fmtpParams ? `${fmtpParams};sprop-maxcapturerate=48000` : 'sprop-maxcapturerate=48000';
+            } else {
+              fmtpParams = fmtpParams.replace(/sprop-maxcapturerate=\d+/g, 'sprop-maxcapturerate=48000');
+            }
+            if (!fmtpParams.includes('usedtx=')) {
+              fmtpParams = fmtpParams ? `${fmtpParams};usedtx=0` : 'usedtx=0';
+            } else {
+              fmtpParams = fmtpParams.replace(/usedtx=\d+/g, 'usedtx=0');
+            }
             outLines.push(`a=fmtp:${opusPt} ${fmtpParams}`);
             continue;
           }
@@ -11131,7 +11352,7 @@
       if (opusPt && !hasOpusFmtp) {
         const rtpIndex = outLines.findIndex(l => l.startsWith(`a=rtpmap:${opusPt} `));
         if (rtpIndex !== -1) {
-          outLines.splice(rtpIndex + 1, 0, `a=fmtp:${opusPt} maxaveragebitrate=48000;useinbandfec=1`);
+          outLines.splice(rtpIndex + 1, 0, `a=fmtp:${opusPt} maxaveragebitrate=48000;useinbandfec=1;sprop-maxcapturerate=48000;usedtx=0`);
         }
       }
 
@@ -14026,6 +14247,44 @@ window.setVideoStripMinimized = function(minimized) {
       <select id="popoverSpeakerSelect" class="w-full bg-[#26292e] border border-slate-600 rounded-lg px-2 py-1.5 text-slate-200 focus:outline-none focus:border-sky-500 text-[11px] cursor-pointer">
         <option value="">Cargando altavoces...</option>
       </select>
+    </div>
+
+    <!-- Controles avanzados de Audio (solo visibles en modo 'audio') -->
+    <div id="popoverAudioExtrasGroup" class="hidden space-y-2.5 pt-2 border-t border-slate-700/60">
+      <!-- Medidor de voz en vivo (VU Meter) -->
+      <div class="space-y-1">
+        <div class="flex items-center justify-between text-[11px] text-slate-400">
+          <span class="flex items-center gap-1.5"><i class="fa-solid fa-wave-square text-emerald-400"></i> Nivel de voz</span>
+          <span id="popoverVuMeterPct" class="text-[10px] font-mono text-slate-400">0%</span>
+        </div>
+        <div class="w-full h-2 bg-[#26292e] border border-slate-700/80 rounded-full overflow-hidden">
+          <div id="popoverVuMeterFill" class="h-full w-0 rounded-full bg-gradient-to-r from-emerald-400 via-amber-400 to-rose-500" style="transition: width 50ms linear;"></div>
+        </div>
+      </div>
+
+      <!-- Volumen / Ganancia de micrófono (80% - 200%) -->
+      <div class="space-y-1">
+        <div class="flex items-center justify-between text-[11px] text-slate-400">
+          <label for="popoverMicGainSlider" class="flex items-center gap-1.5 font-medium">
+            <i class="fa-solid fa-microphone-lines text-sky-400"></i> Volumen de micrófono
+          </label>
+          <span id="popoverMicGainValue" class="text-[11px] font-semibold text-sky-300 font-mono">100%</span>
+        </div>
+        <input id="popoverMicGainSlider" type="range" min="80" max="200" step="10" value="100" class="w-full accent-sky-500 cursor-pointer h-1.5 bg-slate-700 rounded-lg">
+      </div>
+
+      <!-- Supresión de ruido del navegador -->
+      <label for="popoverNoiseSuppressionToggle" class="flex items-center justify-between gap-2 text-[11px] text-slate-300 cursor-pointer select-none py-0.5">
+        <span class="flex items-center gap-1.5 font-medium">
+          <i class="fa-solid fa-wand-magic-sparkles text-amber-400"></i> Supresión de ruido del navegador
+        </span>
+        <input id="popoverNoiseSuppressionToggle" type="checkbox" checked class="accent-sky-500 w-3.5 h-3.5 cursor-pointer rounded">
+      </label>
+
+      <!-- Botón Probar altavoz -->
+      <button type="button" id="popoverTestSpeakerBtn" class="w-full flex items-center justify-center gap-1.5 bg-[#26292e] hover:bg-slate-700/90 border border-slate-600/80 text-slate-100 font-medium text-[11px] py-1.5 px-2.5 rounded-lg transition-colors cursor-pointer">
+        🔊 Probar altavoz
+      </button>
     </div>
 
     <!-- Cámara -->

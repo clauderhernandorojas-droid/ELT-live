@@ -148,7 +148,7 @@ function toggleFloatingParticipantsOverlay() {
   try {
     const workArea = screen.getPrimaryDisplay().workArea;
     const w = 260;
-    const h = 165;
+    const h = 138;
     floatingParticipantsWindow = new BrowserWindow({
       x: Math.round(workArea.x + workArea.width - w - 16),
       y: Math.round(workArea.y + 16),
@@ -173,15 +173,18 @@ function toggleFloatingParticipantsOverlay() {
     const participantsHtml = `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><style>
 *{box-sizing:border-box;margin:0;padding:0;font-family:system-ui,-apple-system,sans-serif;user-select:none;}
-html,body{width:100%;height:100%;background:transparent;overflow:hidden;}
-.shell{width:100%;height:100%;background:rgba(15,23,42,0.92);border:1.5px solid rgba(148,163,184,0.32);border-radius:14px;padding:7px 8px;color:#f1f5f9;display:flex;flex-direction:column;gap:6px;-webkit-app-region:drag;box-shadow:0 10px 26px rgba(0,0,0,0.5);}
-.hdr{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:0 2px;}
+html,body{width:100%;height:fit-content;background:transparent;overflow:hidden;}
+.shell{width:100%;height:fit-content;background:rgba(15,23,42,0.92);border:1.5px solid rgba(148,163,184,0.32);border-radius:14px;padding:6px 8px;color:#f1f5f9;display:flex;flex-direction:column;gap:6px;-webkit-app-region:drag;box-shadow:0 10px 26px rgba(0,0,0,0.5);}
+.shell.minimized{gap:0;padding:6px 8px;}
+.hdr{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:0 2px;min-height:20px;}
 .hdr-title{font-size:10px;font-weight:800;color:#94a3b8;letter-spacing:0.4px;text-transform:uppercase;display:flex;align-items:center;gap:5px;}
-.dot{width:7px;height:7px;border-radius:50%;background:#22c55e;box-shadow:0 0 6px #22c55e;}
-.close{-webkit-app-region:no-drag;border:none;background:transparent;color:#94a3b8;font-size:12px;cursor:pointer;padding:1px 4px;border-radius:6px;}
-.close:hover{background:rgba(255,255,255,0.1);color:#fff;}
-.grid{flex:1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;overflow-y:auto;align-content:start;}
+.dot{width:7px;height:7px;border-radius:50%;background:#22c55e;box-shadow:0 0 6px #22c55e;flex-shrink:0;}
+.hdr-actions{display:flex;align-items:center;gap:2px;-webkit-app-region:no-drag;}
+.hdr-btn{-webkit-app-region:no-drag;border:none;background:transparent;color:#94a3b8;font-size:12px;line-height:1;cursor:pointer;padding:2px 5px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;min-width:20px;min-height:20px;}
+.hdr-btn:hover{background:rgba(255,255,255,0.12);color:#fff;}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;overflow-y:auto;max-height:290px;align-content:start;}
 .grid.single{grid-template-columns:1fr;}
+.grid.hidden{display:none;}
 .tile{position:relative;border-radius:10px;overflow:hidden;background:#0f172a;border:1px solid rgba(255,255,255,0.12);aspect-ratio:16/10;display:flex;align-items:center;justify-content:center;}
 .tile img{width:100%;height:100%;object-fit:cover;display:block;}
 .avatar{width:34px;height:34px;border-radius:999px;background:linear-gradient(135deg,#0e72ed,#6366f1);color:#fff;font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,0.35);}
@@ -190,16 +193,47 @@ html,body{width:100%;height:100%;background:transparent;overflow:hidden;}
 .mic-on{color:#4ade80;flex-shrink:0;}
 .mic-off{color:#f87171;flex-shrink:0;}
 </style></head><body>
-<div class="shell">
+<div id="stripShell" class="shell">
   <div class="hdr">
-    <span class="hdr-title"><span class="dot"></span><span id="hdrCount">Participantes</span></span>
-    <button class="close" title="Ocultar miniaturas" onclick="window.electronAPI?.sendFloatingBarAction?.('toggle-participants')">✕</button>
+    <span class="hdr-title"><span class="dot"></span><span id="hdrCount">En vivo (1)</span></span>
+    <div class="hdr-actions">
+      <button id="btnMinimizeStrip" class="hdr-btn" title="Minimizar miniaturas">—</button>
+      <button class="hdr-btn" title="Ocultar miniaturas" onclick="window.electronAPI?.sendFloatingBarAction?.('toggle-participants')">✕</button>
+    </div>
   </div>
   <div id="tilesGrid" class="grid"></div>
 </div>
 <script>
+  const shell = document.getElementById('stripShell');
   const grid = document.getElementById('tilesGrid');
   const hdrCount = document.getElementById('hdrCount');
+  const btnMin = document.getElementById('btnMinimizeStrip');
+  let isMinimized = false;
+  let lastSentHeight = 0;
+
+  function syncWindowHeight() {
+    if (!shell) return;
+    const rect = shell.getBoundingClientRect();
+    const targetH = Math.max(34, Math.min(340, Math.ceil(rect.height)));
+    if (targetH !== lastSentHeight) {
+      lastSentHeight = targetH;
+      window.electronAPI?.sendFloatingBarAction?.({ type: 'resize-video-strip', height: targetH });
+    }
+  }
+
+  btnMin.addEventListener('click', () => {
+    isMinimized = !isMinimized;
+    shell.classList.toggle('minimized', isMinimized);
+    grid.classList.toggle('hidden', isMinimized);
+    btnMin.textContent = isMinimized ? '▢' : '—';
+    btnMin.title = isMinimized ? 'Restaurar miniaturas' : 'Minimizar miniaturas';
+    requestAnimationFrame(syncWindowHeight);
+  });
+
+  if (typeof ResizeObserver === 'function') {
+    new ResizeObserver(() => requestAnimationFrame(syncWindowHeight)).observe(shell);
+  }
+
   function initials(name) {
     const parts = String(name || 'U').trim().split(/\s+/).filter(Boolean);
     return ((parts[0] ? parts[0][0] : 'U') + (parts[1] ? parts[1][0] : '')).toUpperCase();
@@ -237,6 +271,7 @@ html,body{width:100%;height:100%;background:transparent;overflow:hidden;}
       tile.appendChild(badge);
       grid.appendChild(tile);
     }
+    requestAnimationFrame(syncWindowHeight);
   }
   renderParticipants({});
   window.electronAPI?.onFloatingShareStateUpdate?.(renderParticipants);
@@ -1557,6 +1592,20 @@ function setupIPCHandlers() {
   ipcMain.handle('floating-bar-action', (_event, action) => {
     if (action === 'toggle-participants') {
       toggleFloatingParticipantsOverlay();
+      return true;
+    }
+    if (action && typeof action === 'object' && action.type === 'resize-video-strip') {
+      if (floatingParticipantsWindow && !floatingParticipantsWindow.isDestroyed()) {
+        const targetH = Math.max(34, Math.min(360, Math.round(Number(action.height) || 138)));
+        const b = floatingParticipantsWindow.getBounds();
+        if (b.height !== targetH) {
+          try {
+            floatingParticipantsWindow.setResizable(true);
+            floatingParticipantsWindow.setBounds({ x: b.x, y: b.y, width: b.width, height: targetH });
+            floatingParticipantsWindow.setResizable(false);
+          } catch (e) {}
+        }
+      }
       return true;
     }
     if (action === 'restore-main') {

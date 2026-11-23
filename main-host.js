@@ -524,6 +524,7 @@ function toggleAnnotateOverlayWindow() {
       height: bounds.height,
       frame: false,
       transparent: true,
+      backgroundColor: '#00000001',
       alwaysOnTop: true,
       skipTaskbar: true,
       resizable: false,
@@ -1678,6 +1679,9 @@ function setupIPCHandlers() {
     return await desktopCapturer.getSources(options);
   });
 }
+
+// Evitar que Windows DWM blanquee elementos <video> (ej. YouTube) bajo ventanas transparentes interactivas
+app.commandLine.appendSwitch('disable-features', 'DirectCompositionVideoOverlays');
 
 // Ciclo de vida de la aplicación
 app.whenReady().then(() => {

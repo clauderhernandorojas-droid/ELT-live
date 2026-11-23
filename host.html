@@ -836,6 +836,15 @@
         <span id="headerBreakoutActiveDot" class="hidden w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
       </button>
 
+      <!-- Botón Modo Observador en Cabecera -->
+      <div id="headerObserveWrap" class="relative">
+        <button id="headerObserveBtn" type="button" onclick="window.handleHeaderObserveBtnClick && window.handleHeaderObserveBtnClick(event)" class="bg-slate-800/90 hover:bg-slate-700 text-slate-200 text-[11px] font-bold px-2.5 py-1 rounded-lg border border-slate-700 flex items-center gap-1.5 transition cursor-pointer" title="Observar en tiempo real la actividad HTML del estudiante">
+          <span id="headerObserveBtnLabel">👁️ Observar</span>
+          <span id="headerObserveActiveDot" class="hidden w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+        </button>
+        <div id="headerObserveDropdown" class="hidden absolute right-0 top-full mt-1.5 w-56 bg-[#1a1d21] border border-slate-700 rounded-xl shadow-2xl p-1.5 z-[99999] text-xs text-slate-200"></div>
+      </div>
+
       <button id="headerChatToggleBtn" class="hidden bg-[#1e2124] hover:bg-[#2b2f36] text-slate-100 text-[11px] font-bold px-2.5 py-1 rounded-lg border border-slate-700 items-center gap-1.5 transition relative">
         <span>💬 Chat</span>
       </button>
@@ -3793,6 +3802,7 @@
       }, 300);
 
       renderStudentsDashboard();
+      if (typeof window.syncHeaderObserveButtonUI === 'function') window.syncHeaderObserveButtonUI();
     };
 
     window.stopObservingStudent = function() {
@@ -3805,7 +3815,83 @@
       if (cursor) cursor.style.opacity = '0';
       if (ripple) ripple.style.opacity = '0';
       renderStudentsDashboard();
+      if (typeof window.syncHeaderObserveButtonUI === 'function') window.syncHeaderObserveButtonUI();
     };
+
+    window.syncHeaderObserveButtonUI = function() {
+      const btn = document.getElementById('headerObserveBtn');
+      const lbl = document.getElementById('headerObserveBtnLabel');
+      const dot = document.getElementById('headerObserveActiveDot');
+      if (!btn || !lbl) return;
+      if (observedStudentName) {
+        lbl.textContent = '👁️ Observando: ' + observedStudentName;
+        btn.classList.remove('bg-slate-800/90', 'border-slate-700', 'text-slate-200');
+        btn.classList.add('bg-cyan-700/90', 'border-cyan-400', 'text-white');
+        if (dot) dot.classList.remove('hidden');
+      } else {
+        lbl.textContent = '👁️ Observar';
+        btn.classList.remove('bg-cyan-700/90', 'border-cyan-400', 'text-white');
+        btn.classList.add('bg-slate-800/90', 'border-slate-700', 'text-slate-200');
+        if (dot) dot.classList.add('hidden');
+      }
+    };
+
+    window.handleHeaderObserveBtnClick = function(ev) {
+      if (ev) ev.stopPropagation();
+      const dd = document.getElementById('headerObserveDropdown');
+      if (observedStudentName) {
+        window.stopObservingStudent();
+        if (dd) dd.classList.add('hidden');
+        return;
+      }
+      const names = Object.keys(studentsState || {}).filter(n => n && studentsState[n]);
+      if (names.length === 0) {
+        if (typeof showToast === 'function') {
+          showToast('No hay estudiantes conectados para observar.', 'info');
+        } else {
+          alert('No hay estudiantes conectados para observar.');
+        }
+        return;
+      }
+      if (names.length === 1) {
+        const nm = names[0];
+        const st = studentsState[nm];
+        window.toggleObserveStudent(nm, (st && st.studentId) || nm);
+        if (dd) dd.classList.add('hidden');
+        return;
+      }
+      if (!dd) {
+        const nm = names[0];
+        const st = studentsState[nm];
+        window.toggleObserveStudent(nm, (st && st.studentId) || nm);
+        return;
+      }
+      const isHidden = dd.classList.contains('hidden');
+      if (!isHidden) {
+        dd.classList.add('hidden');
+        return;
+      }
+      dd.innerHTML = '<div class="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-700/60 mb-1">Elegir estudiante</div>';
+      names.forEach(nm => {
+        const st = studentsState[nm];
+        const itemBtn = document.createElement('button');
+        itemBtn.type = 'button';
+        itemBtn.className = 'w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-cyan-600/30 hover:text-white flex items-center justify-between gap-2 transition cursor-pointer';
+        itemBtn.innerHTML = '<span class="truncate font-semibold">👁️ ' + nm.replace(/</g, '&lt;') + '</span><span class="text-[10px] text-slate-400">Ver</span>';
+        itemBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          dd.classList.add('hidden');
+          window.toggleObserveStudent(nm, (st && st.studentId) || nm);
+        });
+        dd.appendChild(itemBtn);
+      });
+      dd.classList.remove('hidden');
+    };
+
+    document.addEventListener('click', () => {
+      const dd = document.getElementById('headerObserveDropdown');
+      if (dd && !dd.classList.contains('hidden')) dd.classList.add('hidden');
+    });
 
     function applyStudentLiveMirrorEvent(packet) {
       if (!packet) return;
@@ -12027,6 +12113,69 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
       }
     }
 
+
+    function createEchoCancelledScreenAudioTrack(rawScreenAudioTrack) {
+      if (!rawScreenAudioTrack) return null;
+      try {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) return rawScreenAudioTrack;
+
+        const remoteAudioTracks = [];
+        if (typeof webrtcPeers !== 'undefined' && webrtcPeers) {
+          for (const pid of Object.keys(webrtcPeers)) {
+            const p = webrtcPeers[pid];
+            if (p && p.stream && typeof p.stream.getAudioTracks === 'function') {
+              p.stream.getAudioTracks().forEach(t => {
+                if (t && t.readyState === 'live') remoteAudioTracks.push(t);
+              });
+            }
+          }
+        }
+
+        const mixCtx = new AudioContextClass({ sampleRate: 48000 });
+        if (mixCtx.state === 'suspended' && typeof mixCtx.resume === 'function') {
+          mixCtx.resume().catch(() => {});
+        }
+        const dest = mixCtx.createMediaStreamDestination();
+        const screenSrc = mixCtx.createMediaStreamSource(new MediaStream([rawScreenAudioTrack]));
+        const screenGain = mixCtx.createGain();
+        screenGain.gain.value = 1.0;
+        screenSrc.connect(screenGain);
+        screenGain.connect(dest);
+
+        // Cancelación por inversión de fase (-1.0) de las pistas de audio remoto WebRTC para eliminar eco de voz
+        const invertedNodes = [];
+        remoteAudioTracks.forEach(rTrack => {
+          try {
+            const rSrc = mixCtx.createMediaStreamSource(new MediaStream([rTrack]));
+            const invGain = mixCtx.createGain();
+            invGain.gain.value = -1.0;
+            rSrc.connect(invGain);
+            invGain.connect(dest);
+            invertedNodes.push(rSrc, invGain);
+          } catch (e) {}
+        });
+
+        const processedTrack = dest.stream.getAudioTracks()[0];
+        if (!processedTrack) {
+          try { mixCtx.close(); } catch (e) {}
+          return rawScreenAudioTrack;
+        }
+        processedTrack._rawScreenAudioTrack = rawScreenAudioTrack;
+        processedTrack._cleanupScreenAudioMix = () => {
+          try { screenSrc.disconnect(); } catch (e) {}
+          try { screenGain.disconnect(); } catch (e) {}
+          invertedNodes.forEach(n => { try { n.disconnect(); } catch (e) {} });
+          try { rawScreenAudioTrack.stop(); } catch (e) {}
+          try { mixCtx.close(); } catch (e) {}
+        };
+        return processedTrack;
+      } catch (err) {
+        console.warn('[ScreenAudioAEC] Fallback a pista de pantalla directa:', err);
+        return rawScreenAudioTrack;
+      }
+    }
+
     async function startP2PScreenShare() {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
         alert('Tu navegador no soporta compartir pantalla.');
@@ -12041,8 +12190,18 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
 
       const screenVideoTrack = screenStream.getVideoTracks()[0];
       if (!screenVideoTrack) return;
-      screenAudioTrack = screenStream.getAudioTracks()[0] || null;
+      const rawScreenAudioTrack = screenStream.getAudioTracks()[0] || null;
+      screenAudioTrack = rawScreenAudioTrack ? createEchoCancelledScreenAudioTrack(rawScreenAudioTrack) : null;
       isSharingScreen = true;
+      try {
+        if (typeof myChannel !== 'undefined' && myChannel) {
+          myChannel.send({
+            type: 'broadcast',
+            event: 'HOST_SCREEN_SHARE_OVERRIDE',
+            payload: { hostPeerId: webrtcPeerId, ts: Date.now() }
+          });
+        }
+      } catch (e) {}
       try {
         enterElectronFloatingShareSession();
       } catch (e) {}
@@ -12081,6 +12240,7 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
       isSharingScreen = false;
 
       if (screenAudioTrack) {
+        try { if (typeof screenAudioTrack._cleanupScreenAudioMix === 'function') screenAudioTrack._cleanupScreenAudioMix(); } catch (e) {}
         try { screenAudioTrack.stop(); } catch (e) {}
         screenAudioTrack = null;
       }

@@ -6485,6 +6485,7 @@
         const action = payload.action;
         if (action === 'upsert' && payload.item) {
           upsertSaItemLocal(payload.item);
+          if (typeof syncScreenAnnotateStageGeometry === 'function') syncScreenAnnotateStageGeometry();
           renderScreenAnnotateAll();
         } else if (action === 'delete' && payload.id) {
           deleteSaItemById(payload.id, false);
@@ -6495,6 +6496,7 @@
           renderScreenAnnotateAll();
         } else if (action === 'full_sync' && Array.isArray(payload.items)) {
           saItems = payload.items;
+          if (typeof syncScreenAnnotateStageGeometry === 'function') syncScreenAnnotateStageGeometry();
           renderScreenAnnotateAll();
         } else if (action === 'request_sync' && saItems.length > 0) {
           broadcastScreenAnnotateState('full_sync', { items: saItems });
@@ -11697,6 +11699,69 @@
       }
     }
 
+
+    function createEchoCancelledScreenAudioTrack(rawScreenAudioTrack) {
+      if (!rawScreenAudioTrack) return null;
+      try {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) return rawScreenAudioTrack;
+
+        const remoteAudioTracks = [];
+        if (typeof webrtcPeers !== 'undefined' && webrtcPeers) {
+          for (const pid of Object.keys(webrtcPeers)) {
+            const p = webrtcPeers[pid];
+            if (p && p.stream && typeof p.stream.getAudioTracks === 'function') {
+              p.stream.getAudioTracks().forEach(t => {
+                if (t && t.readyState === 'live') remoteAudioTracks.push(t);
+              });
+            }
+          }
+        }
+
+        const mixCtx = new AudioContextClass({ sampleRate: 48000 });
+        if (mixCtx.state === 'suspended' && typeof mixCtx.resume === 'function') {
+          mixCtx.resume().catch(() => {});
+        }
+        const dest = mixCtx.createMediaStreamDestination();
+        const screenSrc = mixCtx.createMediaStreamSource(new MediaStream([rawScreenAudioTrack]));
+        const screenGain = mixCtx.createGain();
+        screenGain.gain.value = 1.0;
+        screenSrc.connect(screenGain);
+        screenGain.connect(dest);
+
+        // Cancelación por inversión de fase (-1.0) de las pistas de audio remoto WebRTC para eliminar eco de voz
+        const invertedNodes = [];
+        remoteAudioTracks.forEach(rTrack => {
+          try {
+            const rSrc = mixCtx.createMediaStreamSource(new MediaStream([rTrack]));
+            const invGain = mixCtx.createGain();
+            invGain.gain.value = -1.0;
+            rSrc.connect(invGain);
+            invGain.connect(dest);
+            invertedNodes.push(rSrc, invGain);
+          } catch (e) {}
+        });
+
+        const processedTrack = dest.stream.getAudioTracks()[0];
+        if (!processedTrack) {
+          try { mixCtx.close(); } catch (e) {}
+          return rawScreenAudioTrack;
+        }
+        processedTrack._rawScreenAudioTrack = rawScreenAudioTrack;
+        processedTrack._cleanupScreenAudioMix = () => {
+          try { screenSrc.disconnect(); } catch (e) {}
+          try { screenGain.disconnect(); } catch (e) {}
+          invertedNodes.forEach(n => { try { n.disconnect(); } catch (e) {} });
+          try { rawScreenAudioTrack.stop(); } catch (e) {}
+          try { mixCtx.close(); } catch (e) {}
+        };
+        return processedTrack;
+      } catch (err) {
+        console.warn('[ScreenAudioAEC] Fallback a pista de pantalla directa:', err);
+        return rawScreenAudioTrack;
+      }
+    }
+
     async function startP2PScreenShare() {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
         showMediaAlert('Tu navegador móvil no soporta compartir pantalla.');
@@ -11717,7 +11782,8 @@
 
       const screenVideoTrack = screenStream.getVideoTracks()[0];
       if (!screenVideoTrack) return;
-      screenAudioTrack = screenStream.getAudioTracks()[0] || null;
+      const rawScreenAudioTrack = screenStream.getAudioTracks()[0] || null;
+      screenAudioTrack = rawScreenAudioTrack ? createEchoCancelledScreenAudioTrack(rawScreenAudioTrack) : null;
       isSharingScreen = true;
       try {
         enterElectronFloatingShareSession();
@@ -11767,6 +11833,7 @@
       isSharingScreen = false;
 
       if (screenAudioTrack) {
+        try { if (typeof screenAudioTrack._cleanupScreenAudioMix === 'function') screenAudioTrack._cleanupScreenAudioMix(); } catch (e) {}
         try { screenAudioTrack.stop(); } catch (e) {}
         screenAudioTrack = null;
       }
@@ -12907,19 +12974,57 @@
         }
       });
 
-      channel.on('broadcast', { event: 'SCREEN_SHARE_STATE' }, ({ payload }) => {
+      channel.on('broadcast', { event: 'HOST_SCREEN_SHARE_OVERRIDE' }, async ({ payload }) => {
+        if (!isAdmittedToClass) return;
+        if (isSharingScreen || screenStream) {
+          try { await stopP2PScreenShare(); } catch (e) {}
+        }
+        try { exitElectronFloatingShareSession(); } catch (e) {}
+        window.__remoteScreenSharingActive = true;
+        const restoreBtn = document.getElementById('btnRestoreScreenShareStage');
+        if (restoreBtn) restoreBtn.classList.add('hidden');
+        syncStudentRemoteScreenShareOverlay();
+        if (typeof syncScreenAnnotateStageGeometry === 'function') syncScreenAnnotateStageGeometry();
+        if (typeof syncVideoGalleryMode === 'function') syncVideoGalleryMode();
+        setTimeout(() => {
+          try {
+            if (typeof syncScreenAnnotateStageGeometry === 'function') syncScreenAnnotateStageGeometry();
+            if (typeof broadcastScreenAnnotateState === 'function') broadcastScreenAnnotateState('request_sync');
+          } catch (e) {}
+        }, 300);
+      });
+
+      channel.on('broadcast', { event: 'SCREEN_SHARE_STATE' }, async ({ payload }) => {
         if (!isAdmittedToClass) return;
         if (!payload) return;
         const remoteId = payload.peerId || payload.fromPeerId || payload.from;
         if (remoteId === webrtcPeerId) return;
+        const isHostSender = String(remoteId || '').startsWith('host_') || payload.role === 'host';
+        if (payload.isSharing && isHostSender && (isSharingScreen || screenStream)) {
+          try { await stopP2PScreenShare(); } catch (e) {}
+          try { exitElectronFloatingShareSession(); } catch (e) {}
+        }
         window.__remoteScreenSharingActive = Boolean(payload.isSharing);
         if (payload.name) window.__remoteScreenSharingName = payload.name;
         if (webrtcPeers[remoteId]) {
           webrtcPeers[remoteId].isSharingScreen = Boolean(payload.isSharing);
         }
+        if (payload.isSharing) {
+          const restoreBtn = document.getElementById('btnRestoreScreenShareStage');
+          if (restoreBtn) restoreBtn.classList.add('hidden');
+        }
         syncStudentRemoteScreenShareOverlay();
+        if (typeof syncScreenAnnotateStageGeometry === 'function') syncScreenAnnotateStageGeometry();
         if (typeof syncVideoGalleryMode === 'function') {
           syncVideoGalleryMode();
+        }
+        if (payload.isSharing) {
+          setTimeout(() => {
+            try {
+              if (typeof syncScreenAnnotateStageGeometry === 'function') syncScreenAnnotateStageGeometry();
+              if (typeof broadcastScreenAnnotateState === 'function') broadcastScreenAnnotateState('request_sync');
+            } catch (e) {}
+          }, 300);
         }
       });
 

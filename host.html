@@ -3295,28 +3295,94 @@
     function renderStudentsDashboard() {
       const container = document.getElementById('studentsGrid');
       const countBadge = document.getElementById('studentCount');
+      if (!container) return;
+
       const names = Object.keys(studentsState);
-      countBadge.textContent = names.length + " Alumnos";
+      if (countBadge) countBadge.textContent = names.length + " Alumnos";
 
       if (names.length === 0) {
         container.innerHTML = '<p class="text-xs text-slate-500 text-center py-8">Esperando que los alumnos ingresen con el PIN...</p>';
         return;
       }
 
-      container.innerHTML = names.map(name => {
+      // Quitar mensaje de espera si ya hay alumnos
+      const emptyMsg = container.querySelector('p.text-slate-500');
+      if (emptyMsg) emptyMsg.remove();
+
+      // Delegación de clic en contenedor padre (resuelve clics al primer toque y evita fugas)
+      if (!container.__clickDelegated) {
+        container.__clickDelegated = true;
+        container.addEventListener('click', (e) => {
+          const boostBtn = e.target.closest('[data-action="boost-audio"]');
+          if (boostBtn) {
+            e.stopPropagation();
+            const sName = boostBtn.getAttribute('data-student-name');
+            const sId = boostBtn.getAttribute('data-student-id');
+            if (typeof window.sendRemoteAudioOptimize === 'function') {
+              window.sendRemoteAudioOptimize(sName, sId);
+            }
+            return;
+          }
+          const obsBtn = e.target.closest('[data-action="observe"]');
+          if (obsBtn) {
+            e.stopPropagation();
+            const sName = obsBtn.getAttribute('data-student-name');
+            const sId = obsBtn.getAttribute('data-student-id');
+            if (sName && typeof window.toggleObserveStudent === 'function') {
+              window.toggleObserveStudent(sName, sId);
+            }
+            return;
+          }
+          const kickBtn = e.target.closest('[data-action="kick"]');
+          if (kickBtn) {
+            e.stopPropagation();
+            const sName = kickBtn.getAttribute('data-student-name');
+            if (sName && typeof window.kickStudent === 'function') {
+              window.kickStudent(sName);
+            }
+            return;
+          }
+          const card = e.target.closest('[data-student-card]');
+          if (card) {
+            const sName = card.getAttribute('data-student-name');
+            if (sName && typeof toggleStudentView === 'function') {
+              toggleStudentView(sName);
+            }
+          }
+        });
+      }
+
+      // Mantener orden estable por studentId para evitar saltos visuales
+      const sortedNames = names.slice().sort((a, b) => {
+        const idA = String(studentsState[a]?.studentId || a);
+        const idB = String(studentsState[b]?.studentId || b);
+        return idA.localeCompare(idB);
+      });
+
+      // Eliminar tarjetas de alumnos desconectados
+      const currentCards = container.querySelectorAll('[data-student-card]');
+      currentCards.forEach(c => {
+        const cName = c.getAttribute('data-student-name');
+        if (!studentsState[cName]) c.remove();
+      });
+
+      sortedNames.forEach((name, orderIndex) => {
         const st = studentsState[name];
+        if (!st) return;
+        const studentId = String(st.studentId || name);
+
         const isCurrentSlide = (st.slide === currentSlide);
-        const slideBadge = isCurrentSlide 
+        const slideBadgeHtml = isCurrentSlide 
           ? `<span class="bg-emerald-950 text-emerald-400 border border-emerald-800 text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">Diapositiva ${st.slide}</span>`
           : `<span class="bg-amber-950 text-amber-400 border border-amber-800 text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">Diapositiva ${st.slide || '?'}</span>`;
         
-        let activityStatus = `<p class="text-[10px] text-slate-400 mt-0.5 truncate">Estado: Conectado</p>`;
+        let activityStatusHtml = `<p class="text-[10px] text-slate-400 mt-0.5 truncate">Estado: Conectado</p>`;
         if (st.isReconnecting) {
-          activityStatus = `<p class="text-[10px] text-amber-400 font-bold mt-0.5 animate-pulse truncate">Reconectando (señal débil)...</p>`;
+          activityStatusHtml = `<p class="text-[10px] text-amber-400 font-bold mt-0.5 animate-pulse truncate">Reconectando (señal débil)...</p>`;
         } else if (st.lastActivityTime) {
            const secondsAgo = Math.floor((Date.now() - st.lastActivityTime) / 1000);
-           if (secondsAgo < 6) activityStatus = `<p class="text-[10px] text-indigo-400 mt-0.5 font-medium truncate">Actualizando ahora...</p>`;
-           else activityStatus = `<p class="text-[10px] text-slate-400 mt-0.5 truncate">Última acción hace ${secondsAgo}s</p>`;
+           if (secondsAgo < 6) activityStatusHtml = `<p class="text-[10px] text-indigo-400 mt-0.5 font-medium truncate">Actualizando ahora...</p>`;
+           else activityStatusHtml = `<p class="text-[10px] text-slate-400 mt-0.5 truncate">Última acción hace ${secondsAgo}s</p>`;
         }
 
         const isExpanded = expandedStudent === name;
@@ -3364,43 +3430,105 @@
           (observedStudentName && String(observedStudentName).trim().toLowerCase() === String(name).trim().toLowerCase()) ||
           (observedStudentId && st.studentId && observedStudentId === st.studentId)
         );
-        const safeNameAttr = String(name).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-        const safeIdAttr = String(st.studentId || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+
+        const safeNameAttr = String(name).replace(/"/g, '&quot;');
+        const safeIdAttr = String(studentId).replace(/"/g, '&quot;');
         const observeBtnClass = isObservingThis
           ? 'bg-cyan-500/20 text-cyan-300 border-cyan-400/80 ring-1 ring-cyan-400/50 shadow-xs'
           : 'bg-slate-800/90 hover:bg-cyan-950/70 text-slate-300 hover:text-cyan-300 border-slate-700';
 
-        return `
-          <div class="rounded-xl border ${isObservingThis ? 'border-cyan-500/70 bg-slate-800/90 ring-1 ring-cyan-500/30' : (isExpanded ? 'border-indigo-600/50 bg-slate-800' : 'border-slate-800 bg-slate-900')} p-3 shadow-sm transition-colors cursor-pointer hover:bg-slate-800" onclick="toggleStudentView('${safeNameAttr}')">
+        const cardBorderClass = isObservingThis
+          ? 'border-cyan-500/70 bg-slate-800/90 ring-1 ring-cyan-500/30'
+          : (isExpanded ? 'border-indigo-600/50 bg-slate-800' : 'border-slate-800 bg-slate-900');
+
+        let cardEl = container.querySelector(`[data-student-id="${CSS.escape(studentId)}"]`) ||
+                     container.querySelector(`[data-student-name="${CSS.escape(name)}"]`);
+
+        if (!cardEl) {
+          cardEl = document.createElement('div');
+          cardEl.setAttribute('data-student-card', '1');
+          cardEl.setAttribute('data-student-id', studentId);
+          cardEl.setAttribute('data-student-name', name);
+          cardEl.className = `rounded-xl border ${cardBorderClass} p-3 shadow-sm transition-colors cursor-pointer hover:bg-slate-800`;
+          cardEl.innerHTML = `
             <div class="flex items-start justify-between">
               <div class="w-full">
                 <div class="flex items-center justify-between mb-1 gap-1">
                   <div class="flex items-center gap-2 min-w-0">
-                    <p class="text-xs font-bold text-white truncate">${name}</p>
-                    <span class="w-2 h-2 rounded-full ${isObservingThis ? 'bg-cyan-400 animate-ping' : 'bg-emerald-500 animate-pulse'} flex-shrink-0"></span>
+                    <p class="text-xs font-bold text-white truncate" data-role="name">${name}</p>
+                    <span data-role="signal-dot" class="w-2 h-2 rounded-full ${isObservingThis ? 'bg-cyan-400 animate-ping' : 'bg-emerald-500 animate-pulse'} flex-shrink-0"></span>
                   </div>
                   <div class="flex items-center gap-1.5 flex-shrink-0">
-                    <button type="button" onclick="event.stopPropagation(); toggleObserveStudent('${safeNameAttr}', '${safeIdAttr}')" title="${isObservingThis ? 'Dejar de observar pantalla del alumno' : 'Observar pantalla del alumno en vivo'}" class="text-[10px] font-bold px-2 py-0.5 rounded-md border transition cursor-pointer flex items-center gap-1 ${observeBtnClass}">
-                      <span>👁️</span>
-                      <span>${isObservingThis ? 'Observando' : 'Observar'}</span>
+                    <button type="button" data-action="boost-audio" data-student-name="${safeNameAttr}" data-student-id="${safeIdAttr}" title="Optimizar / Realzar audio del alumno" class="text-[10px] font-bold px-1.5 py-0.5 rounded-md border border-slate-700 bg-slate-800/90 hover:bg-emerald-950/70 text-slate-300 hover:text-emerald-300 transition cursor-pointer flex items-center gap-0.5">
+                      <span>🎙️+</span>
                     </button>
-                    <button type="button" onclick="event.stopPropagation(); kickStudent('${safeNameAttr}')" title="Expulsar de la clase" class="text-slate-400 hover:text-rose-400 p-1 rounded hover:bg-rose-500/10 transition-colors">
+                    <button type="button" data-action="observe" data-student-name="${safeNameAttr}" data-student-id="${safeIdAttr}" title="${isObservingThis ? 'Dejar de observar pantalla del alumno' : 'Observar pantalla del alumno en vivo'}" class="text-[10px] font-bold px-2 py-0.5 rounded-md border transition cursor-pointer flex items-center gap-1 ${observeBtnClass}">
+                      <span>👁️</span>
+                      <span data-role="observe-text">${isObservingThis ? 'Observando' : 'Observar'}</span>
+                    </button>
+                    <button type="button" data-action="kick" data-student-name="${safeNameAttr}" title="Expulsar de la clase" class="text-slate-400 hover:text-rose-400 p-1 rounded hover:bg-rose-500/10 transition-colors">
                       <i class="fa-solid fa-user-xmark text-xs"></i>
                     </button>
-                    <span class="text-slate-500 text-[10px]">${toggleIcon}</span>
+                    <span data-role="toggle-icon" class="text-slate-500 text-[10px]">${toggleIcon}</span>
                   </div>
                 </div>
                 <div class="flex items-center justify-between">
-                   ${activityStatus}
-                   ${slideBadge}
+                   <div data-role="activity-status">${activityStatusHtml}</div>
+                   <div data-role="slide-badge">${slideBadgeHtml}</div>
                 </div>
-                ${scoreSummaryHTML}
+                <div data-role="score-summary">${scoreSummaryHTML}</div>
               </div>
             </div>
-            ${detailsHTML}
-          </div>
-        `;
-      }).join('');
+            <div data-role="details-wrapper" data-is-expanded="${isExpanded ? '1' : '0'}">${detailsHTML}</div>
+          `;
+          container.appendChild(cardEl);
+        } else {
+          // Actualización quirúrgica sobre el nodo existente (sin parpadeo ni pérdida de foco/clic)
+          cardEl.setAttribute('data-student-id', studentId);
+          cardEl.setAttribute('data-student-name', name);
+          cardEl.className = `rounded-xl border ${cardBorderClass} p-3 shadow-sm transition-colors cursor-pointer hover:bg-slate-800`;
+
+          const dot = cardEl.querySelector('[data-role="signal-dot"]');
+          if (dot) dot.className = `w-2 h-2 rounded-full ${isObservingThis ? 'bg-cyan-400 animate-ping' : 'bg-emerald-500 animate-pulse'} flex-shrink-0`;
+
+          const boostBtn = cardEl.querySelector('[data-action="boost-audio"]');
+          if (boostBtn) {
+            boostBtn.setAttribute('data-student-name', safeNameAttr);
+            boostBtn.setAttribute('data-student-id', safeIdAttr);
+          }
+
+          const obsBtn = cardEl.querySelector('[data-action="observe"]');
+          if (obsBtn) {
+            obsBtn.setAttribute('data-student-name', safeNameAttr);
+            obsBtn.setAttribute('data-student-id', safeIdAttr);
+            obsBtn.className = `text-[10px] font-bold px-2 py-0.5 rounded-md border transition cursor-pointer flex items-center gap-1 ${observeBtnClass}`;
+            obsBtn.title = isObservingThis ? 'Dejar de observar pantalla del alumno' : 'Observar pantalla del alumno en vivo';
+            const obsText = obsBtn.querySelector('[data-role="observe-text"]');
+            if (obsText) obsText.textContent = isObservingThis ? 'Observando' : 'Observar';
+          }
+
+          const icon = cardEl.querySelector('[data-role="toggle-icon"]');
+          if (icon && icon.textContent !== toggleIcon) icon.textContent = toggleIcon;
+
+          const actEl = cardEl.querySelector('[data-role="activity-status"]');
+          if (actEl && actEl.innerHTML !== activityStatusHtml) actEl.innerHTML = activityStatusHtml;
+
+          const slideEl = cardEl.querySelector('[data-role="slide-badge"]');
+          if (slideEl && slideEl.innerHTML !== slideBadgeHtml) slideEl.innerHTML = slideBadgeHtml;
+
+          const scoreEl = cardEl.querySelector('[data-role="score-summary"]');
+          if (scoreEl && scoreEl.innerHTML !== scoreSummaryHTML) scoreEl.innerHTML = scoreSummaryHTML;
+
+          const detailsWrap = cardEl.querySelector('[data-role="details-wrapper"]');
+          if (detailsWrap) {
+            const curExp = detailsWrap.getAttribute('data-is-expanded') === '1';
+            if (curExp !== isExpanded || isExpanded) {
+              detailsWrap.setAttribute('data-is-expanded', isExpanded ? '1' : '0');
+              detailsWrap.innerHTML = detailsHTML;
+            }
+          }
+        }
+      });
     }
 
     setInterval(renderStudentsDashboard, 1000);
@@ -3566,6 +3694,136 @@
       }
 
       return targetEl;
+    }
+
+    function isVisibleMirrorControl(el) {
+      if (!el || el.nodeType !== 1) return false;
+      const type = (el.type || (el.tagName || '').toLowerCase()).toLowerCase();
+      if (type === 'hidden' || type === 'submit' || type === 'button' || type === 'reset') return false;
+      return el.offsetParent !== null;
+    }
+
+    function buildMirrorFieldSignature(el, visibleControlsInDoc) {
+      try {
+        const container = el.closest('.question, .item, li, tr, p') || el.parentElement;
+        let contextText = '';
+        if (container) {
+          const clone = container.cloneNode(true);
+          clone.querySelectorAll('input, textarea, select, button, script, style').forEach(n => n.remove());
+          contextText = (clone.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase().slice(0, 50);
+        }
+        let localIdx = 0;
+        if (container) {
+          const siblings = Array.from(container.querySelectorAll('input, textarea, select')).filter(isVisibleMirrorControl);
+          const pos = siblings.indexOf(el);
+          localIdx = pos >= 0 ? pos : 0;
+        } else if (Array.isArray(visibleControlsInDoc)) {
+          localIdx = Math.max(0, visibleControlsInDoc.indexOf(el));
+        }
+        return contextText + '#' + localIdx;
+      } catch (e) {
+        return '';
+      }
+    }
+
+    function applyAllFieldsToHostMirror(docs, fields) {
+      if (!Array.isArray(fields) || fields.length === 0) return;
+      window.__isApplyingStudentMirror = true;
+      try {
+        const byDoc = {};
+        fields.forEach(f => {
+          const dIdx = f.docIdx || 0;
+          if (!byDoc[dIdx]) byDoc[dIdx] = [];
+          byDoc[dIdx].push(f);
+        });
+
+        docs.forEach((doc, docIdx) => {
+          if (!doc) return;
+          const docFields = byDoc[docIdx] || (docIdx === 0 ? byDoc[0] : null);
+          if (!docFields) return;
+
+          const visibleEls = Array.from(doc.querySelectorAll('input, textarea, select')).filter(isVisibleMirrorControl);
+          const bySig = new Map();
+          visibleEls.forEach(el => {
+            const sig = buildMirrorFieldSignature(el, visibleEls);
+            if (sig) {
+              if (!bySig.has(sig)) bySig.set(sig, []);
+              bySig.get(sig).push(el);
+            }
+          });
+          const usedEls = new Set();
+
+          docFields.forEach(item => {
+            let el = null;
+
+            // 1. Emparejar primero por id o name exacto
+            if (item.id) {
+              try {
+                const byId = doc.getElementById(item.id) || doc.querySelector('#' + CSS.escape(item.id));
+                if (byId && isVisibleMirrorControl(byId) && !usedEls.has(byId)) {
+                  el = byId;
+                }
+              } catch (e) {}
+            }
+            if (!el && item.name) {
+              try {
+                const byName = Array.from(doc.querySelectorAll(`[name="${CSS.escape(item.name)}"]`)).filter(isVisibleMirrorControl);
+                if (byName.length === 1 && !usedEls.has(byName[0])) {
+                  el = byName[0];
+                } else if (byName.length > 1) {
+                  const exactRadio = byName.find(c => !usedEls.has(c) && item.value !== undefined && c.value === item.value);
+                  el = exactRadio || byName.find(c => !usedEls.has(c)) || null;
+                }
+              } catch (e) {}
+            }
+
+            // 2. Emparejar segundo por huella estructural (oración + localIdx)
+            if (!el && item.sig && bySig.has(item.sig)) {
+              const candidates = bySig.get(item.sig);
+              el = candidates.find(c => !usedEls.has(c)) || candidates[0] || null;
+            }
+
+            // 3. Respaldo final por índice visible visIdx
+            if (!el) {
+              const vIdx = typeof item.visIdx === 'number' ? item.visIdx : item.idx;
+              if (typeof vIdx === 'number' && visibleEls[vIdx] && !usedEls.has(visibleEls[vIdx])) {
+                el = visibleEls[vIdx];
+              }
+            }
+
+            if (!el) return;
+            usedEls.add(el);
+
+            const tag = (el.tagName || '').toLowerCase();
+            const type = (el.type || item.type || tag).toLowerCase();
+            const isEditable = Boolean(item.isEditable || el.isContentEditable || el.getAttribute?.('contenteditable') === 'true');
+
+            if (type === 'checkbox' || type === 'radio') {
+              if (typeof item.checked === 'boolean') {
+                el.checked = item.checked;
+              }
+            } else if (tag === 'select') {
+              if (item.value !== undefined) el.value = item.value;
+              if (typeof item.selectedIndex === 'number' && item.selectedIndex >= 0) {
+                el.selectedIndex = item.selectedIndex;
+              }
+            } else if (isEditable) {
+              if (item.value !== undefined) el.textContent = item.value;
+            } else if (item.value !== undefined) {
+              el.value = item.value;
+            }
+
+            try {
+              el.dispatchEvent(new Event('input', { bubbles: true }));
+              el.dispatchEvent(new Event('change', { bubbles: true }));
+            } catch (e) {}
+          });
+        });
+      } catch (err) {
+        console.warn('[HostMirror] Error aplicando campos sincronizados:', err);
+      } finally {
+        setTimeout(() => { window.__isApplyingStudentMirror = false; }, 40);
+      }
     }
 
     function applySingleFieldToHostMirror(doc, item, shouldFlash = true) {
@@ -3759,6 +4017,27 @@
       }
     }
 
+
+    window.sendRemoteAudioOptimize = function(studentName, studentId) {
+      if (!roomChannel) return;
+      try {
+        roomChannel.send({
+          type: 'broadcast',
+          event: 'REMOTE_AUDIO_OPTIMIZE',
+          payload: {
+            targetStudentId: studentId,
+            targetStudentName: studentName,
+            ts: Date.now()
+          }
+        });
+        if (typeof showToast === 'function') {
+          showToast(`Optimización de audio enviada a ${studentName}`, 'success');
+        }
+      } catch (err) {
+        console.warn('[RemoteAudioOptimize] Error emitiendo optimización:', err);
+      }
+    };
+
     function requestObservedStudentSnapshot() {
       if (!roomChannel || (!observedStudentId && !observedStudentName)) return;
       roomChannel.send({
@@ -3925,6 +4204,11 @@
             if (cursor) cursor.style.opacity = '0';
           }, 4000);
         }
+      } else if (kind === 'fields_sync') {
+        const docs = typeof getAccessibleHostLessonDocs === 'function' ? getAccessibleHostLessonDocs() : [ctxInfo.targetDoc];
+        if (Array.isArray(data.fields)) {
+          applyAllFieldsToHostMirror(docs, data.fields);
+        }
       } else if (kind === 'field') {
         applySingleFieldToHostMirror(ctxInfo.targetDoc, data, true);
       } else if (kind === 'click') {
@@ -3986,10 +4270,7 @@
 
         const docs = typeof getAccessibleHostLessonDocs === 'function' ? getAccessibleHostLessonDocs() : [ctxInfo.targetDoc];
         if (Array.isArray(data.fields)) {
-          data.fields.forEach(f => {
-            const targetD = (f.isInnerViewer && docs.length > 1) ? docs[docs.length - 1] : (docs[f.docIdx] || ctxInfo.targetDoc);
-            applySingleFieldToHostMirror(targetD, f, true);
-          });
+          applyAllFieldsToHostMirror(docs, data.fields);
         }
         if (Array.isArray(data.buttons)) {
           window.__isApplyingStudentMirror = true;
@@ -10431,7 +10712,7 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
       }
 
       try {
-        const useBrowserNs = localStorage.getItem('elt_pref_noise_suppression') !== 'false';
+        const useBrowserNs = localStorage.getItem('elt_pref_noise_suppression') === 'true';
         const newStream = await navigator.mediaDevices.getUserMedia({
           audio: {
             deviceId: { ideal: deviceId },
@@ -10493,6 +10774,7 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
       const targetId = deviceId || localStorage.getItem('elt_pref_speaker_id') || '';
       if (targetId) {
         mediaEl.setSinkId(targetId).catch(err => {
+          if (err && err.name === 'AbortError') return;
           console.warn('[AudioOutput] Error al aplicar setSinkId:', err);
         });
       }
@@ -10504,7 +10786,9 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
       const elements = document.querySelectorAll('audio, video');
       elements.forEach(el => {
         if (el.id === 'webrtcLocalVideo') return;
-        el.setSinkId(targetId).catch(() => {});
+        el.setSinkId(targetId).catch(err => {
+          if (err && err.name === 'AbortError') return;
+        });
       });
     }
 
@@ -10661,14 +10945,14 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
     function syncPopoverMicGainUI() {
       const slider = document.getElementById('popoverMicGainSlider');
       const valEl = document.getElementById('popoverMicGainValue');
-      const saved = parseFloat(localStorage.getItem('elt_pref_mic_gain') || '1.0');
+      const saved = parseFloat(localStorage.getItem('elt_pref_mic_gain') || '1.3');
       const clamped = Number.isFinite(saved) ? Math.min(2.0, Math.max(0.8, saved)) : 1.0;
       const pct = Math.round(clamped * 100);
       if (slider) slider.value = String(pct);
       if (valEl) valEl.textContent = pct + '%';
       const nsToggle = document.getElementById('popoverNoiseSuppressionToggle');
       if (nsToggle) {
-        nsToggle.checked = localStorage.getItem('elt_pref_noise_suppression') !== 'false';
+        nsToggle.checked = localStorage.getItem('elt_pref_noise_suppression') === 'true';
       }
     }
 
@@ -10718,7 +11002,9 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
           try {
             await testAudioEl.setSinkId(targetSinkId);
           } catch (sinkErr) {
-            console.warn('[AudioTest] No se pudo aplicar setSinkId, usando salida por defecto:', sinkErr);
+            if (!sinkErr || sinkErr.name !== 'AbortError') {
+              console.warn('[AudioTest] No se pudo aplicar setSinkId, usando salida por defecto:', sinkErr);
+            }
           }
           await testAudioEl.play().catch(() => {});
         } else {
@@ -11253,7 +11539,7 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
 
       const nsToggle = document.getElementById('popoverNoiseSuppressionToggle');
       if (nsToggle) {
-        nsToggle.checked = localStorage.getItem('elt_pref_noise_suppression') !== 'false';
+        nsToggle.checked = localStorage.getItem('elt_pref_noise_suppression') === 'true';
         nsToggle.addEventListener('change', (e) => {
           const enabled = Boolean(e.target.checked);
           try { localStorage.setItem('elt_pref_noise_suppression', enabled ? 'true' : 'false'); } catch (err) {}
@@ -11312,27 +11598,44 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
           ctx.resume().catch(() => {});
         }
 
-        // 1. Pasa-banda vocal (100 Hz - 8,500 Hz, Q: 0.7): elimina zumbidos subsónicos y hiss eléctrico sin perder claridad
+        // 1. Pasa-banda vocal (100 Hz - 8,500 Hz, Q: 0.7) + Doble filtro Notch anti-zumbido eléctrico (60 Hz y 120 Hz, Q: 12)
         const highpass = ctx.createBiquadFilter();
         highpass.type = 'highpass';
         highpass.frequency.setValueAtTime(100, ctx.currentTime);
         highpass.Q.setValueAtTime(0.7, ctx.currentTime);
+
+        const notch60 = ctx.createBiquadFilter();
+        notch60.type = 'notch';
+        notch60.frequency.setValueAtTime(60, ctx.currentTime);
+        notch60.Q.setValueAtTime(12, ctx.currentTime);
+
+        const notch120 = ctx.createBiquadFilter();
+        notch120.type = 'notch';
+        notch120.frequency.setValueAtTime(120, ctx.currentTime);
+        notch120.Q.setValueAtTime(12, ctx.currentTime);
 
         const lowpass = ctx.createBiquadFilter();
         lowpass.type = 'lowpass';
         lowpass.frequency.setValueAtTime(8500, ctx.currentTime);
         lowpass.Q.setValueAtTime(0.7, ctx.currentTime);
 
-        // 2. Ganancia constante configurable (sin modulación dinámica de compuerta para eliminar el bombeo/hiss residual)
+        // 2. Ganancia con base inicial 1.3 (130%) y compresor/limitador suave de picos
         const clampMicGain = (v) => {
           const n = parseFloat(v);
-          return Number.isFinite(n) ? Math.min(2.0, Math.max(0.8, n)) : 1.0;
+          return Number.isFinite(n) ? Math.min(2.0, Math.max(0.8, n)) : 1.3;
         };
-        let micGain = clampMicGain(localStorage.getItem('elt_pref_mic_gain') || '1.0');
+        let micGain = clampMicGain(localStorage.getItem('elt_pref_mic_gain') || '1.3');
         let currentVoiceLevel = 0;
 
         const gateGain = ctx.createGain();
         gateGain.gain.value = micGain;
+
+        const compressor = ctx.createDynamicsCompressor();
+        compressor.threshold.setValueAtTime(-6, ctx.currentTime);
+        compressor.knee.setValueAtTime(12, ctx.currentTime);
+        compressor.ratio.setValueAtTime(4, ctx.currentTime);
+        compressor.attack.setValueAtTime(0.003, ctx.currentTime);
+        compressor.release.setValueAtTime(0.15, ctx.currentTime);
 
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 512;
@@ -11343,15 +11646,20 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
         const destinationNode = ctx.createMediaStreamDestination();
 
         sourceNode.connect(highpass);
-        highpass.connect(lowpass);
+        highpass.connect(notch60);
+        notch60.connect(notch120);
+        notch120.connect(lowpass);
         lowpass.connect(gateGain);
-        lowpass.connect(analyser);
-        gateGain.connect(destinationNode);
+        gateGain.connect(compressor);
+        compressor.connect(destinationNode);
+        gateGain.connect(analyser);
 
         const timeData = new Float32Array(analyser.fftSize);
         const voiceThreshold = 0.012;
         let holdUntil = 0;
         let isGateOpen = false;
+        let voiceActiveTimeMs = 0;
+        let autoCalibrated = false;
 
         window._eltSetMicGain = function(val) {
           micGain = clampMicGain(val);
@@ -11391,6 +11699,20 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
               isGateOpen = true;
               updateVoiceGateVisualIndicator(true);
             }
+
+            // Autocalibración automática durante los primeros 5 segundos de voz activa:
+            // Si el nivel promedio es bajo (rms < 0.025), incrementa progresivamente la ganancia hasta 1.75
+            if (!autoCalibrated && voiceActiveTimeMs < 5000) {
+              voiceActiveTimeMs += 20;
+              if (rms < 0.025 && micGain < 1.75) {
+                micGain = Math.min(1.75, Math.round((micGain + 0.015) * 1000) / 1000);
+                try { gateGain.gain.setTargetAtTime(micGain, ctx.currentTime, 0.05); } catch (e) {}
+                try { localStorage.setItem('elt_pref_mic_gain', micGain.toFixed(2)); } catch (e) {}
+                if (typeof syncPopoverMicGainUI === 'function') syncPopoverMicGainUI();
+              }
+            } else if (voiceActiveTimeMs >= 5000) {
+              autoCalibrated = true;
+            }
           } else if (now > holdUntil) {
             if (isGateOpen) {
               isGateOpen = false;
@@ -11412,9 +11734,12 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
           updateVoiceGateVisualIndicator(false);
           try { sourceNode.disconnect(); } catch (e) {}
           try { highpass.disconnect(); } catch (e) {}
+          try { notch60.disconnect(); } catch (e) {}
+          try { notch120.disconnect(); } catch (e) {}
           try { lowpass.disconnect(); } catch (e) {}
           try { analyser.disconnect(); } catch (e) {}
           try { gateGain.disconnect(); } catch (e) {}
+          try { compressor.disconnect(); } catch (e) {}
         }
 
         rawTrack.addEventListener('mute', () => {
@@ -11473,7 +11798,7 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
           videoConstraints.deviceId = { ideal: savedCamId };
         }
 
-        const useBrowserNs = localStorage.getItem('elt_pref_noise_suppression') !== 'false';
+        const useBrowserNs = localStorage.getItem('elt_pref_noise_suppression') === 'true';
         const audioConstraints = {
           echoCancellation: true,
           noiseSuppression: useBrowserNs,
@@ -16510,9 +16835,9 @@ btnMinimizeVideoStrip?.addEventListener('click', (e) => {
           <label for="popoverMicGainSlider" class="flex items-center gap-1.5 font-medium">
             <i class="fa-solid fa-microphone-lines text-sky-400"></i> Volumen de micrófono
           </label>
-          <span id="popoverMicGainValue" class="text-[11px] font-semibold text-sky-300 font-mono">100%</span>
+          <span id="popoverMicGainValue" class="text-[11px] font-semibold text-sky-300 font-mono">130%</span>
         </div>
-        <input id="popoverMicGainSlider" type="range" min="80" max="200" step="10" value="100" class="w-full accent-sky-500 cursor-pointer h-1.5 bg-slate-700 rounded-lg">
+        <input id="popoverMicGainSlider" type="range" min="80" max="200" step="10" value="130" class="w-full accent-sky-500 cursor-pointer h-1.5 bg-slate-700 rounded-lg">
       </div>
 
       <!-- Supresión de ruido del navegador -->
@@ -16520,7 +16845,7 @@ btnMinimizeVideoStrip?.addEventListener('click', (e) => {
         <span class="flex items-center gap-1.5 font-medium">
           <i class="fa-solid fa-wand-magic-sparkles text-amber-400"></i> Supresión de ruido del navegador
         </span>
-        <input id="popoverNoiseSuppressionToggle" type="checkbox" checked class="accent-sky-500 w-3.5 h-3.5 cursor-pointer rounded">
+        <input id="popoverNoiseSuppressionToggle" type="checkbox" class="accent-sky-500 w-3.5 h-3.5 cursor-pointer rounded">
       </label>
 
       <!-- Botón Probar altavoz -->

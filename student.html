@@ -4075,24 +4075,59 @@
         handleStudentTeacherLaserEvent(payload);
       });
 
-      myChannel.on('broadcast', { event: 'REMOTE_AUDIO_OPTIMIZE' }, ({ payload }) => {
+      myChannel.on('broadcast', { event: 'REMOTE_AUDIO_OPTIMIZE' }, async ({ payload }) => {
         if (!isAdmittedToClass || !payload) return;
         const matchId = payload.targetStudentId && (payload.targetStudentId === myStudentId || payload.targetStudentId === webrtcPeerId);
         const matchName = payload.targetStudentName && myName && String(payload.targetStudentName).trim().toLowerCase() === String(myName).trim().toLowerCase();
         if (matchId || matchName) {
           try {
-            if (typeof window._eltSetMicGain === 'function') {
-              window._eltSetMicGain(1.75);
+            const mode = payload.mode || 'boost_notch';
+            const activeMicId = document.getElementById('popoverMicSelect')?.value || localStorage.getItem('elt_pref_mic_id') || 'default';
+            let noticeMsg = '🎙️ Audio optimizado por el profesor.';
+
+            if (mode === 'raw_webrtc') {
+              try {
+                localStorage.setItem('elt_pref_raw_audio', 'true');
+                localStorage.setItem('elt_pref_noise_suppression', 'true');
+              } catch (e) {}
+              if (typeof changeActiveMicrophone === 'function') {
+                await changeActiveMicrophone(activeMicId);
+              }
+              noticeMsg = '🎙️ Audio: Modo Directo (WebRTC Puro / Bypass DSP) activado por el profesor.';
+            } else if (mode === 'standard') {
+              try {
+                localStorage.setItem('elt_pref_raw_audio', 'false');
+                localStorage.setItem('elt_pref_noise_suppression', 'false');
+                localStorage.setItem('elt_pref_mic_gain', '1.30');
+              } catch (e) {}
+              if (typeof changeActiveMicrophone === 'function') {
+                await changeActiveMicrophone(activeMicId);
+              }
+              if (typeof window._eltSetMicGain === 'function') window._eltSetMicGain(1.30);
+              noticeMsg = '🎙️ Audio: Modo Estándar restaurado por el profesor.';
+            } else {
+              // boost_notch
+              const wasRaw = localStorage.getItem('elt_pref_raw_audio') === 'true';
+              try {
+                localStorage.setItem('elt_pref_raw_audio', 'false');
+                localStorage.setItem('elt_pref_noise_suppression', 'false');
+                localStorage.setItem('elt_pref_mic_gain', '1.75');
+              } catch (e) {}
+              if (wasRaw && typeof changeActiveMicrophone === 'function') {
+                await changeActiveMicrophone(activeMicId);
+              }
+              if (typeof window._eltSetMicGain === 'function') window._eltSetMicGain(1.75);
+              noticeMsg = '🎙️ Audio: Refuerzo vocal + Filtros Notch 50/60Hz activado por el profesor.';
             }
-            try { localStorage.setItem('elt_pref_mic_gain', '1.75'); } catch (e) {}
+
             if (typeof syncPopoverMicGainUI === 'function') syncPopoverMicGainUI();
             if (typeof showMediaAlert === 'function') {
-              showMediaAlert('🎙️ Audio optimizado por el profesor (refuerzo vocal activado).');
+              showMediaAlert(noticeMsg);
             } else if (typeof showToast === 'function') {
-              showToast('🎙️ Audio optimizado por el profesor', 'info');
+              showToast(noticeMsg, 'info');
             }
           } catch (e) {
-            console.warn('[RemoteAudioOptimize] Error aplicando refuerzo de audio:', e);
+            console.warn('[RemoteAudioOptimize] Error aplicando modo de audio remoto:', e);
           }
         }
       });
@@ -9947,14 +9982,16 @@
       }
 
       try {
-        const useBrowserNs = localStorage.getItem('elt_pref_noise_suppression') === 'true';
+        const isRawWebRTCMode = localStorage.getItem('elt_pref_raw_audio') === 'true';
+        const useBrowserNs = isRawWebRTCMode ? true : (localStorage.getItem('elt_pref_noise_suppression') === 'true');
         const newStream = await navigator.mediaDevices.getUserMedia({
           audio: {
             deviceId: { ideal: deviceId },
             echoCancellation: true,
             noiseSuppression: useBrowserNs,
-            autoGainControl: false,
-            channelCount: 1,
+            autoGainControl: isRawWebRTCMode ? true : false,
+            voiceIsolation: false,
+            channelCount: { ideal: 1 },
             sampleRate: { ideal: 48000 }
           },
           video: false
@@ -10811,6 +10848,10 @@
 
     function createVoiceNoiseGateStream(rawStream) {
       if (!rawStream) return rawStream;
+      if (localStorage.getItem('elt_pref_raw_audio') === 'true') {
+        console.log('[ELT Live Audio DSP] Modo Audio Directo (Raw WebRTC / Bypass DSP) activo.');
+        return rawStream;
+      }
       try {
         const audioTracks = typeof rawStream.getAudioTracks === 'function' ? rawStream.getAudioTracks() : [];
         if (!audioTracks || audioTracks.length === 0) return rawStream;
@@ -10833,28 +10874,38 @@
           ctx.resume().catch(() => {});
         }
 
-        // 1. Pasa-banda vocal (100 Hz - 8,500 Hz, Q: 0.7) + Doble filtro Notch anti-zumbido eléctrico (60 Hz y 120 Hz, Q: 12)
+        // 1. Pasa-banda vocal (100 Hz - 8,500 Hz, Q: 0.7) + Cuádruple filtro Notch internacional (50/60/100/120 Hz, Q: 14)
         const highpass = ctx.createBiquadFilter();
         highpass.type = 'highpass';
         highpass.frequency.setValueAtTime(100, ctx.currentTime);
         highpass.Q.setValueAtTime(0.7, ctx.currentTime);
 
+        const notch50 = ctx.createBiquadFilter();
+        notch50.type = 'notch';
+        notch50.frequency.setValueAtTime(50, ctx.currentTime);
+        notch50.Q.setValueAtTime(14, ctx.currentTime);
+
         const notch60 = ctx.createBiquadFilter();
         notch60.type = 'notch';
         notch60.frequency.setValueAtTime(60, ctx.currentTime);
-        notch60.Q.setValueAtTime(12, ctx.currentTime);
+        notch60.Q.setValueAtTime(14, ctx.currentTime);
+
+        const notch100 = ctx.createBiquadFilter();
+        notch100.type = 'notch';
+        notch100.frequency.setValueAtTime(100, ctx.currentTime);
+        notch100.Q.setValueAtTime(14, ctx.currentTime);
 
         const notch120 = ctx.createBiquadFilter();
         notch120.type = 'notch';
         notch120.frequency.setValueAtTime(120, ctx.currentTime);
-        notch120.Q.setValueAtTime(12, ctx.currentTime);
+        notch120.Q.setValueAtTime(14, ctx.currentTime);
 
         const lowpass = ctx.createBiquadFilter();
         lowpass.type = 'lowpass';
         lowpass.frequency.setValueAtTime(8500, ctx.currentTime);
         lowpass.Q.setValueAtTime(0.7, ctx.currentTime);
 
-        // 2. Ganancia con base inicial 1.3 (130%) y compresor/limitador suave de picos
+        // 2. Ganancia con base inicial 1.3 (130%) y limitador ultra-suave (sin bombeo de ruido en silencios)
         const clampMicGain = (v) => {
           const n = parseFloat(v);
           return Number.isFinite(n) ? Math.min(2.0, Math.max(0.8, n)) : 1.3;
@@ -10866,9 +10917,9 @@
         gateGain.gain.value = micGain;
 
         const compressor = ctx.createDynamicsCompressor();
-        compressor.threshold.setValueAtTime(-6, ctx.currentTime);
+        compressor.threshold.setValueAtTime(-3, ctx.currentTime);
         compressor.knee.setValueAtTime(12, ctx.currentTime);
-        compressor.ratio.setValueAtTime(4, ctx.currentTime);
+        compressor.ratio.setValueAtTime(2.5, ctx.currentTime);
         compressor.attack.setValueAtTime(0.003, ctx.currentTime);
         compressor.release.setValueAtTime(0.15, ctx.currentTime);
 
@@ -10881,8 +10932,10 @@
         const destinationNode = ctx.createMediaStreamDestination();
 
         sourceNode.connect(highpass);
-        highpass.connect(notch60);
-        notch60.connect(notch120);
+        highpass.connect(notch50);
+        notch50.connect(notch60);
+        notch60.connect(notch100);
+        notch100.connect(notch120);
         notch120.connect(lowpass);
         lowpass.connect(gateGain);
         gateGain.connect(compressor);
@@ -10969,7 +11022,9 @@
           updateVoiceGateVisualIndicator(false);
           try { sourceNode.disconnect(); } catch (e) {}
           try { highpass.disconnect(); } catch (e) {}
+          try { notch50.disconnect(); } catch (e) {}
           try { notch60.disconnect(); } catch (e) {}
+          try { notch100.disconnect(); } catch (e) {}
           try { notch120.disconnect(); } catch (e) {}
           try { lowpass.disconnect(); } catch (e) {}
           try { analyser.disconnect(); } catch (e) {}
@@ -11046,12 +11101,14 @@
           videoConstraints.deviceId = { ideal: savedCamId };
         }
 
-        const useBrowserNs = localStorage.getItem('elt_pref_noise_suppression') === 'true';
+        const isRawWebRTCMode = localStorage.getItem('elt_pref_raw_audio') === 'true';
+        const useBrowserNs = isRawWebRTCMode ? true : (localStorage.getItem('elt_pref_noise_suppression') === 'true');
         const audioConstraints = {
           echoCancellation: true,
           noiseSuppression: useBrowserNs,
-          autoGainControl: false,
-          channelCount: 1,
+          autoGainControl: isRawWebRTCMode ? true : false,
+          voiceIsolation: false,
+          channelCount: { ideal: 1 },
           sampleRate: { ideal: 48000 }
         };
         if (savedMicId) {
@@ -11440,7 +11497,7 @@
             hasOpusFmtp = true;
             let fmtpParams = fmtpMatch[2] || '';
             if (!fmtpParams.includes('maxaveragebitrate=')) {
-              fmtpParams = fmtpParams ? `${fmtpParams};maxaveragebitrate=48000` : 'maxaveragebitrate=48000';
+              fmtpParams = fmtpParams ? `${fmtpParams};maxaveragebitrate=64000` : 'maxaveragebitrate=64000';
             }
             if (!fmtpParams.includes('useinbandfec=')) {
               fmtpParams = fmtpParams ? `${fmtpParams};useinbandfec=1` : 'useinbandfec=1';
@@ -11478,7 +11535,7 @@
       if (opusPt && !hasOpusFmtp) {
         const rtpIndex = outLines.findIndex(l => l.startsWith(`a=rtpmap:${opusPt} `));
         if (rtpIndex !== -1) {
-          outLines.splice(rtpIndex + 1, 0, `a=fmtp:${opusPt} maxaveragebitrate=48000;useinbandfec=1;sprop-maxcapturerate=48000;usedtx=0`);
+          outLines.splice(rtpIndex + 1, 0, `a=fmtp:${opusPt} maxaveragebitrate=64000;useinbandfec=1;sprop-maxcapturerate=48000;usedtx=0`);
         }
       }
 
@@ -11488,6 +11545,53 @@
         return { type: type || 'offer', sdp: cleanSdp };
       }
       return cleanSdp;
+    }
+
+
+    function enhanceOpusSdp(sdpOrDesc) {
+      if (!sdpOrDesc) return sdpOrDesc;
+      const isObj = typeof sdpOrDesc === 'object' && typeof sdpOrDesc.sdp === 'string';
+      const rawSdp = isObj ? sdpOrDesc.sdp : String(sdpOrDesc);
+      const lines = rawSdp.split(/\r?\n/);
+      let opusPt = null;
+      for (const line of lines) {
+        const m = line.match(/^a=rtpmap:(\d+)\s+opus\/48000/i);
+        if (m) { opusPt = m[1]; break; }
+      }
+      if (!opusPt) return sdpOrDesc;
+
+      let hasFmtp = false;
+      const desiredParams = [
+        ['maxaveragebitrate', '64000'],
+        ['useinbandfec', '1'],
+        ['usedtx', '0'],
+        ['cbr', '0'],
+        ['sprop-maxcapturerate', '48000']
+      ];
+      const fmtpRx = new RegExp('^a=fmtp:' + opusPt + '\\s*(.*)$', 'i');
+      const out = lines.map(line => {
+        const m = line.match(fmtpRx);
+        if (!m) return line;
+        hasFmtp = true;
+        let params = (m[1] || '').trim();
+        desiredParams.forEach(([k, v]) => {
+          const rx = new RegExp('(^|;\\s*)' + k + '=[^;\\s]*', 'i');
+          if (rx.test(params)) {
+            params = params.replace(rx, '$1' + k + '=' + v);
+          } else {
+            params = params ? (params + ';' + k + '=' + v) : (k + '=' + v);
+          }
+        });
+        return `a=fmtp:${opusPt} ${params}`;
+      });
+      if (!hasFmtp) {
+        const rtpIdx = out.findIndex(l => l.startsWith(`a=rtpmap:${opusPt} `));
+        if (rtpIdx !== -1) {
+          out.splice(rtpIdx + 1, 0, `a=fmtp:${opusPt} maxaveragebitrate=64000;useinbandfec=1;usedtx=0;cbr=0;sprop-maxcapturerate=48000`);
+        }
+      }
+      const finalSdp = out.join('\r\n');
+      return isObj ? { type: sdpOrDesc.type, sdp: finalSdp } : finalSdp;
     }
 
     async function createAndSendP2POffer(remotePeerId, remoteName, remoteRole, offerOptions) {
@@ -11507,7 +11611,7 @@
         const offer = await pc.createOffer(offerOptions || {});
         if (pc.signalingState !== 'stable') return;
         const sanitizedOffer = sanitizeWebRTCSdp(offer);
-        await pc.setLocalDescription(sanitizedOffer);
+        await pc.setLocalDescription(enhanceOpusSdp(sanitizedOffer));
         myChannel.send({
           type: 'broadcast',
           event: 'WEBRTC_OFFER',
@@ -12982,7 +13086,7 @@
 
           const answer = await pc.createAnswer();
           const sanitizedAnswer = sanitizeWebRTCSdp(answer);
-          await pc.setLocalDescription(sanitizedAnswer);
+          await pc.setLocalDescription(enhanceOpusSdp(sanitizedAnswer));
 
           channel.send({
             type: 'broadcast',

@@ -1545,8 +1545,63 @@
       });
     }
 
+    const ELT_CONTRAST_GUARD_CSS = `
+      :root, html, body { color-scheme: light only !important; color: #0f172a; }
+      button:not([class*="bg-indigo-6"]):not([class*="bg-indigo-7"]):not([class*="bg-blue-6"]):not([class*="bg-blue-7"]):not([class*="bg-emerald-6"]):not([class*="bg-green-6"]):not([class*="bg-rose-6"]):not([class*="bg-red-6"]):not([class*="bg-slate-8"]):not([class*="bg-slate-9"]):not([class*="bg-gray-8"]):not([class*="bg-gray-9"]):not([class*="bg-black"]):not(.selected):not(.active):not([aria-pressed="true"]),
+      [role="button"]:not([class*="bg-indigo-6"]):not([class*="bg-blue-6"]):not([class*="bg-emerald-6"]):not([class*="bg-slate-8"]):not([class*="bg-slate-9"]):not(.selected):not(.active):not([aria-pressed="true"]),
+      .option:not(.selected):not(.active):not([aria-pressed="true"]),
+      .option-btn:not(.selected):not(.active):not([aria-pressed="true"]),
+      .choice:not(.selected):not(.active):not([aria-pressed="true"]) {
+        color: #0f172a;
+      }
+    `;
+
+    function ensureLessonContrastGuard(doc) {
+      if (!doc) return;
+      try {
+        const head = doc.head || doc.getElementsByTagName('head')[0] || doc.documentElement;
+        if (head) {
+          if (!doc.querySelector('meta[name="color-scheme"]')) {
+            const meta = doc.createElement('meta');
+            meta.name = 'color-scheme';
+            meta.content = 'light only';
+            head.insertBefore(meta, head.firstChild);
+          }
+          if (!doc.getElementById('elt-contrast-guard')) {
+            const st = doc.createElement('style');
+            st.id = 'elt-contrast-guard';
+            st.textContent = ELT_CONTRAST_GUARD_CSS;
+            head.appendChild(st);
+          }
+        }
+        // Verificación de contraste computado: corregir botones con texto blanco sobre fondo claro
+        const win = doc.defaultView;
+        if (win && typeof win.getComputedStyle === 'function' && doc.body) {
+          const parseRgb = (str) => {
+            const m = String(str || '').match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/i);
+            if (!m) return null;
+            return { r: +m[1], g: +m[2], b: +m[3], a: m[4] !== undefined ? +m[4] : 1 };
+          };
+          const lum = (c) => (0.299 * c.r + 0.587 * c.g + 0.114 * c.b) / 255;
+          const btns = doc.querySelectorAll('button, [role="button"], .option, .option-btn, .choice');
+          for (let i = 0; i < btns.length; i++) {
+            const el = btns[i];
+            const cs = win.getComputedStyle(el);
+            const fg = parseRgb(cs.color);
+            const bg = parseRgb(cs.backgroundColor);
+            const isLightBg = !bg || bg.a < 0.25 || lum(bg) > 0.72;
+            const isLightFg = fg && lum(fg) > 0.78;
+            if (isLightBg && isLightFg) {
+              el.style.setProperty('color', '#0f172a', 'important');
+            }
+          }
+        }
+      } catch (e) {}
+    }
+
     function applyStudentCleanStyleToDoc(doc) {
       if (!doc || !doc.body) return;
+      ensureLessonContrastGuard(doc);
       try {
         const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, null, false);
         const toClean = [];
@@ -3112,10 +3167,11 @@
         <\/script>
       `;
 
-      if (prepared.includes('<head>')) {
-        prepared = prepared.replace('<head>', '<head>' + srcdocInterceptor);
+      const contrastHeadBlock = '<meta name="color-scheme" content="light only"><style id="elt-contrast-guard">' + ELT_CONTRAST_GUARD_CSS + '</style>';
+      if (/<head(\s[^>]*)?>/i.test(prepared)) {
+        prepared = prepared.replace(/<head(\s[^>]*)?>/i, (m) => m + contrastHeadBlock + srcdocInterceptor);
       } else {
-        prepared = srcdocInterceptor + prepared;
+        prepared = contrastHeadBlock + srcdocInterceptor + prepared;
       }
       return prepared;
     }
@@ -3144,27 +3200,25 @@
       studentFrame = document.createElement('iframe');
       studentFrame.id = 'studentFrame';
       studentFrame.className = 'w-full h-full flex-1 block border-0 bg-white';
-      studentFrame.addEventListener('load', () => {
+      const finalizeHydratedLessonInit = () => {
+        if (!studentFrame || studentFrame.__eltHydratedInitDone) return;
+        studentFrame.__eltHydratedInitDone = true;
         applyFullHeightFixToFrame(studentFrame);
-      });
-      studentFrameContainer.insertBefore(studentFrame, waitingCover);
-
-      const preparedHTML = prepareStudentHTMLContent(htmlContent);
-      const doc = studentFrame.contentWindow.document;
-      doc.open();
-      doc.write(preparedHTML);
-      doc.close();
-
-      setTimeout(() => {
-        applyFullHeightFixToFrame(studentFrame);
-        const innerDoc = studentFrame.contentDocument || studentFrame.contentWindow.document;
-        optimizeStudentLayout(innerDoc);
-        injectLiveAnalytics(innerDoc);
+        const innerDoc = studentFrame.contentDocument || (studentFrame.contentWindow && studentFrame.contentWindow.document);
+        if (innerDoc) {
+          optimizeStudentLayout(innerDoc);
+          injectLiveAnalytics(innerDoc);
+        }
         syncStudentToSlide(targetSlide || 1);
+
+        if (typeof sendStudentLiveMirrorSnapshot === 'function') {
+          try { sendStudentLiveMirrorSnapshot(); } catch (e) {}
+        }
 
         if (analyticsInterval) clearInterval(analyticsInterval);
         analyticsInterval = setInterval(() => {
-          injectLiveAnalytics(studentFrame.contentDocument || studentFrame.contentWindow.document);
+          const curDoc = studentFrame && (studentFrame.contentDocument || (studentFrame.contentWindow && studentFrame.contentWindow.document));
+          if (curDoc) injectLiveAnalytics(curDoc);
 
           // Guardián activo: si la diapositiva detectada difiere de la asignada por el profesor, forzar resincronización
           const detected = getStudentSlideNumber();
@@ -3175,8 +3229,23 @@
 
           scrapeStudentAnswersAndReport(false);
         }, 1000);
+      };
 
-      }, 350);
+      studentFrame.addEventListener('load', () => {
+        applyFullHeightFixToFrame(studentFrame);
+        // Esperar 150 ms tras onload para no interferir con scripts inline (DOMContentLoaded) que hidratan opciones dinámicas
+        setTimeout(finalizeHydratedLessonInit, 150);
+      });
+      studentFrameContainer.insertBefore(studentFrame, waitingCover);
+
+      const preparedHTML = prepareStudentHTMLContent(htmlContent);
+      const doc = studentFrame.contentWindow.document;
+      doc.open();
+      doc.write(preparedHTML);
+      doc.close();
+
+      // Respaldo de seguridad si doc.write no re-dispara load en algún navegador
+      setTimeout(finalizeHydratedLessonInit, 450);
     }
 
     let isAdmittedToClass = false;
@@ -4098,12 +4167,12 @@
               try {
                 localStorage.setItem('elt_pref_raw_audio', 'false');
                 localStorage.setItem('elt_pref_noise_suppression', 'false');
-                localStorage.setItem('elt_pref_mic_gain', '1.30');
+                localStorage.setItem('elt_pref_mic_gain', '1.05');
               } catch (e) {}
               if (typeof changeActiveMicrophone === 'function') {
                 await changeActiveMicrophone(activeMicId);
               }
-              if (typeof window._eltSetMicGain === 'function') window._eltSetMicGain(1.30);
+              if (typeof window._eltSetMicGain === 'function') window._eltSetMicGain(1.05);
               noticeMsg = '🎙️ Audio: Modo Estándar restaurado por el profesor.';
             } else {
               // boost_notch
@@ -10217,7 +10286,7 @@
     function syncPopoverMicGainUI() {
       const slider = document.getElementById('popoverMicGainSlider');
       const valEl = document.getElementById('popoverMicGainValue');
-      const saved = parseFloat(localStorage.getItem('elt_pref_mic_gain') || '1.3');
+      const saved = parseFloat(localStorage.getItem('elt_pref_mic_gain') || '1.05');
       const clamped = Number.isFinite(saved) ? Math.min(2.0, Math.max(0.8, saved)) : 1.0;
       const pct = Math.round(clamped * 100);
       if (slider) slider.value = String(pct);
@@ -10846,6 +10915,70 @@
       window._eltGetVoiceLevel = function() { return 0; };
     }
 
+
+    // Cargador ligero de RNNoise WASM / AudioWorklet vía CDN con respaldo automático sin interrupción
+    let _eltRnnoiseModulePromise = null;
+    async function loadEltRnnoiseWorklet(ctx) {
+      if (!ctx || !ctx.audioWorklet || typeof AudioWorkletNode !== 'function') return null;
+      if (window._eltRnnoiseFailed) return null;
+      if (ctx._eltRnnoiseLoaded) return window._eltRnnoiseWasmBinary || true;
+      if (_eltRnnoiseModulePromise) return _eltRnnoiseModulePromise;
+
+      _eltRnnoiseModulePromise = (async () => {
+        try {
+          const controller = typeof AbortController === 'function' ? new AbortController() : null;
+          const timer = controller ? setTimeout(() => controller.abort(), 3500) : null;
+          const fetchOpts = controller ? { signal: controller.signal, mode: 'cors' } : { mode: 'cors' };
+
+          // Intentar cargar @timephy/rnnoise-wasm (worklet + wasm) desde CDN
+          const baseUrls = [
+            'https://cdn.jsdelivr.net/npm/@timephy/rnnoise-wasm@1.1.0/dist',
+            'https://unpkg.com/@timephy/rnnoise-wasm@1.1.0/dist'
+          ];
+          let workletCode = null;
+          let wasmBinary = null;
+
+          for (const base of baseUrls) {
+            try {
+              const [jsRes, wasmRes] = await Promise.all([
+                fetch(base + '/rnnoise-processor.js', fetchOpts),
+                fetch(base + '/rnnoise.wasm', fetchOpts)
+              ]);
+              if (jsRes.ok && wasmRes.ok) {
+                workletCode = await jsRes.text();
+                wasmBinary = await wasmRes.arrayBuffer();
+                break;
+              }
+            } catch (e) {}
+          }
+          if (timer) clearTimeout(timer);
+
+          if (!workletCode || !wasmBinary) {
+            window._eltRnnoiseFailed = true;
+            return null;
+          }
+
+          const blob = new Blob([workletCode], { type: 'application/javascript' });
+          const blobUrl = URL.createObjectURL(blob);
+          try {
+            await ctx.audioWorklet.addModule(blobUrl);
+          } finally {
+            setTimeout(() => { try { URL.revokeObjectURL(blobUrl); } catch (e) {} }, 2000);
+          }
+          window._eltRnnoiseWasmBinary = wasmBinary;
+          ctx._eltRnnoiseLoaded = true;
+          return wasmBinary;
+        } catch (err) {
+          window._eltRnnoiseFailed = true;
+          console.info('[ELT Live Audio DSP] RNNoise CDN no disponible, usando Adaptive Room Gate local.');
+          return null;
+        } finally {
+          _eltRnnoiseModulePromise = null;
+        }
+      })();
+      return _eltRnnoiseModulePromise;
+    }
+
     function createVoiceNoiseGateStream(rawStream) {
       if (!rawStream) return rawStream;
       if (localStorage.getItem('elt_pref_raw_audio') === 'true') {
@@ -10905,16 +11038,25 @@
         lowpass.frequency.setValueAtTime(8500, ctx.currentTime);
         lowpass.Q.setValueAtTime(0.7, ctx.currentTime);
 
-        // 2. Ganancia con base inicial 1.3 (130%) y limitador ultra-suave (sin bombeo de ruido en silencios)
+        // 2. Ganancia base equilibrada (1.05) + RNNoise WASM opcional + Adaptive Room Gate vocal (250-3400 Hz)
         const clampMicGain = (v) => {
           const n = parseFloat(v);
-          return Number.isFinite(n) ? Math.min(2.0, Math.max(0.8, n)) : 1.3;
+          return Number.isFinite(n) ? Math.min(2.0, Math.max(0.8, n)) : 1.05;
         };
-        let micGain = clampMicGain(localStorage.getItem('elt_pref_mic_gain') || '1.3');
+        let micGain = clampMicGain(localStorage.getItem('elt_pref_mic_gain') || '1.05');
         let currentVoiceLevel = 0;
 
+        // Puente sin interrupciones para insertar RNNoise AudioWorklet cuando el WASM esté listo
+        const rnnoiseBridgeIn = ctx.createGain();
+        rnnoiseBridgeIn.gain.value = 1.0;
+        const rnnoiseBridgeOut = ctx.createGain();
+        rnnoiseBridgeOut.gain.value = 1.0;
+        let rnnoiseWorkletNode = null;
+        let isDisposed = false;
+
+        const gateFloorGain = 0.04;
         const gateGain = ctx.createGain();
-        gateGain.gain.value = micGain;
+        gateGain.gain.setValueAtTime(gateFloorGain, ctx.currentTime);
 
         const compressor = ctx.createDynamicsCompressor();
         compressor.threshold.setValueAtTime(-3, ctx.currentTime);
@@ -10925,7 +11067,7 @@
 
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 512;
-        analyser.smoothingTimeConstant = 0.2;
+        analyser.smoothingTimeConstant = 0.25;
 
         const audioOnlyStream = new MediaStream([rawTrack]);
         const sourceNode = ctx.createMediaStreamSource(audioOnlyStream);
@@ -10937,13 +11079,46 @@
         notch60.connect(notch100);
         notch100.connect(notch120);
         notch120.connect(lowpass);
-        lowpass.connect(gateGain);
+        lowpass.connect(rnnoiseBridgeIn);
+        rnnoiseBridgeIn.connect(rnnoiseBridgeOut);
+        // Analizador conectado ANTES de gateGain para evitar lazo de realimentación al cerrar la compuerta
+        rnnoiseBridgeOut.connect(analyser);
+        rnnoiseBridgeOut.connect(gateGain);
         gateGain.connect(compressor);
         compressor.connect(destinationNode);
-        gateGain.connect(analyser);
+
+        // Activar supresor neuronal RNNoise (48 kHz) de forma asíncrona con fallback silencioso
+        loadEltRnnoiseWorklet(ctx).then((wasmBin) => {
+          if (isDisposed || !wasmBin || rawTrack.readyState === 'ended') return;
+          try {
+            const node = new AudioWorkletNode(ctx, 'rnnoise-processor', {
+              numberOfInputs: 1,
+              numberOfOutputs: 1,
+              outputChannelCount: [1],
+              processorOptions: { wasmBinary: wasmBin.slice ? wasmBin.slice(0) : wasmBin }
+            });
+            rnnoiseWorkletNode = node;
+            rnnoiseBridgeIn.connect(node);
+            node.connect(rnnoiseBridgeOut);
+            try { rnnoiseBridgeIn.disconnect(rnnoiseBridgeOut); } catch (e) {}
+            console.log('[ELT Live Audio DSP] RNNoise WASM AudioWorklet activo a 48 kHz.');
+          } catch (e) {
+            // Fallback intacto: rnnoiseBridgeIn -> rnnoiseBridgeOut sigue conectado
+          }
+        }).catch(() => {});
 
         const timeData = new Float32Array(analyser.fftSize);
-        const voiceThreshold = 0.012;
+        const freqData = new Uint8Array(analyser.frequencyBinCount);
+        const binHz = (ctx.sampleRate || 48000) / analyser.fftSize;
+        const vocalBinStart = Math.max(1, Math.floor(250 / binHz));
+        const vocalBinEnd = Math.min(freqData.length - 1, Math.ceil(3400 / binHz));
+        const clickBinStart = Math.min(freqData.length - 1, Math.floor(4000 / binHz));
+        const clickBinEnd = Math.min(freqData.length - 1, Math.ceil(14000 / binHz));
+
+        // Adaptive Room Gate con histéresis (open vs close) y retención de 180 ms
+        const openThreshold = 0.014;
+        const closeThreshold = 0.008;
+        const holdTimeMs = 180;
         let holdUntil = 0;
         let isGateOpen = false;
         let voiceActiveTimeMs = 0;
@@ -10951,7 +11126,9 @@
 
         window._eltSetMicGain = function(val) {
           micGain = clampMicGain(val);
-          try { gateGain.gain.setTargetAtTime(micGain, ctx.currentTime, 0.02); } catch (e) {}
+          if (isGateOpen) {
+            try { gateGain.gain.setTargetAtTime(micGain, ctx.currentTime, 0.02); } catch (e) {}
+          }
         };
 
         window._eltGetVoiceLevel = function() {
@@ -10966,6 +11143,7 @@
             currentVoiceLevel = 0;
             if (isGateOpen) {
               isGateOpen = false;
+              try { gateGain.gain.setTargetAtTime(gateFloorGain, ctx.currentTime, 0.04); } catch (e) {}
               updateVoiceGateVisualIndicator(false);
             }
             return;
@@ -10979,21 +11157,37 @@
           }
           const rms = Math.sqrt(sumSquares / timeData.length);
           currentVoiceLevel = Math.min(1, Math.max(0, rms * 6.5));
+
+          // Medir proporción de energía en banda vocal (250 - 3,400 Hz) frente a transitorios/teclado (4 - 14 kHz)
+          analyser.getByteFrequencyData(freqData);
+          let vocalSum = 0;
+          for (let b = vocalBinStart; b <= vocalBinEnd; b++) vocalSum += freqData[b];
+          const vocalAvg = vocalSum / Math.max(1, (vocalBinEnd - vocalBinStart + 1));
+
+          let clickSum = 0;
+          for (let b = clickBinStart; b <= clickBinEnd; b++) clickSum += freqData[b];
+          const clickAvg = clickSum / Math.max(1, (clickBinEnd - clickBinStart + 1));
+
+          const vocalRatio = vocalAvg / (vocalAvg + clickAvg + 1);
           const now = performance.now();
 
-          if (rms >= voiceThreshold) {
-            holdUntil = now + 450;
+          const shouldOpen = (!isGateOpen && rms >= openThreshold && vocalRatio >= 0.42);
+          const shouldStayOpen = (isGateOpen && rms >= closeThreshold && vocalRatio >= 0.34);
+
+          if (shouldOpen || shouldStayOpen) {
+            holdUntil = now + holdTimeMs;
             if (!isGateOpen) {
               isGateOpen = true;
+              try { gateGain.gain.setTargetAtTime(micGain, ctx.currentTime, 0.008); } catch (e) {}
               updateVoiceGateVisualIndicator(true);
             }
 
-            // Autocalibración automática durante los primeros 5 segundos de voz activa:
-            // Si el nivel promedio es bajo (rms < 0.025), incrementa progresivamente la ganancia hasta 1.75
+            // Autocalibración conservadora durante los primeros 5 segundos de habla:
+            // Solo sube hasta 1.65 si el hablante está realmente bajo (rms < 0.018)
             if (!autoCalibrated && voiceActiveTimeMs < 5000) {
               voiceActiveTimeMs += 20;
-              if (rms < 0.025 && micGain < 1.75) {
-                micGain = Math.min(1.75, Math.round((micGain + 0.015) * 1000) / 1000);
+              if (rms < 0.018 && micGain < 1.65) {
+                micGain = Math.min(1.65, Math.round((micGain + 0.012) * 1000) / 1000);
                 try { gateGain.gain.setTargetAtTime(micGain, ctx.currentTime, 0.05); } catch (e) {}
                 try { localStorage.setItem('elt_pref_mic_gain', micGain.toFixed(2)); } catch (e) {}
                 if (typeof syncPopoverMicGainUI === 'function') syncPopoverMicGainUI();
@@ -11004,6 +11198,7 @@
           } else if (now > holdUntil) {
             if (isGateOpen) {
               isGateOpen = false;
+              try { gateGain.gain.setTargetAtTime(gateFloorGain, ctx.currentTime, 0.06); } catch (e) {}
               updateVoiceGateVisualIndicator(false);
             }
           }
@@ -11017,6 +11212,7 @@
         processedTrack.enabled = rawTrack.enabled;
 
         function cleanupGate() {
+          isDisposed = true;
           clearInterval(gateIntervalId);
           currentVoiceLevel = 0;
           updateVoiceGateVisualIndicator(false);
@@ -11027,6 +11223,9 @@
           try { notch100.disconnect(); } catch (e) {}
           try { notch120.disconnect(); } catch (e) {}
           try { lowpass.disconnect(); } catch (e) {}
+          try { rnnoiseBridgeIn.disconnect(); } catch (e) {}
+          try { if (rnnoiseWorkletNode) rnnoiseWorkletNode.disconnect(); } catch (e) {}
+          try { rnnoiseBridgeOut.disconnect(); } catch (e) {}
           try { analyser.disconnect(); } catch (e) {}
           try { gateGain.disconnect(); } catch (e) {}
           try { compressor.disconnect(); } catch (e) {}
@@ -14601,9 +14800,9 @@ window.setVideoStripMinimized = function(minimized) {
           <label for="popoverMicGainSlider" class="flex items-center gap-1.5 font-medium">
             <i class="fa-solid fa-microphone-lines text-sky-400"></i> Volumen de micrófono
           </label>
-          <span id="popoverMicGainValue" class="text-[11px] font-semibold text-sky-300 font-mono">130%</span>
+          <span id="popoverMicGainValue" class="text-[11px] font-semibold text-sky-300 font-mono">105%</span>
         </div>
-        <input id="popoverMicGainSlider" type="range" min="80" max="200" step="10" value="130" class="w-full accent-sky-500 cursor-pointer h-1.5 bg-slate-700 rounded-lg">
+        <input id="popoverMicGainSlider" type="range" min="80" max="200" step="5" value="105" class="w-full accent-sky-500 cursor-pointer h-1.5 bg-slate-700 rounded-lg">
       </div>
 
       <!-- Supresión de ruido del navegador -->

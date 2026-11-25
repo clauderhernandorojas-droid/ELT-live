@@ -9764,7 +9764,7 @@
         if (publication.kind === 'audio') {
           if (entry.micIconEl) entry.micIconEl.classList.remove('hidden');
           entry.audioEnabled = false;
-        } else if (publication.kind === 'video') {
+        } else if (publication.kind === 'video' && publication.source === LivekitClient.Track.Source.Camera) {
           if (entry.videoEl) entry.videoEl.classList.add('hidden');
           if (entry.placeholderEl) entry.placeholderEl.classList.remove('hidden');
           entry.videoEnabled = false;
@@ -9779,7 +9779,7 @@
         if (publication.kind === 'audio') {
           if (entry.micIconEl) entry.micIconEl.classList.add('hidden');
           entry.audioEnabled = true;
-        } else if (publication.kind === 'video') {
+        } else if (publication.kind === 'video' && publication.source === LivekitClient.Track.Source.Camera) {
           if (entry.videoEl) {
             entry.videoEl.classList.remove('hidden');
             entry.videoEl.play().catch(() => {});
@@ -9847,8 +9847,20 @@
         }
 
         const room = new LivekitClient.Room({
-          adaptiveStream: true,
-          dynacast: true
+          adaptiveStream: false,
+          dynacast: false,
+          audioCaptureDefaults: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            channelCount: 1,
+            sampleRate: 48000
+          },
+          publishDefaults: {
+            dtx: false,
+            red: true,
+            audioPreset: { maxBitrate: 64000 }
+          }
         });
 
         livekitRoom = room;
@@ -9929,7 +9941,13 @@
         const testDevices = await navigator.mediaDevices.enumerateDevices();
         const hasLabels = testDevices.some(d => (d.label && d.label.trim().length > 0));
         if (!hasLabels && navigator.mediaDevices.getUserMedia) {
-          const isMicLive = Boolean(p2pLocalStream && p2pLocalStream.getAudioTracks().some(t => t.readyState === 'live'));
+          const isLiveKitLive = Boolean(
+            typeof livekitRoom !== 'undefined' && livekitRoom &&
+            livekitRoom.localParticipant &&
+            livekitRoom.localParticipant.trackPublications &&
+            livekitRoom.localParticipant.trackPublications.size > 0
+          );
+          const isMicLive = Boolean((p2pLocalStream && p2pLocalStream.getAudioTracks().some(t => t.readyState === 'live')) || isLiveKitLive);
           if (!isMicLive) {
             try {
               const tempStream = await navigator.mediaDevices.getUserMedia({ audio: true });

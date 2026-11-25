@@ -1601,7 +1601,6 @@
 
     function applyStudentCleanStyleToDoc(doc) {
       if (!doc || !doc.body) return;
-      ensureLessonContrastGuard(doc);
       try {
         const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, null, false);
         const toClean = [];
@@ -3200,15 +3199,25 @@
       studentFrame = document.createElement('iframe');
       studentFrame.id = 'studentFrame';
       studentFrame.className = 'w-full h-full flex-1 block border-0 bg-white';
-      const finalizeHydratedLessonInit = () => {
-        if (!studentFrame || studentFrame.__eltHydratedInitDone) return;
-        studentFrame.__eltHydratedInitDone = true;
-        applyFullHeightFixToFrame(studentFrame);
+      studentFrameContainer.insertBefore(studentFrame, waitingCover);
+
+      const preparedHTML = prepareStudentHTMLContent(htmlContent);
+      const doc = studentFrame.contentWindow.document;
+      doc.open();
+      doc.write(preparedHTML);
+      doc.close();
+
+      const runLessonHydration = () => {
+        if (!studentFrame) return;
         const innerDoc = studentFrame.contentDocument || (studentFrame.contentWindow && studentFrame.contentWindow.document);
-        if (innerDoc) {
-          optimizeStudentLayout(innerDoc);
-          injectLiveAnalytics(innerDoc);
+        if (!innerDoc || !innerDoc.body || innerDoc.body.innerHTML.trim().length === 0) return;
+
+        applyFullHeightFixToFrame(studentFrame);
+        if (typeof ensureLessonContrastGuard === 'function') {
+          ensureLessonContrastGuard(innerDoc);
         }
+        optimizeStudentLayout(innerDoc);
+        injectLiveAnalytics(innerDoc);
         syncStudentToSlide(targetSlide || 1);
 
         if (typeof sendStudentLiveMirrorSnapshot === 'function') {
@@ -3231,21 +3240,14 @@
         }, 1000);
       };
 
+      // Registrar listener load DESPUÉS de doc.write para evitar disparo prematuro sobre about:blank
       studentFrame.addEventListener('load', () => {
         applyFullHeightFixToFrame(studentFrame);
-        // Esperar 150 ms tras onload para no interferir con scripts inline (DOMContentLoaded) que hidratan opciones dinámicas
-        setTimeout(finalizeHydratedLessonInit, 150);
+        setTimeout(runLessonHydration, 150);
       });
-      studentFrameContainer.insertBefore(studentFrame, waitingCover);
 
-      const preparedHTML = prepareStudentHTMLContent(htmlContent);
-      const doc = studentFrame.contentWindow.document;
-      doc.open();
-      doc.write(preparedHTML);
-      doc.close();
-
-      // Respaldo de seguridad si doc.write no re-dispara load en algún navegador
-      setTimeout(finalizeHydratedLessonInit, 450);
+      // Respaldo de seguridad por si doc.write ya completó de forma síncrona sin volver a emitir load
+      setTimeout(runLessonHydration, 350);
     }
 
     let isAdmittedToClass = false;
@@ -4154,39 +4156,29 @@
             const activeMicId = document.getElementById('popoverMicSelect')?.value || localStorage.getItem('elt_pref_mic_id') || 'default';
             let noticeMsg = '🎙️ Audio optimizado por el profesor.';
 
-            if (mode === 'raw_webrtc') {
+            if (mode === 'boost_notch') {
               try {
+                localStorage.setItem('elt_pref_dsp_mode', 'dsp');
+                localStorage.setItem('elt_pref_raw_audio', 'false');
+                localStorage.setItem('elt_pref_noise_suppression', 'false');
+                localStorage.setItem('elt_pref_mic_gain', '1.75');
+              } catch (e) {}
+              if (typeof changeActiveMicrophone === 'function') {
+                await changeActiveMicrophone(activeMicId);
+              }
+              if (typeof window._eltSetMicGain === 'function') window._eltSetMicGain(1.75);
+              noticeMsg = '🎙️ Audio: Refuerzo vocal (+175%) activado por el profesor.';
+            } else {
+              // raw_webrtc o standard -> modo directo limpio WebRTC + Opus 64 kbps
+              try {
+                localStorage.setItem('elt_pref_dsp_mode', 'raw');
                 localStorage.setItem('elt_pref_raw_audio', 'true');
                 localStorage.setItem('elt_pref_noise_suppression', 'true');
               } catch (e) {}
               if (typeof changeActiveMicrophone === 'function') {
                 await changeActiveMicrophone(activeMicId);
               }
-              noticeMsg = '🎙️ Audio: Modo Directo (WebRTC Puro / Bypass DSP) activado por el profesor.';
-            } else if (mode === 'standard') {
-              try {
-                localStorage.setItem('elt_pref_raw_audio', 'false');
-                localStorage.setItem('elt_pref_noise_suppression', 'false');
-                localStorage.setItem('elt_pref_mic_gain', '1.05');
-              } catch (e) {}
-              if (typeof changeActiveMicrophone === 'function') {
-                await changeActiveMicrophone(activeMicId);
-              }
-              if (typeof window._eltSetMicGain === 'function') window._eltSetMicGain(1.05);
-              noticeMsg = '🎙️ Audio: Modo Estándar restaurado por el profesor.';
-            } else {
-              // boost_notch
-              const wasRaw = localStorage.getItem('elt_pref_raw_audio') === 'true';
-              try {
-                localStorage.setItem('elt_pref_raw_audio', 'false');
-                localStorage.setItem('elt_pref_noise_suppression', 'false');
-                localStorage.setItem('elt_pref_mic_gain', '1.75');
-              } catch (e) {}
-              if (wasRaw && typeof changeActiveMicrophone === 'function') {
-                await changeActiveMicrophone(activeMicId);
-              }
-              if (typeof window._eltSetMicGain === 'function') window._eltSetMicGain(1.75);
-              noticeMsg = '🎙️ Audio: Refuerzo vocal + Filtros Notch 50/60Hz activado por el profesor.';
+              noticeMsg = '🎙️ Audio: Modo Directo limpio (WebRTC + Opus 64 kbps) activado por el profesor.';
             }
 
             if (typeof syncPopoverMicGainUI === 'function') syncPopoverMicGainUI();
@@ -10051,7 +10043,7 @@
       }
 
       try {
-        const isRawWebRTCMode = localStorage.getItem('elt_pref_raw_audio') === 'true';
+        const isRawWebRTCMode = localStorage.getItem('elt_pref_dsp_mode') !== 'dsp';
         const useBrowserNs = isRawWebRTCMode ? true : (localStorage.getItem('elt_pref_noise_suppression') === 'true');
         const newStream = await navigator.mediaDevices.getUserMedia({
           audio: {
@@ -10981,8 +10973,8 @@
 
     function createVoiceNoiseGateStream(rawStream) {
       if (!rawStream) return rawStream;
-      if (localStorage.getItem('elt_pref_raw_audio') === 'true') {
-        console.log('[ELT Live Audio DSP] Modo Audio Directo (Raw WebRTC / Bypass DSP) activo.');
+      if (localStorage.getItem('elt_pref_dsp_mode') !== 'dsp') {
+        console.log('[ELT Live Audio] Modo Audio Directo limpio (RAW WebRTC + Opus 64 kbps) activo por defecto.');
         return rawStream;
       }
       try {
@@ -11300,7 +11292,7 @@
           videoConstraints.deviceId = { ideal: savedCamId };
         }
 
-        const isRawWebRTCMode = localStorage.getItem('elt_pref_raw_audio') === 'true';
+        const isRawWebRTCMode = localStorage.getItem('elt_pref_dsp_mode') !== 'dsp';
         const useBrowserNs = isRawWebRTCMode ? true : (localStorage.getItem('elt_pref_noise_suppression') === 'true');
         const audioConstraints = {
           echoCancellation: true,
@@ -13796,9 +13788,14 @@
 
       // 3. Hay pantalla compartida en vivo (remota o local)
       const stageOverlay = document.getElementById('remoteScreenShareOverlay');
+      const anyPeerSharing = (typeof webrtcPeers !== 'undefined' && webrtcPeers)
+        ? Object.values(webrtcPeers).some(p => Boolean(p && p.isSharingScreen))
+        : false;
       const hasScreenShare = Boolean(
         (typeof isSharingScreen !== 'undefined' && isSharingScreen) ||
+        (typeof remoteScreenShareActive !== 'undefined' && remoteScreenShareActive) ||
         (typeof window.__remoteScreenSharingActive !== 'undefined' && window.__remoteScreenSharingActive) ||
+        anyPeerSharing ||
         (stageOverlay && !stageOverlay.classList.contains('hidden') && stageOverlay.style.display !== 'none')
       );
 
@@ -13806,14 +13803,19 @@
     }
 
     let __isSyncingGallery = false;
+    let __syncGalleryDebounceTimer = null;
     function syncVideoGalleryMode() {
-      if (__isSyncingGallery) return;
-      __isSyncingGallery = true;
-      try {
-        _syncVideoGalleryModeInternal();
-      } finally {
-        __isSyncingGallery = false;
-      }
+      if (__syncGalleryDebounceTimer) clearTimeout(__syncGalleryDebounceTimer);
+      __syncGalleryDebounceTimer = setTimeout(() => {
+        __syncGalleryDebounceTimer = null;
+        if (__isSyncingGallery) return;
+        __isSyncingGallery = true;
+        try {
+          _syncVideoGalleryModeInternal();
+        } finally {
+          __isSyncingGallery = false;
+        }
+      }, 120);
     }
 
     function _syncVideoGalleryModeInternal() {

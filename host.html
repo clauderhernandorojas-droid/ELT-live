@@ -4023,9 +4023,8 @@
       if (!roomChannel) return;
       const key = String(studentId || studentName || 'default');
       const modes = [
-        { id: 'boost_notch', label: 'Refuerzo vocal + Notch 50/60Hz', badge: '🎙️+', cls: 'border-emerald-500/70 bg-emerald-950/70 text-emerald-300' },
-        { id: 'raw_webrtc', label: 'Audio Directo (WebRTC Puro / Bypass DSP)', badge: '🎙️RAW', cls: 'border-amber-500/70 bg-amber-950/70 text-amber-300' },
-        { id: 'standard', label: 'Estándar', badge: '🎙️', cls: 'border-slate-700 bg-slate-800/90 text-slate-300' }
+        { id: 'boost_notch', label: 'Refuerzo vocal (+175%)', badge: '🎙️+175%', cls: 'border-emerald-500/70 bg-emerald-950/70 text-emerald-300' },
+        { id: 'raw_webrtc', label: 'Estándar limpio (RAW WebRTC + Opus 64k)', badge: '🎙️+', cls: 'border-slate-700 bg-slate-800/90 text-slate-300' }
       ];
       const nextIdx = ((window._studentAudioCycleState[key] ?? -1) + 1) % modes.length;
       window._studentAudioCycleState[key] = nextIdx;
@@ -10736,7 +10735,7 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
       }
 
       try {
-        const isRawWebRTCMode = localStorage.getItem('elt_pref_raw_audio') === 'true';
+        const isRawWebRTCMode = localStorage.getItem('elt_pref_dsp_mode') !== 'dsp';
         const useBrowserNs = isRawWebRTCMode ? true : (localStorage.getItem('elt_pref_noise_suppression') === 'true');
         const newStream = await navigator.mediaDevices.getUserMedia({
           audio: {
@@ -11666,8 +11665,8 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
 
     function createVoiceNoiseGateStream(rawStream) {
       if (!rawStream) return rawStream;
-      if (localStorage.getItem('elt_pref_raw_audio') === 'true') {
-        console.log('[ELT Live Audio DSP] Modo Audio Directo (Raw WebRTC / Bypass DSP) activo.');
+      if (localStorage.getItem('elt_pref_dsp_mode') !== 'dsp') {
+        console.log('[ELT Live Audio] Modo Audio Directo limpio (RAW WebRTC + Opus 64 kbps) activo por defecto.');
         return rawStream;
       }
       try {
@@ -11972,7 +11971,7 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
           videoConstraints.deviceId = { ideal: savedCamId };
         }
 
-        const isRawWebRTCMode = localStorage.getItem('elt_pref_raw_audio') === 'true';
+        const isRawWebRTCMode = localStorage.getItem('elt_pref_dsp_mode') !== 'dsp';
         const useBrowserNs = isRawWebRTCMode ? true : (localStorage.getItem('elt_pref_noise_suppression') === 'true');
         const audioConstraints = {
           echoCancellation: true,
@@ -12944,13 +12943,14 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
           }
         } else if (currentVideoMode === 'p2p') {
           if (nextState) {
+            webrtcVideoEnabled = true;
             if (!p2pLocalStream || (!p2pLocalStream.getVideoTracks().length || !p2pLocalStream.getVideoTracks().some(t => t.readyState === 'live'))) {
               await ensureP2PLocalStream(webrtcAudioEnabled, true);
             }
             if (p2pLocalStream) {
               p2pLocalStream.getVideoTracks().forEach(t => { t.enabled = true; });
             }
-            webrtcVideoEnabled = true;
+            handleP2PLocalVideoUI();
           } else {
             if (p2pLocalStream) {
               p2pLocalStream.getVideoTracks().forEach(t => { t.enabled = false; });

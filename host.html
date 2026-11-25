@@ -10132,12 +10132,9 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
     });
 
     // ==================== ARQUITECTURA DUAL DE VIDEO: WEBRTC NATIVO (P2P) / LIVEKIT SFU ====================
-    let rawStoredMode = localStorage.getItem('elt_host_video_mode');
-    if (rawStoredMode === 'daily') {
-      rawStoredMode = 'p2p';
-      try { localStorage.setItem('elt_host_video_mode', 'p2p'); } catch (e) {}
-    }
-    let currentVideoMode = (rawStoredMode === 'livekit') ? 'livekit' : 'p2p';
+    // Garantizar arranque siempre en modo gratuito P2P ($0.00 USD); LiveKit SFU solo por selección manual del profesor
+    try { localStorage.removeItem('elt_host_video_mode'); } catch (e) {}
+    let currentVideoMode = 'p2p';
     let hasAutoSwitchedToLiveKit = false;
 
     function setHostVideoMode(mode) {
@@ -10145,9 +10142,6 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
       if (currentVideoMode === 'p2p') {
         hasAutoSwitchedToLiveKit = false;
       }
-      try {
-        localStorage.setItem('elt_host_video_mode', currentVideoMode);
-      } catch (e) {}
       updateVideoModeUI();
       if (roomPin && roomChannel) {
         broadcastVideoModeConfig(currentVideoMode);
@@ -10468,7 +10462,7 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
           const muteEl = document.getElementById(`webrtc_mute_${pId}`);
           if (muteEl) muteEl.classList.remove('hidden');
           if (webrtcPeers[pId]) webrtcPeers[pId].audioEnabled = false;
-        } else if (publication.kind === 'video') {
+        } else if (publication.kind === 'video' && publication.source === LivekitClient.Track.Source.Camera) {
           const vidEl = document.getElementById(`webrtc_video_${pId}`);
           const phEl = document.getElementById(`webrtc_placeholder_${pId}`);
           if (vidEl) vidEl.classList.add('hidden');
@@ -10484,7 +10478,7 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
           const muteEl = document.getElementById(`webrtc_mute_${pId}`);
           if (muteEl) muteEl.classList.add('hidden');
           if (webrtcPeers[pId]) webrtcPeers[pId].audioEnabled = true;
-        } else if (publication.kind === 'video') {
+        } else if (publication.kind === 'video' && publication.source === LivekitClient.Track.Source.Camera) {
           const vidEl = document.getElementById(`webrtc_video_${pId}`);
           const phEl = document.getElementById(`webrtc_placeholder_${pId}`);
           if (vidEl) {
@@ -10552,8 +10546,20 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
         }
 
         const room = new LivekitClient.Room({
-          adaptiveStream: true,
-          dynacast: true
+          adaptiveStream: false,
+          dynacast: false,
+          audioCaptureDefaults: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            channelCount: 1,
+            sampleRate: 48000
+          },
+          publishDefaults: {
+            dtx: false,
+            red: true,
+            audioPreset: { maxBitrate: 64000 }
+          }
         });
 
         livekitRoom = room;
@@ -10621,7 +10627,13 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
         const testDevices = await navigator.mediaDevices.enumerateDevices();
         const hasLabels = testDevices.some(d => (d.label && d.label.trim().length > 0));
         if (!hasLabels && navigator.mediaDevices.getUserMedia) {
-          const isMicLive = Boolean(p2pLocalStream && p2pLocalStream.getAudioTracks().some(t => t.readyState === 'live'));
+          const isLiveKitLive = Boolean(
+            typeof livekitRoom !== 'undefined' && livekitRoom &&
+            livekitRoom.localParticipant &&
+            livekitRoom.localParticipant.trackPublications &&
+            livekitRoom.localParticipant.trackPublications.size > 0
+          );
+          const isMicLive = Boolean((p2pLocalStream && p2pLocalStream.getAudioTracks().some(t => t.readyState === 'live')) || isLiveKitLive);
           if (!isMicLive) {
             try {
               const tempStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -12362,30 +12374,38 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
           syncHostScreenShareStage();
           refreshAllP2PBitrateProfiles();
         } else if (state === 'failed' || pc.iceConnectionState === 'failed') {
-          // Disparo INMEDIATO al fallar la conexión (bloqueo por NAT móvil estricto 4G/5G)
+          // Reconexión P2P local sin cambiar el motor de la sala a LiveKit SFU
           if (peerObj?.disconnectTimer) {
             clearTimeout(peerObj.disconnectTimer);
             peerObj.disconnectTimer = null;
           }
           const failedStudentName = peerObj?.name || remoteName || 'un alumno';
-          console.warn(`[P2P] Falla inmediata de conexión ('failed') con ${failedStudentName} (${remotePeerId}).`);
-          if (currentVideoMode === 'p2p' && !hasAutoSwitchedToLiveKit) {
-            hasAutoSwitchedToLiveKit = true;
-            console.log(`[P2P -> LiveKit] Activando LiveKit SFU al instante debido a 'failed' en ${failedStudentName}.`);
-            setHostVideoMode('livekit');
-            if (typeof showHostSwitchToLiveKitToast === 'function') {
-              showHostSwitchToLiveKitToast(failedStudentName);
+          console.warn(`[P2P] Falla de conexión ('failed') con ${failedStudentName} (${remotePeerId}). Reintentando ICE en P2P...`);
+          const attempts = peerObj?.iceRestartAttempts || 0;
+          if (currentVideoMode === 'p2p' && attempts < 2) {
+            if (peerObj) peerObj.iceRestartAttempts = attempts + 1;
+            if (typeof pc.restartIce === 'function') {
+              try { pc.restartIce(); } catch (e) {}
+            }
+            if (typeof createAndSendP2POffer === 'function') {
+              createAndSendP2POffer(remotePeerId, peerObj?.name || remoteName, { iceRestart: true }).catch(() => {});
             }
           }
-          removeRemotePeerCard(remotePeerId, webrtcPeers[remotePeerId]?.name);
-          syncHostScreenShareStage();
-          refreshAllP2PBitrateProfiles();
+          if (currentVideoMode === 'p2p' && (!peerObj || !peerObj._warnedUnstableP2P)) {
+            if (peerObj) peerObj._warnedUnstableP2P = true;
+            const msg = `Conexión directa inestable con ${failedStudentName}; si persiste, puedes activar LiveKit SFU manualmente.`;
+            if (typeof showToast === 'function') {
+              showToast(msg, 'warning');
+            } else {
+              console.warn('[P2P Notice]', msg);
+            }
+          }
         } else if (state === 'disconnected') {
-          // Auto-recuperación con pc.restartIce() (máximo 1 intento por incidente)
+          // Auto-recuperación P2P con pc.restartIce() (sin auto-switch a LiveKit SFU)
           const attempts = peerObj?.iceRestartAttempts || 0;
-          if (attempts < 1) {
+          if (attempts < 2) {
             if (peerObj) peerObj.iceRestartAttempts = attempts + 1;
-            console.log(`[P2P] Disparando pc.restartIce() (intento 1/1) para ${peerObj?.name || remotePeerId} (${state})...`);
+            console.log(`[P2P] Disparando pc.restartIce() (intento ${attempts + 1}/2) para ${peerObj?.name || remotePeerId} (${state})...`);
             if (typeof pc.restartIce === 'function') {
               try { pc.restartIce(); } catch (e) {}
             }
@@ -12394,24 +12414,36 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
             }
           }
 
-          // Ventana de gracia de 4.5 segundos antes de cambiar automáticamente a LiveKit SFU y limpiar la tarjeta
+          // Ventana de gracia de 4.5 segundos: reintentar oferta P2P y avisar discretamente sin cambiar de motor
           if (!peerObj?.disconnectTimer) {
             peerObj.disconnectTimer = setTimeout(() => {
+              if (peerObj) peerObj.disconnectTimer = null;
               if (webrtcPeers[remotePeerId] && webrtcPeers[remotePeerId].pc === pc) {
                 if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
                   const failedStudentName = peerObj?.name || remoteName || 'un alumno';
-                  console.warn(`[P2P] Conexión con ${failedStudentName} (${remotePeerId}) no se recuperó tras 4.5s (bloqueo móvil 4G/5G).`);
-                  if (currentVideoMode === 'p2p' && !hasAutoSwitchedToLiveKit) {
-                    hasAutoSwitchedToLiveKit = true;
-                    console.log(`[P2P -> LiveKit] Activando LiveKit SFU automáticamente debido a bloqueo de red móvil en ${failedStudentName}.`);
-                    setHostVideoMode('livekit');
-                    if (typeof showHostSwitchToLiveKitToast === 'function') {
-                      showHostSwitchToLiveKitToast(failedStudentName);
+                  console.warn(`[P2P] Conexión directa inestable con ${failedStudentName} (${remotePeerId}) tras 4.5s.`);
+                  if (currentVideoMode === 'p2p' && pc.connectionState !== 'closed') {
+                    if (typeof pc.restartIce === 'function') {
+                      try { pc.restartIce(); } catch (e) {}
+                    }
+                    if (typeof createAndSendP2POffer === 'function') {
+                      createAndSendP2POffer(remotePeerId, peerObj?.name || remoteName, { iceRestart: true }).catch(() => {});
                     }
                   }
-                  removeRemotePeerCard(remotePeerId, webrtcPeers[remotePeerId]?.name);
-                  syncHostScreenShareStage();
-                  refreshAllP2PBitrateProfiles();
+                  if (currentVideoMode === 'p2p' && (!peerObj || !peerObj._warnedUnstableP2P)) {
+                    if (peerObj) peerObj._warnedUnstableP2P = true;
+                    const msg = `Conexión directa inestable con ${failedStudentName}; si persiste, puedes activar LiveKit SFU manualmente.`;
+                    if (typeof showToast === 'function') {
+                      showToast(msg, 'warning');
+                    } else {
+                      console.warn('[P2P Notice]', msg);
+                    }
+                  }
+                  if (pc.connectionState === 'closed') {
+                    removeRemotePeerCard(remotePeerId, webrtcPeers[remotePeerId]?.name);
+                    syncHostScreenShareStage();
+                    refreshAllP2PBitrateProfiles();
+                  }
                 }
               }
             }, 4500);
@@ -12933,11 +12965,13 @@ const titleLabel = document.getElementById('liveSessionTitleLabel');
       try {
         const nextState = !webrtcVideoEnabled;
         if (currentVideoMode === 'livekit' && livekitRoom) {
+          webrtcVideoEnabled = nextState;
           try {
             await livekitRoom.localParticipant.setCameraEnabled(nextState);
             handleLocalCameraTrack();
-            webrtcVideoEnabled = nextState;
           } catch (err) {
+            webrtcVideoEnabled = !nextState;
+            handleLocalCameraTrack();
             console.warn('[LiveKit] Error alternando cámara:', err);
             throw err;
           }

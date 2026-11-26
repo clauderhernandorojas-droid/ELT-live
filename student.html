@@ -320,6 +320,11 @@
       user-select: none;
       -webkit-user-select: none;
     }
+    /* Desplazamiento vertical táctil fluido en el área de la lección */
+    #studentFrameContainer,
+    #studentFrame {
+      touch-action: pan-y;
+    }
 
     /* Modo horizontal móvil (landscape con poca altura, ej. Samsung A52 con max-height <= 450px) */
     @media (max-height: 450px) and (orientation: landscape), (max-height: 450px) {
@@ -1493,14 +1498,30 @@
           if (targetParent) targetParent.appendChild(style);
         }
         if (style) {
-          style.textContent = `
-            html, body {
-              height: 100% !important;
-              min-height: 100% !important;
-              margin: 0 !important;
-              padding: 0 !important;
-            }
-          `;
+          const isDeckShellWithViewer = Boolean(doc.querySelector('iframe#viewer, iframe[srcdoc]'));
+          style.textContent = isDeckShellWithViewer
+            ? `
+              html, body {
+                height: 100% !important;
+                min-height: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                overflow: hidden !important;
+                touch-action: pan-y !important;
+              }
+            `
+            : `
+              html, body {
+                height: auto !important;
+                min-height: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                overflow-y: auto !important;
+                overflow-x: hidden !important;
+                -webkit-overflow-scrolling: touch !important;
+                touch-action: pan-y !important;
+              }
+            `;
         }
       } catch (e) {}
     }
@@ -1639,14 +1660,56 @@
           style.id = 'elt-student-clean-style';
           (doc.head || doc.body).appendChild(style);
         }
+        const isDeckShellWithViewer = Boolean(doc.querySelector('iframe#viewer, iframe[srcdoc]'));
+        const rootLayoutRules = isDeckShellWithViewer
+          ? `
+            html, body {
+              margin: 0 !important;
+              padding: 0 !important;
+              height: 100% !important;
+              min-height: 100% !important;
+              overflow: hidden !important;
+              touch-action: pan-y !important;
+            }
+            main, .main-container, #slide-container, #app, #app > div, .slide, .slide-content, .swiper-slide {
+              padding: 0 !important;
+              margin: 0 !important;
+              height: 100% !important;
+              min-height: 100% !important;
+              max-height: 100vh !important;
+              max-width: 100vw !important;
+              box-sizing: border-box !important;
+            }
+          `
+          : `
+            html, body {
+              margin: 0 !important;
+              padding: 0 !important;
+              height: auto !important;
+              min-height: 100% !important;
+              overflow-y: auto !important;
+              overflow-x: hidden !important;
+              -webkit-overflow-scrolling: touch !important;
+              touch-action: pan-y !important;
+            }
+            main, .main-container, #slide-container, #app, #app > div, .slide, .slide-content, .swiper-slide {
+              height: auto !important;
+              min-height: 100% !important;
+              max-height: none !important;
+              max-width: 100vw !important;
+              overflow-y: visible !important;
+              box-sizing: border-box !important;
+              touch-action: pan-y !important;
+            }
+            @media (max-width: 768px) {
+              body {
+                padding-bottom: 72px !important;
+              }
+            }
+          `;
+
         style.textContent = `
-          html, body {
-            margin: 0 !important;
-            padding: 0 !important;
-            height: 100% !important;
-            min-height: 100% !important;
-            overflow-x: hidden !important;
-          }
+          ${rootLayoutRules}
           header, footer, nav, [role="navigation"], .deck-footer, .lesson-footer {
             display: none !important;
             height: 0px !important;
@@ -1660,21 +1723,6 @@
             border: none !important;
             pointer-events: none !important;
           }
-          main, .main-container, #slide-container, #app, #app > div, .slide, .slide-content, .swiper-slide {
-            padding: 0 !important;
-            padding-bottom: 0 !important;
-            margin: 0 !important;
-            margin-bottom: 0 !important;
-            height: 100% !important;
-            min-height: 100% !important;
-            max-height: 100vh !important;
-            max-width: 100vw !important;
-            box-sizing: border-box !important;
-          }
-          /* Quitar padding-bottom residual reservado para el footer oculto en Tailwind u otros */
-          .pb-12, .pb-14, .pb-16, .pb-20, .pb-24, .pb-28, .pb-32, [class*="pb-"] {
-            padding-bottom: 0 !important;
-          }
           iframe, iframe#viewer {
             height: 100% !important;
             min-height: 100% !important;
@@ -1685,6 +1733,7 @@
             margin: 0 !important;
             padding: 0 !important;
             box-sizing: border-box !important;
+            touch-action: pan-y !important;
           }
           /* Bloqueo total de controles de navegación de diapositivas del deck para alumnos */
           #nextBtn, #prevBtn, #btnNext, #btnPrev, .next-btn, .prev-btn,

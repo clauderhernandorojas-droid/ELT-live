@@ -3113,6 +3113,30 @@
       innerDoc.addEventListener('mouseleave', () => handleTeacherLaserLeave());
     }
 
+
+    function stripStrayLiteralNewlinesFromHtml(html) {
+      if (!html || typeof html !== 'string') return html || '';
+      try {
+        // Preservar intactos bloques <script> y <style>; limpiar solo literal "\n" suelto en nodos de texto HTML
+        const parts = html.split(/(<script\b[^>]*>[\s\S]*?<\/script>|<style\b[^>]*>[\s\S]*?<\/style>)/gi);
+        for (let i = 0; i < parts.length; i++) {
+          if (i % 2 === 1) continue; // dentro de <script> o <style>
+          let seg = parts[i];
+          if (seg.includes('\\n')) {
+            // Limpiar "\n" literal ubicado en texto entre etiquetas (> ... <) o al inicio del documento
+            seg = seg.replace(/(^|>)([^<]+)/g, (m, prefix, text) => {
+              if (!text.includes('\\n')) return m;
+              return prefix + text.replace(/\\n/g, '');
+            });
+            parts[i] = seg;
+          }
+        }
+        return parts.join('');
+      } catch (e) {
+        return html;
+      }
+    }
+
     function injectIntoHost(html) {
       if (hostFrame) hostFrame.remove();
       hostFrame = document.createElement('iframe');
@@ -3120,7 +3144,8 @@
       hostFrame.className = 'w-full h-full border-0 bg-white';
       hostFrameContainer.insertBefore(hostFrame, emptyNotice);
 
-      const safeHtml = (html || '').replace(/(<iframe\b[^>]*?)\s+sandbox\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '$1');
+      const cleanedHtml = stripStrayLiteralNewlinesFromHtml(html || '');
+      const safeHtml = cleanedHtml.replace(/(<iframe\b[^>]*?)\s+sandbox\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '$1');
 
       const doc = hostFrame.contentWindow.document;
       doc.open();
@@ -3223,13 +3248,55 @@
       }
     }
 
-    function broadcastDeckToStudents() {
+    let _deckBroadcastSeq = 0;
+    async function broadcastDeckToStudents() {
       if (!roomChannel || !rawLessonHTML) return;
-      roomChannel.send({
-        type: 'broadcast',
-        event: 'LOAD_LESSON',
-        payload: { lessonId: lessonId, html: rawLessonHTML, targetSlide: currentSlide, teacherGuidedMode: isTeacherGuidedMode }
-      });
+      const CHUNK_SIZE = 36000;
+      const htmlToSend = rawLessonHTML;
+      const targetLessonId = lessonId;
+      const targetSlideNow = currentSlide;
+      const guidedNow = isTeacherGuidedMode;
+
+      if (htmlToSend.length <= CHUNK_SIZE) {
+        try {
+          await roomChannel.send({
+            type: 'broadcast',
+            event: 'LOAD_LESSON',
+            payload: { lessonId: targetLessonId, html: htmlToSend, targetSlide: targetSlideNow, teacherGuidedMode: guidedNow }
+          });
+        } catch (e) {}
+        return;
+      }
+
+      const mySeq = ++_deckBroadcastSeq;
+      const total = Math.ceil(htmlToSend.length / CHUNK_SIZE);
+      const transferId = 'deck_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+      console.log(`[ELT Live] Enviando lección fragmentada (${htmlToSend.length} chars en ${total} bloques de ${CHUNK_SIZE})...`);
+
+      for (let index = 0; index < total; index++) {
+        if (!roomChannel || mySeq !== _deckBroadcastSeq) return;
+        const chunk = htmlToSend.slice(index * CHUNK_SIZE, (index + 1) * CHUNK_SIZE);
+        try {
+          await roomChannel.send({
+            type: 'broadcast',
+            event: 'LOAD_LESSON_CHUNK',
+            payload: {
+              transferId,
+              lessonId: targetLessonId,
+              index,
+              total,
+              chunk,
+              targetSlide: targetSlideNow,
+              teacherGuidedMode: guidedNow
+            }
+          });
+        } catch (e) {
+          console.warn('[ELT Live] Error enviando fragmento ' + index + '/' + total + ':', e);
+        }
+        if (index < total - 1) {
+          await new Promise(r => setTimeout(r, 15));
+        }
+      }
     }
 
     let slideSyncHeartbeatInterval = null;

@@ -2083,14 +2083,39 @@
       }, 100);
     }
 
+
+    function stripStrayLiteralNewlinesFromHtml(html) {
+      if (!html || typeof html !== 'string') return html || '';
+      try {
+        // Preservar intactos bloques <script> y <style>; limpiar solo literal "\n" suelto en nodos de texto HTML
+        const parts = html.split(/(<script\b[^>]*>[\s\S]*?<\/script>|<style\b[^>]*>[\s\S]*?<\/style>)/gi);
+        for (let i = 0; i < parts.length; i++) {
+          if (i % 2 === 1) continue; // dentro de <script> o <style>
+          let seg = parts[i];
+          if (seg.includes('\\n')) {
+            // Limpiar "\n" literal ubicado en texto entre etiquetas (> ... <) o al inicio del documento
+            seg = seg.replace(/(^|>)([^<]+)/g, (m, prefix, text) => {
+              if (!text.includes('\\n')) return m;
+              return prefix + text.replace(/\\n/g, '');
+            });
+            parts[i] = seg;
+          }
+        }
+        return parts.join('');
+      } catch (e) {
+        return html;
+      }
+    }
+
     // Transforma el srcdoc de cualquier sub-iframe para inyectar el puente de analíticas
     window.__eltTransformSrcdoc = function(rawSlideHtml) {
       if (!rawSlideHtml || typeof rawSlideHtml !== 'string') return rawSlideHtml;
+      const cleaned = stripStrayLiteralNewlinesFromHtml(rawSlideHtml);
       const bridgeTag = `<script>(${innerSlideBridgeFn.toString()})();<\/script>`;
-      if (rawSlideHtml.includes('</body>')) {
-        return rawSlideHtml.replace('</body>', `${bridgeTag}</body>`);
+      if (cleaned.includes('</body>')) {
+        return cleaned.replace('</body>', `${bridgeTag}</body>`);
       }
-      return rawSlideHtml + bridgeTag;
+      return cleaned + bridgeTag;
     };
 
     // Escuchar reportes provenientes del sub-iframe de la diapositiva
@@ -3139,8 +3164,8 @@
 
     function prepareStudentHTMLContent(rawHtml) {
       if (!rawHtml) return '';
-      // Eliminar atributo sandbox de los iframes internos para permitir acceso al DOM y ejecución limpia
-      let prepared = rawHtml.replace(/\ssandbox\s*=\s*(?:"[^"]*"|'[^']*')/gi, '');
+      // Eliminar literal "\n" suelto y atributo sandbox de los iframes internos
+      let prepared = stripStrayLiteralNewlinesFromHtml(rawHtml).replace(/\ssandbox\s*=\s*(?:"[^"]*"|'[^']*')/gi, '');
 
       // Interceptor de srcdoc para inyectar automáticamente el puente en cada diapositiva cargada
       const srcdocInterceptor = `
@@ -3192,14 +3217,35 @@
       hasLoadedLesson = true;
       window.hasLoadedLesson = true;
       latestPostMessageAnswers = [];
-      waitingCover.classList.add('hidden');
-      if (typeof syncVideoGalleryMode === 'function') syncVideoGalleryMode();
+
+      // Forzar visibilidad SÍNCRONA antes de doc.open()/doc.write() para evitar inicialización en 0x0
+      if (waitingCover) {
+        waitingCover.classList.add('hidden');
+        waitingCover.style.setProperty('display', 'none', 'important');
+      }
+      if (studentFrameContainer) {
+        studentFrameContainer.classList.remove('hidden');
+        studentFrameContainer.style.removeProperty('display');
+        studentFrameContainer.style.display = 'flex';
+      }
+      const _stripSync = document.getElementById('webrtcVideoStrip');
+      if (_stripSync) {
+        _stripSync.classList.remove('gallery-mode', 'gallery-count-1', 'gallery-count-2', 'gallery-count-3', 'gallery-count-4', 'gallery-count-many');
+      }
+      const _wsColSync = document.getElementById('leftWorkspaceColumn');
+      if (_wsColSync) {
+        _wsColSync.classList.remove('bg-[#0a0c10]');
+        _wsColSync.classList.add('bg-white');
+        _wsColSync.style.removeProperty('background-color');
+      }
 
       if (studentFrame) studentFrame.remove();
       studentFrame = document.createElement('iframe');
       studentFrame.id = 'studentFrame';
       studentFrame.className = 'w-full h-full flex-1 block border-0 bg-white';
+      studentFrame.style.display = 'block';
       studentFrameContainer.insertBefore(studentFrame, waitingCover);
+      if (typeof syncVideoGalleryMode === 'function') syncVideoGalleryMode();
 
       const preparedHTML = prepareStudentHTMLContent(htmlContent);
       const doc = studentFrame.contentWindow.document;
@@ -4117,10 +4163,54 @@
       }
 
       myChannel.on('broadcast', { event: 'LOAD_LESSON' }, ({ payload }) => {
-        if (!isAdmittedToClass) return;
+        if (!isAdmittedToClass || !payload) return;
         loadLessonIntoStudent(payload.lessonId, payload.html, payload.targetSlide);
         if (typeof payload?.teacherGuidedMode === 'boolean') {
           applyTeacherGuidedModeUI(payload.teacherGuidedMode);
+        }
+      });
+
+      const incomingLessonChunks = new Map();
+      myChannel.on('broadcast', { event: 'LOAD_LESSON_CHUNK' }, ({ payload }) => {
+        if (!isAdmittedToClass || !payload || !payload.transferId) return;
+        if (payload.lessonId && currentLoadedLessonId === payload.lessonId) {
+          if (typeof payload.targetSlide === 'number') syncStudentToSlide(payload.targetSlide);
+          return;
+        }
+        const total = Number(payload.total) || 0;
+        const index = Number(payload.index);
+        if (total <= 0 || !Number.isInteger(index) || index < 0 || index >= total) return;
+
+        let entry = incomingLessonChunks.get(payload.transferId);
+        if (!entry) {
+          // Limpiar transferencias previas incompletas de más de 20 s
+          const nowTs = Date.now();
+          for (const [k, v] of incomingLessonChunks.entries()) {
+            if (nowTs - v.createdAt > 20000) incomingLessonChunks.delete(k);
+          }
+          entry = {
+            lessonId: payload.lessonId,
+            targetSlide: payload.targetSlide || 1,
+            teacherGuidedMode: payload.teacherGuidedMode,
+            total,
+            chunks: new Array(total),
+            receivedCount: 0,
+            createdAt: nowTs
+          };
+          incomingLessonChunks.set(payload.transferId, entry);
+        }
+        if (entry.chunks[index] === undefined) {
+          entry.chunks[index] = String(payload.chunk || '');
+          entry.receivedCount++;
+        }
+        if (entry.receivedCount === entry.total) {
+          const fullHtml = entry.chunks.join('');
+          incomingLessonChunks.delete(payload.transferId);
+          console.log(`[ELT Live] Lección fragmentada reconstruida (${fullHtml.length} chars, ${entry.total} bloques).`);
+          loadLessonIntoStudent(entry.lessonId, fullHtml, entry.targetSlide);
+          if (typeof entry.teacherGuidedMode === 'boolean') {
+            applyTeacherGuidedModeUI(entry.teacherGuidedMode);
+          }
         }
       });
 

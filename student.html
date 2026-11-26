@@ -313,12 +313,20 @@
         background-color: rgba(0, 0, 0, 0.75) !important;
       }
     }
+    /* Arrastre táctil fluido para la barra flotante de videos en móvil */
+    #webrtcVideoStrip:not(.gallery-mode),
+    #webrtcDragHandle {
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
     /* Modo horizontal móvil (landscape con poca altura, ej. Samsung A52 con max-height <= 450px) */
     @media (max-height: 450px) and (orientation: landscape), (max-height: 450px) {
       #webrtcVideoStrip {
-        top: 8px !important;
-        bottom: auto !important;
-        right: 8px !important;
+        top: 8px;
+        bottom: auto;
+        right: 8px;
         max-width: 48% !important;
         padding: 3px !important;
       }
@@ -583,7 +591,7 @@
         <div id="webrtcVideoStrip" class="absolute bottom-14 right-3 z-50 bg-[#18191b]/95 border-2 border-[#2e323b] rounded-2xl p-1.5 shadow-2xl flex items-center gap-2 max-w-[82%] select-none cursor-move transition-shadow hover:border-indigo-500/40" title="Arrastra para mover las cámaras a cualquier esquina">
           <!-- Indicador de arrastre lateral + Cuerpo Expandido de Cámaras -->
           <div id="webrtcStripExpandedBody" class="flex items-center gap-2 overflow-x-auto">
-            <div id="webrtcDragHandle" class="hidden md:flex flex-col items-center justify-center px-1 py-2 text-slate-500 hover:text-slate-300 cursor-move shrink-0" title="Arrastrar cámaras">
+            <div id="webrtcDragHandle" class="flex flex-col items-center justify-center min-w-[36px] min-h-[36px] px-1.5 py-2 text-slate-400 hover:text-slate-200 cursor-move shrink-0" title="Arrastrar cámaras">
               <i class="fa-solid fa-grip-vertical text-xs"></i>
             </div>
             <!-- Miniatura Local (Estudiante) -->
@@ -14245,6 +14253,7 @@ window.setVideoStripMinimized = function(minimized) {
         nextLeft = Math.min(Math.max(pad, nextLeft), maxLeft);
         nextTop = Math.min(Math.max(pad, nextTop), maxTop);
 
+        strip.dataset.userDragged = '1';
         strip.style.left = `${Math.round(nextLeft)}px`;
         strip.style.top = `${Math.round(nextTop)}px`;
       });
@@ -14295,6 +14304,8 @@ window.setVideoStripMinimized = function(minimized) {
         }
 
         if (isDragging) {
+          if (e.cancelable) e.preventDefault();
+          strip.dataset.userDragged = '1';
           const cRect = container.getBoundingClientRect();
           const sRect = strip.getBoundingClientRect();
           const pad = 8;
@@ -14310,18 +14321,23 @@ window.setVideoStripMinimized = function(minimized) {
           strip.style.left = `${Math.round(nextLeft)}px`;
           strip.style.top = `${Math.round(nextTop)}px`;
         }
-      }, { passive: true });
+      }, { passive: false });
 
       window.addEventListener('touchend', () => {
         touchCanDrag = false;
         if (!isDragging) return;
         isDragging = false;
+        strip.dataset.userDragged = '1';
         strip.classList.remove('ring-2', 'ring-indigo-500/60', 'shadow-indigo-950/60');
       }, { passive: true });
 
-      // Posicionamiento adaptado para modo horizontal móvil (evita tapar la barra central de mandos)
+      // Posicionamiento adaptado para modo horizontal móvil (respetando posición arrastrada manualmente)
       function applyLandscapePositionIfNeeded() {
         if (isGalleryModeActive) return;
+        if (strip.dataset.userDragged === '1') {
+          clampVideoStripIntoBounds();
+          return;
+        }
         const isLandscapeMobile = window.innerHeight <= 450 || (window.innerWidth <= 950 && window.innerHeight < window.innerWidth && window.innerHeight <= 480);
         if (isLandscapeMobile) {
           strip.style.top = '8px';
